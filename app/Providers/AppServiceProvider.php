@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Livewire\TabsComponent;
 use App\Livewire\Pages\Product\Wizard\ProductInfo;
 use App\Livewire\Pages\Product\Wizard\ProductVariation;
 use App\Livewire\Pages\Product\WizardRegistration;
@@ -18,6 +19,7 @@ class AppServiceProvider extends ServiceProvider
         Livewire::component('checkout-wizard', WizardRegistration::class);
         Livewire::component('product-info', ProductInfo::class);
         Livewire::component('product-variation', ProductVariation::class);
+        Livewire::component('tabs-component', TabsComponent::class);
     }
 
     /**

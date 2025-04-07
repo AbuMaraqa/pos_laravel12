@@ -2,7 +2,7 @@
     <div class="grid grid-cols-4 gap-4">
         <div class="col-span-3">
             <div class="grid grid-cols-1 gap-4">
-                <div class="max-w p-6 bg-white border border-gray-200 rounded-lg shadow-sm dark:bg-gray-800 dark:border-gray-700">
+                <div class="col-span-1 max-w p-6 bg-white border border-gray-200 rounded-lg shadow-sm dark:bg-gray-900 dark:border-gray-700">
                     <div class="mb-3">
                         <flux:heading size="xl">{{ __('Product Information') }}</flux:heading>
                     </div>
@@ -30,6 +30,13 @@
                     </div>
                     <div>
                         <flux:textarea label="{{ __('Product Description') }}"/>
+                    </div>
+                </div>
+                <div class="col-span-1 max-w p-6 bg-white border border-gray-200 rounded-lg shadow-sm dark:bg-gray-900 dark:border-gray-700">
+                    <div class="mb-3">
+
+                        <livewire:tabs-component />
+
                     </div>
                 </div>
             </div>

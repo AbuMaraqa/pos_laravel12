@@ -12,6 +12,15 @@ class Add extends Component
 
     public $file;
 
+    public $isStockManagementEnabled = false;
+    public $stockQuantity = null;
+    public $allowBackorders = false;
+    public $lowStockThreshold = null;
+    public $stockStatus = null;
+    public $soldIndividually = false;
+
+
+
     protected WooCommerceService $wooService;
 
     public function boot(WooCommerceService $wooService): void

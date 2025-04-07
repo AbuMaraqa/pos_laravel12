@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="dark">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="light">
     <head>
         @include('partials.head')
     </head>
@@ -155,6 +155,7 @@
         {{ $slot }}
 
         @fluxScripts
+
         @filepondScripts
 
         <script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>

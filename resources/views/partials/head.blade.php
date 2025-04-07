@@ -9,4 +9,4 @@
 <link href="https://cdn.quilljs.com/1.3.6/quill.bubble.css" rel="stylesheet">
 
 @vite(['resources/css/app.css', 'resources/js/app.js'])
-@fluxAppearance
+{{--@fluxAppearance--}}

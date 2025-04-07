@@ -13,8 +13,9 @@ class WooCommerceService
     public function __construct()
     {
         $user = Auth::user();
-
         if (!$user || !$user->subscription_id) {
+
+            return redirect()->route('login');
             throw new \Exception("المستخدم غير مسجل الدخول أو لا يملك اشتراك");
         }
 

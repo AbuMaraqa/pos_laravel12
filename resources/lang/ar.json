@@ -17,6 +17,7 @@
     "Actions": "العمليات",
     "Add": "إضافة",
 
+    "Add product": "اضافة منتج",
     "Product name": "اسم المنتج",
     "Categories": "الفئات",
     "Regular price": "السعر العادي",
@@ -60,6 +61,24 @@
     "Simple Product": "منتج بسيط",
     "A simple product is a standalone item without variations like size or color. It is sold as-is.": "منتج بسيط هو عنصر فردي بدون تغييرات مثل الحجم أو اللون. يتم بيعه كما هو.",
     "Variable Product": "منتج متعدد",
-    "A variable product has multiple options like sizes or colors. Customers can choose the variation they want before purchasing.": "المنتج المتغير يحتوي على خيارات متعددة مثل الأحجام أو الألوان. يمكن للعميل اختيار المتغير المناسب قبل الشراء."
-
+    "A variable product has multiple options like sizes or colors. Customers can choose the variation they want before purchasing.": "المنتج المتغير يحتوي على خيارات متعددة مثل الأحجام أو الألوان. يمكن للعميل اختيار المتغير المناسب قبل الشراء.",
+    "General": "عام",
+    "Inventory": "المخزون",
+    "Shipping": "الشحن",
+    "Linked Products": "المنتجات المرتبطة",
+    "Attributes": "صفات",
+    "Stock management": "إدارة المخزون",
+    "Stock Quantity": "الكمية داخل المخزون",
+    "Allow Backorders?": "هل تسمح بالطلبات المؤجلة؟",
+    "Track stock quantity for this product.": "تتبع كمية المخزون لهذا المنتج.",
+    "Do not allow": "لا تسمح",
+    "Allow, but notify customer": "السماح، ولكن إخطار العميل",
+    "Allow": "اسمح",
+    "Low Stock Threshold": "السماح، ولكن إخطار العميل",
+    "Stock Status": "حالة المخزون",
+    "In stock": "في المخزن",
+    "Out of stock": "إنتهى من المخزن",
+    "On backorder": "على المؤجل",
+    "Linked Products": "المنتجات المرتبطة",
+    "Sold individually": "تباع بشكل فردي"
 }
