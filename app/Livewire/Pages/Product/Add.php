@@ -19,7 +19,11 @@ class Add extends Component
     public $stockStatus = null;
     public $soldIndividually = false;
 
-
+    public $productId;
+    public $variations = [];
+    public $attribute = [];
+    public $selectedAttributes = []; // ['Color' => 'Red', 'Size' => 'M']
+    public $selectedVariation = null;
 
     protected WooCommerceService $wooService;
 
@@ -28,12 +32,60 @@ class Add extends Component
         $this->wooService = $wooService;
     }
 
+    public function mount($productId = null)
+    {
+        if ($productId) {
+            $this->productId = $productId;
+            $this->loadVariations();
+        }
+    }
+
+    public function loadVariations()
+    {
+        $response = $this->wooService->get("products/{$this->productId}/variations");
+
+        $this->variations = $response;
+
+        foreach ($this->variations as $variation) {
+            foreach ($variation['attributes'] as $attr) {
+                $name = $attr['name'];
+                $option = $attr['option'];
+                $this->attribute[$name][] = $option;
+            }
+        }
+
+        // إزالة التكرارات
+        foreach ($this->attribute as $key => $values) {
+            $this->attribute[$key] = array_unique($values);
+        }
+    }
+
+    public function updatedSelectedAttributes()
+    {
+        $this->getMatchingVariation();
+    }
+
+    public function getMatchingVariation()
+    {
+        $matched = collect($this->variations)->first(function ($variation) {
+            foreach ($variation['attributes'] as $attr) {
+                if (!isset($this->selectedAttributes[$attr['name']]) || $this->selectedAttributes[$attr['name']] !== $attr['option']) {
+                    return false;
+                }
+            }
+            return true;
+        });
+
+        $this->selectedVariation = $matched;
+    }
+
     public function rules(): array
     {
         return [
             'file' => 'required|mimetypes:image/jpg,image/jpeg,image/png|max:3000',
         ];
     }
+
     public function validateUploadedFile()
     {
         $this->validate();

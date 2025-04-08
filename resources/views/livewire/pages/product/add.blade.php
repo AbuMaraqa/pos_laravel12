@@ -34,6 +34,16 @@
                 </div>
                 <div class="col-span-1 max-w p-6 bg-white border border-gray-200 rounded-lg shadow-sm dark:bg-gray-900 dark:border-gray-700">
                     <div class="mb-3">
+                        <div class="flex">
+                            <span>{{ __('Product Data') }}</span> <span>---</span>
+                            <flux:select style="display:inline-block;width:250px" wire:model="industry" placeholder="{{ __('Product Type') }}">
+                                <flux:select.option checked>{{ __('Simple Product') }}</flux:select.option>
+                                <flux:select.option>{{ __('Grouped Product') }}</flux:select.option>
+                                <flux:select.option>{{ __('External/Affiliate Product') }}</flux:select.option>
+                                <flux:select.option>{{ __('Variable Product') }}</flux:select.option>
+                            </flux:select>
+
+                        </div>
 
                         <livewire:tabs-component />
 
@@ -60,7 +70,7 @@
                             <x-filepond::upload multiple wire:model="files" />
                         </div>
                     </div>
-                    <button type="submit">asdasdsad</button>
+                    <button type="submit">Button Save</button>
                 </div>
             </div>
         </form>

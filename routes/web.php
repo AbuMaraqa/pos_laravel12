@@ -36,6 +36,8 @@ Route::group(
     Route::get('/product/index', \App\Livewire\Pages\Product\Index::class)->name('product.index');
     Route::get('/product/add', \App\Livewire\Pages\Product\Add::class)->name('product.add');
 
+    Route::get('/product/attributes/add', \App\Livewire\Pages\Product\Attributes\Index::class)->name('product.attributes.add');
+
     Route::get('/order/index', \App\Livewire\Pages\Order\Index::class)->name('order.index');
     Route::get('/order/{order}/details', \App\Livewire\Pages\Order\Details::class)->name('order.details');
 

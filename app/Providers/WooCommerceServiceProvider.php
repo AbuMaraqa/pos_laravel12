@@ -86,4 +86,70 @@ class WooCommerceService
     {
         return $this->get('orders/' . $id);
     }
+
+    public function getAttributes(array $query = []): array
+    {
+        return $this->get('products/attributes', $query);
+    }
+
+    public function getAttributeBySlug($slug)
+    {
+        $response = $this->client->get('products/attributes', [
+            'query' => [
+                'slug' => $slug,
+            ]
+        ]);
+
+        $attributes = json_decode($response->getBody()->getContents(), true);
+
+        return !empty($attributes) ? $attributes : null;
+    }
+
+    public function deleteAttribute($id): array
+    {
+        try {
+            $response = $this->client->delete('products/attributes/' . $id);
+
+            return json_decode($response->getBody()->getContents(), true);
+        } catch (\GuzzleHttp\Exception\RequestException $e) {
+            dd($e->getResponse()->getBody()->getContents());
+        }
+    }
+
+    public function getTermsForAttribute($attributeId, array $query = []): array
+    {
+        $response = $this->client->get('products/attributes/' . $attributeId . '/terms', [
+            'query' => $query
+        ]);
+
+        return json_decode($response->getBody()->getContents(), true);
+    }
+
+    public function getAttributeById($id): array
+    {
+        $response = $this->client->get("products/attributes/{$id}");
+
+        return json_decode($response->getBody()->getContents(), true);
+    }
+
+    public function getTermsByAttributeId($attributeId, array $query = []): array
+    {
+        $response = $this->client->get("products/attributes/{$attributeId}/terms", [
+            'query' => $query
+        ]);
+
+        return json_decode($response->getBody()->getContents(), true);
+    }
+
+    public function deleteTerm($attributeId, $termId , array $query = []): array
+    {
+        try {
+            $response = $this->client->delete("products/attributes/{$attributeId}/terms/{$termId}" , [
+                'query' => $query
+            ]);
+            return json_decode($response->getBody()->getContents(), true);
+        } catch (\GuzzleHttp\Exception\RequestException $e) {
+            dd($e->getResponse()->getBody()->getContents());
+        }
+    }
 }

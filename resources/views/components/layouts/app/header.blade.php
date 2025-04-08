@@ -21,7 +21,7 @@
                 <flux:navbar.item icon="layout-grid" :href="route('product.index')" :current="request()->routeIs('product.index')" wire:navigate>
                     {{ __('Categories') }}
                 </flux:navbar.item>
-                <flux:navbar.item icon="layout-grid" :href="route('product.index')" :current="request()->routeIs('product.index')" wire:navigate>
+                <flux:navbar.item icon="layout-grid" :href="route('product.attributes.add')" :current="request()->routeIs('product.attributes.add')" wire:navigate>
                     {{ __('Attributes') }}
                 </flux:navbar.item>
                 <flux:navbar.item icon="layout-grid" :href="route('order.index')" :current="request()->routeIs('order.index')" wire:navigate>

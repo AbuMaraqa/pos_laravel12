@@ -34,7 +34,14 @@
 
         <button
             @click="openTab = 4"
-            :class="{'border-b-2 border-blue-500': openTab === 3}"
+            :class="{'border-b-2 border-blue-500': openTab === 4}"
+            class="py-2 px-4 text-sm font-semibold focus:outline-none">
+            {{ __('Attributes') }}
+        </button>
+
+        <button
+            @click="openTab = 5"
+            :class="{'border-b-2 border-blue-500': openTab === 5}"
             class="py-2 px-4 text-sm font-semibold focus:outline-none">
             {{ __('Linked Products') }}
         </button>
@@ -108,6 +115,10 @@
         </div>
 
         <div x-show="openTab === 4" x-transition>
+            @livewire('variation-manager')
+        </div>
+
+        <div x-show="openTab === 5" x-transition>
             شسي
         </div>
     </div>

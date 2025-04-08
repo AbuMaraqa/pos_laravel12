@@ -76,9 +76,20 @@
     "Allow": "اسمح",
     "Low Stock Threshold": "السماح، ولكن إخطار العميل",
     "Stock Status": "حالة المخزون",
-    "In stock": "في المخزن",
-    "Out of stock": "إنتهى من المخزن",
-    "On backorder": "على المؤجل",
+    "In stock": "متوفر في المخزون",
+    "Out of stock": "منتهي من المخزون",
+    "On backorder": "يمكن توفيره حسب الطلب",
     "Linked Products": "المنتجات المرتبطة",
-    "Sold individually": "تباع بشكل فردي"
+    "Sold individually": "تباع بشكل فردي",
+    "Grouped Product": "المنتجات المجمعة",
+    "External/Affiliate Product": "المنتجات الخارجية/المنتجات التابعة",
+
+    "Attribute name": "اسم السمة",
+    "Slug": "الاسم المستعار",
+
+    "Add Attribute": "إضافة سمة",
+    "Attribute Name": "اسم السمة",
+    "Slug": "الاسم المستعار",
+    "Configure terms": "تكوين الشروط",
+    "Term": "الشرط"
 }
