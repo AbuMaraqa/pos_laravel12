@@ -1,7 +1,7 @@
 <div>
 
     <flux:modal name="edit-profile" variant="flyout">
-        <form wire:submit.prevent="saveAttribute" class="space-y-6">
+        <form wire:submit.prevent="{{ $isEditAttribute ? 'updateAttribute' : 'saveAttribute' }}" class="space-y-6">
             <div>
                 <flux:heading size="lg">{{ __('Add Attribute') }}</flux:heading>
             </div>
@@ -126,7 +126,7 @@
                         {{ $attr['slug'] }}
                     </td>
                     <td>
-                        <flux:button variant="subtle" size="xs" wire:click="editAttribute({{ $attr['id'] }})" icon="plus">{{ __('Configure terms') }}</flux:button>
+                        <flux:button variant="subtle" size="xs" wire:click="editTerm({{ $attr['id'] }})" icon="plus">{{ __('Configure terms') }}</flux:button>
 
                     @foreach($attr['terms'] as $term)
                             <flux:badge color="indigo">
@@ -139,7 +139,8 @@
                             <flux:button icon:trailing="chevron-down">{{ __('Options') }}</flux:button>
 
                             <flux:menu>
-                                <flux:menu.item icon="eye">{{ __('View product') }}</flux:menu.item>
+                                <flux:menu.item icon="eye">{{ __('View') }}</flux:menu.item>
+                                <flux:menu.item icon="pencil-square" wire:click="editAttribute({{ $attr['id'] }})">{{ __('Edit') }}</flux:menu.item>
                                 <flux:menu.item variant="danger" wire:click="delete({{ $attr['id'] }})" icon="trash">{{ __('Delete') }}</flux:menu.item>
                             </flux:menu>
                         </flux:dropdown>

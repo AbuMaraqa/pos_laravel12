@@ -7,6 +7,7 @@ use Livewire\Attributes\Computed;
 use Livewire\Component;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Validator;
+use Masmerise\Toaster\Toaster;
 
 class Index extends Component
 {
@@ -14,6 +15,8 @@ class Index extends Component
     public $attribute = [];
     public ?array $terms = [];
     public ?int $selectedAttributeId = null;
+
+    public $isEditAttribute = false;
 
     protected WooCommerceService $wooService;
 
@@ -64,7 +67,7 @@ class Index extends Component
         return $this->wooService->getTermsByAttributeId($attributeId);
     }
 
-    public function editAttribute($attributeId)
+    public function editTerm($attributeId)
     {
         $attribute = $this->wooService->getAttributeById($attributeId);
 
@@ -83,6 +86,25 @@ class Index extends Component
         $this->selectedAttributeId = $attributeId;
     }
 
+    public function editAttribute($attributeId)
+    {
+        $attribute = $this->wooService->getAttributeById($attributeId);
+        // تحقق من وجود البيانات قبل المتابعة
+        if (!$attribute) {
+            return; // أو يمكنك إرسال رسالة خطأ
+        }
+
+        $this->modal('edit-profile')->show();
+
+        $this->data['id'] = $attribute['id'];
+        $this->data['name'] = $attribute['name'];
+        $this->data['slug'] = $attribute['slug'];
+
+        // خزّن الـ attributeId حتى تستخدمه في loadTerms
+        $this->selectedAttributeId = $attributeId;
+        $this->isEditAttribute = true;
+    }
+
 
     public function saveAttribute(): void
     {
@@ -98,6 +120,22 @@ class Index extends Component
         ]);
 
         // إعادة تحميل السمات بعد الحفظ
+        $this->loadAttributes();
+    }
+
+    public function updateAttribute(){
+        $this->validate([
+            'data.name' => 'required|string|max:255',
+            'data.slug' => 'required|string|max:255',
+        ]);
+
+        $response = $this->wooService->put("products/attributes/{$this->data['id']}", [
+            'name' => $this->data['name'],
+            'slug' => $this->data['slug'],
+        ]);
+
+        Toaster::success('User created!');
+
         $this->loadAttributes();
     }
 

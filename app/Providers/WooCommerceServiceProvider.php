@@ -8,21 +8,19 @@ use Illuminate\Support\Facades\Auth;
 
 class WooCommerceService
 {
-    protected Client $client;
+    protected ?Client $client = null; // اجعلها nullable لتفادي الخطأ
 
     public function __construct()
     {
         $user = Auth::user();
         if (!$user || !$user->subscription_id) {
-
-            return redirect()->route('login');
-            throw new \Exception("المستخدم غير مسجل الدخول أو لا يملك اشتراك");
+            abort(403, "المستخدم غير مسجل الدخول أو لا يملك اشتراك");
         }
 
         $subscription = Subscription::find($user->subscription_id);
 
         if (!$subscription || !$subscription->consumer_key || !$subscription->consumer_secret) {
-            throw new \Exception("لا توجد مفاتيح WooCommerce صالحة");
+            abort(403, "لا توجد مفاتيح WooCommerce صالحة");
         }
 
         $this->client = new Client([
@@ -32,44 +30,27 @@ class WooCommerceService
         ]);
     }
 
+    protected function ensureClientInitialized(): void
+    {
+        if (!$this->client) {
+            abort(500, "Client غير مهيأ");
+        }
+    }
+
     public function get(string $endpoint, array $query = []): array
     {
+        $this->ensureClientInitialized(); // تحقق قبل الاستخدام
         $response = $this->client->get($endpoint, ['query' => $query]);
         return json_decode($response->getBody()->getContents(), true);
     }
 
     public function put(string $endpoint, array $data = []): array
     {
-        try {
-            $response = $this->client->put($endpoint, [
-                'json' => $data
-            ]);
-
-            return json_decode($response->getBody()->getContents(), true);
-        } catch (\GuzzleHttp\Exception\RequestException $e) {
-            dd($e->getResponse()->getBody()->getContents());
-        }
-    }
-
-    public function post(string $endpoint, array $data = []): array
-    {
-        array_walk_recursive($data, function (&$value) {
-            if (is_string($value)) {
-                $value = mb_convert_encoding($value, 'UTF-8', 'UTF-8');
-            }
-        });
-
-        $response = $this->client->post($endpoint, [
-            'json' => $data
+        $response = $this->client->put($endpoint, [
+            'json' => $data,
         ]);
 
         return json_decode($response->getBody()->getContents(), true);
-    }
-
-    // مثال:
-    public function getProducts(array $query = []): array
-    {
-        return $this->get('products', $query);
     }
 
     public function getCategories(array $query = []): array
