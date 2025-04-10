@@ -2,91 +2,116 @@
 
 namespace App\Livewire;
 
+use Livewire\Attributes\On;
 use Livewire\Component;
+use App\Services\WooCommerceService;
 
 class VariationManager extends Component
 {
-    public $attribute = [];
+    public $productAttributes = [];
+    public $attributeTerms = [];
+    public $selectedAttributes = [];
     public $variations = [];
+    public $attributeMap = [];
 
-    // إضافة خاصية جديدة
-    public function addAttribute()
+    public function mount()
     {
-        $this->attribute[] = [
-            'name' => '',
-            'options' => ['']
-        ];
-    }
+        $woo = new WooCommerceService();
 
-    // إضافة خيار جديد للخاصية
-    public function addOption($index)
-    {
-        $this->attribute[$index]['options'][] = '';
-    }
+        $this->productAttributes = $woo->getAttributes();
 
-    // إزالة الخيار
-    public function removeOption($index, $optIndex)
-    {
-        // تأكد من أنه يوجد أكثر من خيار واحد لكي لا نترك المجموعة فارغة
-        if (count($this->attribute[$index]['options']) > 1) {
-            // إزالة الخيار باستخدام array_splice
-            array_splice($this->attribute[$index]['options'], $optIndex, 1);
-
-            // إعادة ترتيب الفهارس بعد الحذف
-            $this->attribute[$index]['options'] = array_values($this->attribute[$index]['options']);
+        foreach ($this->productAttributes as $attribute) {
+            $this->attributeTerms[$attribute['id']] = $woo->getTerms($attribute['id']);
         }
     }
 
-    // إزالة خاصية كاملة
-    public function removeAttribute($index)
-    {
-        unset($this->attribute[$index]);
-        // إعادة ترتيب الفهارس بعد الحذف
-        $this->attribute = array_values($this->attribute);
-    }
-
-    // توليد المتغيرات بناءً على الخصائص
     public function generateVariations()
     {
+        $this->variations = [];
+        $attributeOptions = [];
+        $wooService = new WooCommerceService();
+        $this->attributeMap = [];
 
-//        foreach ($this->attribute as $attribute) {
-//            if (empty($attribute['options']) || in_array('', $attribute['options'])) {
-//                $this->addError('variations', 'كل خاصية يجب أن تحتوي على خيارات كاملة.');
-//                return;
-//            }
-//        }
+        foreach ($this->selectedAttributes as $attributeId => $termMap) {
+            $termIds = array_keys(array_filter($termMap));
 
-        // توليد التراكيب (variations) بناءً على الخيارات
-        $attributeOptions = array_map(fn($attr) => $attr['options'], $this->attribute);
-        $combinations = $this->cartesian($attributeOptions);
+            if (!empty($termIds)) {
+                $attribute = collect($this->productAttributes)->firstWhere('id', $attributeId);
+                $this->attributeMap[] = [
+                    'id' => $attributeId,
+                    'name' => $attribute['name'] ?? 'خاصية',
+                ];
 
-        $this->variations = array_map(fn($combo) => ['options' => $combo], $combinations);
+                $terms = $wooService->getTermsForAttribute($attributeId);
+                $selectedNames = [];
 
-//        dd($this->attribute);
+                foreach ($termIds as $id) {
+                    $term = collect($terms)->firstWhere('id', $id);
+                    if ($term) {
+                        $selectedNames[] = $term['name'];
+                    }
+                }
 
+                $attributeOptions[] = $selectedNames;
+            }
+        }
+
+        $this->variations = collect($this->cartesian($attributeOptions))->map(function ($combo) {
+            return [
+                'options' => $combo,
+                'sku' => '',
+                'regular_price' => '',
+                'sale_price' => '',
+                'stock_quantity' => '',
+                'active' => true,
+                'length' => '',
+                'width' => '',
+                'height' => '',
+                'description' => '',
+            ];
+        })->toArray();
+
+        $this->emitData(); // 👈 إرسال البيانات تلقائيًا بعد التوليد
     }
 
-    // دالة حساب التراكيب (التركيب الكارتيزي)
+    public function updatedVariations()
+    {
+        // 👈 أي تعديل على جدول المتغيرات يرسل البيانات
+        $this->emitData();
+    }
+
+    public function emitData()
+    {
+        $this->dispatch('variationsGenerated', [
+            'variations' => $this->variations,
+            'attributeMap' => $this->attributeMap,
+        ])->to('pages.product.add');
+    }
+
     protected function cartesian($arrays)
     {
         if (empty($arrays)) return [];
 
         $result = [[]];
-
-        foreach ($arrays as $property_values) {
+        foreach ($arrays as $values) {
             $tmp = [];
-            foreach ($result as $result_item) {
-                foreach ($property_values as $property_value) {
-                    $tmp[] = array_merge($result_item, [$property_value]);
+            foreach ($result as $combo) {
+                foreach ($values as $value) {
+                    $tmp[] = array_merge($combo, [$value]);
                 }
             }
             $result = $tmp;
         }
-
         return $result;
     }
 
-    // عرض المكون
+    #[On('requestLatestVariations')]
+    public function sendLatestToParent()
+    {
+        $this->emitData();
+    }
+
+
     public function render()
     {
         return view('livewire.variation-manager');

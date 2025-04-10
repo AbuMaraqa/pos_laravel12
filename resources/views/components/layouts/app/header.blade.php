@@ -154,8 +154,6 @@
 
         {{ $slot }}
 
-        <x-toaster-hub />
-
         @fluxScripts
 
         @filepondScripts

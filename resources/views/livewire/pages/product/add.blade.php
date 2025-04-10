@@ -49,6 +49,16 @@
 
                     </div>
                 </div>
+                <div class="col-span-1 max-w p-6 bg-white border border-gray-200 rounded-lg shadow-sm dark:bg-gray-900 dark:border-gray-700">
+                    <div class="mb-3">
+                        <flux:heading size="xl">{{ __('Product Information') }}</flux:heading>
+                    </div>
+                    <div class="mb-3">
+                        <flux:button wire:click="saveProduct" class="btn btn-primary">
+                            حفظ المنتج
+                        </flux:button>
+                    </div>
+                </div>
             </div>
         </div>
         <form wire:submit.prevent="uploadImage">
@@ -76,3 +86,9 @@
         </form>
     </div>
 </div>
+
+<script>
+    Livewire.on('variationsGenerated', (variations, map) => {
+
+    });
+</script>

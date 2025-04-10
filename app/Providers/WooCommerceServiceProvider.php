@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\Auth;
 
 class WooCommerceService
 {
-    protected ?Client $client = null; // اجعلها nullable لتفادي الخطأ
+    protected Client $client;
 
     public function __construct()
     {
@@ -30,27 +30,44 @@ class WooCommerceService
         ]);
     }
 
-    protected function ensureClientInitialized(): void
-    {
-        if (!$this->client) {
-            abort(500, "Client غير مهيأ");
-        }
-    }
-
     public function get(string $endpoint, array $query = []): array
     {
-        $this->ensureClientInitialized(); // تحقق قبل الاستخدام
         $response = $this->client->get($endpoint, ['query' => $query]);
         return json_decode($response->getBody()->getContents(), true);
     }
 
     public function put(string $endpoint, array $data = []): array
     {
-        $response = $this->client->put($endpoint, [
-            'json' => $data,
+        try {
+            $response = $this->client->put($endpoint, [
+                'json' => $data
+            ]);
+
+            return json_decode($response->getBody()->getContents(), true);
+        } catch (\GuzzleHttp\Exception\RequestException $e) {
+            dd($e->getResponse()->getBody()->getContents());
+        }
+    }
+
+    public function post(string $endpoint, array $data = []): array
+    {
+        array_walk_recursive($data, function (&$value) {
+            if (is_string($value)) {
+                $value = mb_convert_encoding($value, 'UTF-8', 'UTF-8');
+            }
+        });
+
+        $response = $this->client->post($endpoint, [
+            'json' => $data
         ]);
 
         return json_decode($response->getBody()->getContents(), true);
+    }
+
+    // مثال:
+    public function getProducts(array $query = []): array
+    {
+        return $this->get('products', $query);
     }
 
     public function getCategories(array $query = []): array
@@ -71,6 +88,22 @@ class WooCommerceService
     public function getAttributes(array $query = []): array
     {
         return $this->get('products/attributes', $query);
+    }
+
+    public function getTerms(int $attributeId): array
+    {
+        return $this->request('GET', "products/attributes/{$attributeId}/terms");
+    }
+
+    protected function request(string $method, string $uri, array $options = []): array
+    {
+        try {
+            $response = $this->client->request($method, $uri, $options);
+            return json_decode($response->getBody()->getContents(), true);
+        } catch (\Exception $e) {
+            logger()->error('WooCommerce API Error: ' . $e->getMessage());
+            return [];
+        }
     }
 
     public function getAttributeBySlug($slug)

@@ -6,6 +6,8 @@ use App\Livewire\Settings\Profile;
 use Illuminate\Support\Facades\Route;
 
 
+Route::get('/variations', \App\Livewire\VariationManager::class);
+
 Route::group(
     [
         'prefix' => LaravelLocalization::setLocale(),

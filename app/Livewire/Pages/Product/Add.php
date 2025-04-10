@@ -3,6 +3,7 @@
 namespace App\Livewire\Pages\Product;
 
 use App\Services\WooCommerceService;
+use Livewire\Attributes\On;
 use Livewire\Component;
 use Spatie\LivewireFilepond\WithFilePond;
 
@@ -12,18 +13,27 @@ class Add extends Component
 
     public $file;
 
+    // بيانات المنتج
+    public $productId;
+    public $productName;
+    public $productDescription;
+    public $regularPrice;
+    public $salePrice;
+    public $sku;
+
+    // المخزون
     public $isStockManagementEnabled = false;
     public $stockQuantity = null;
     public $allowBackorders = false;
-    public $lowStockThreshold = null;
-    public $stockStatus = null;
+    public $stockStatus = 'instock';
     public $soldIndividually = false;
 
-    public $productId;
+    // الخصائص والمتغيرات
+    public $productAttributes = [];
+    public $attributeTerms = [];
+    public $selectedAttributes = [];
+    public $attributeMap = [];
     public $variations = [];
-    public $attribute = [];
-    public $selectedAttributes = []; // ['Color' => 'Red', 'Size' => 'M']
-    public $selectedVariation = null;
 
     protected WooCommerceService $wooService;
 
@@ -32,82 +42,195 @@ class Add extends Component
         $this->wooService = $wooService;
     }
 
-    public function mount($productId = null)
+    public function mount()
     {
-        if ($productId) {
-            $this->productId = $productId;
-            $this->loadVariations();
+        $this->fetchProductAttributes();
+    }
+
+    public function fetchProductAttributes()
+    {
+        $this->productAttributes = $this->wooService->getAttributes();
+
+        foreach ($this->productAttributes as $attr) {
+            $this->attributeTerms[$attr['id']] = $this->wooService->getTermsForAttribute($attr['id']);
         }
     }
 
-    public function loadVariations()
+    public function generateVariations()
     {
-        $response = $this->wooService->get("products/{$this->productId}/variations");
+        $filtered = [];
 
-        $this->variations = $response;
-
-        foreach ($this->variations as $variation) {
-            foreach ($variation['attributes'] as $attr) {
-                $name = $attr['name'];
-                $option = $attr['option'];
-                $this->attribute[$name][] = $option;
+        foreach ($this->selectedAttributes as $attributeId => $termIds) {
+            if (is_array($termIds) && count($termIds)) {
+                $filtered[$attributeId] = $termIds;
             }
         }
 
-        // إزالة التكرارات
-        foreach ($this->attribute as $key => $values) {
-            $this->attribute[$key] = array_unique($values);
-        }
-    }
+        $this->selectedAttributes = $filtered;
 
-    public function updatedSelectedAttributes()
-    {
-        $this->getMatchingVariation();
-    }
+        $attributeOptions = [];
+        $this->attributeMap = []; // تأكد من تصفيرها أولاً
 
-    public function getMatchingVariation()
-    {
-        $matched = collect($this->variations)->first(function ($variation) {
-            foreach ($variation['attributes'] as $attr) {
-                if (!isset($this->selectedAttributes[$attr['name']]) || $this->selectedAttributes[$attr['name']] !== $attr['option']) {
-                    return false;
+        foreach ($this->selectedAttributes as $attributeId => $termIds) {
+            $terms = $this->attributeTerms[$attributeId] ?? [];
+            $termNames = [];
+
+            foreach ($termIds as $id) {
+                $term = collect($terms)->firstWhere('id', $id);
+                if ($term) {
+                    $termNames[] = $term['name'];
                 }
             }
-            return true;
-        });
 
-        $this->selectedVariation = $matched;
+            if (!empty($termNames)) {
+                $attributeOptions[$attributeId] = $termNames;
+                $this->attributeMap[] = [
+                    'id' => $attributeId,
+                    'name' => collect($this->productAttributes)->firstWhere('id', $attributeId)['name'] ?? 'خاصية',
+                ];
+            }
+        }
+
+        $combinations = $this->cartesian(array_values($attributeOptions));
+        $this->variations = array_map(fn($combo) => [
+            'options' => $combo,
+            'sku' => '',
+            'regular_price' => '',
+            'sale_price' => '',
+            'stock_quantity' => '',
+            'active' => true,
+            'length' => '',
+            'width' => '',
+            'height' => '',
+            'description' => '',
+        ], $combinations);
     }
 
-    public function rules(): array
+    #[On('variationsGenerated')]
+    public function setVariations($data)
     {
-        return [
-            'file' => 'required|mimetypes:image/jpg,image/jpeg,image/png|max:3000',
-        ];
+        $this->variations = $data['variations'] ?? [];
+        $this->attributeMap = $data['attributeMap'] ?? [];
     }
 
-    public function validateUploadedFile()
+    public function saveProduct()
     {
-        $this->validate();
+        $this->requestLatestVariations();
+        $woo = $this->wooService;
 
-        return true;
+        try {
+            // 🧠 تحضير الخصائص والقيم الافتراضية
+            $productAttributes = [];
+            $defaultAttributes = [];
+
+            // التأكد من ترتيب attributeMap الصحيح
+            $attributeMap = array_values($this->attributeMap);
+
+            foreach ($attributeMap as $index => $attribute) {
+                // الحصول على كل القيم لهذا الـ attribute من كل المتغيرات
+                $options = collect($this->variations)
+                    ->pluck("options.$index")
+                    ->unique()
+                    ->values()
+                    ->toArray();
+
+                if (!empty($options)) {
+                    $productAttributes[] = [
+                        'id' => $attribute['id'],
+                        'variation' => true,
+                        'visible' => true,
+                        'options' => $options,
+                    ];
+
+                    $defaultAttributes[] = [
+                        'id' => $attribute['id'],
+                        'option' => $options[0],
+                    ];
+                }
+            }
+
+            // 🛠 إنشاء المنتج
+            $data = [
+                'name' => $this->productName ?? 'منتج بدون اسم',
+                'type' => 'variable',
+                'description' => $this->productDescription,
+                'sku' => $this->sku ?: null,
+                'status' => 'publish',
+                'manage_stock' => $this->isStockManagementEnabled,
+                'stock_quantity' => $this->stockQuantity ?? null,
+                'backorders' => $this->allowBackorders ? 'yes' : 'no',
+                'stock_status' => $this->stockStatus,
+                'sold_individually' => $this->soldIndividually,
+                'attributes' => $productAttributes,
+                'default_attributes' => $defaultAttributes,
+            ];
+
+            $product = $woo->post('products', $data);
+            $this->productId = $product['id'];
+
+            // 🧩 إنشاء المتغيرات وربطها
+            foreach ($this->variations as $variation) {
+                $attributes = [];
+
+                foreach ($variation['options'] as $index => $value) {
+                    $attribute = $attributeMap[$index] ?? null;
+
+                    if ($attribute) {
+                        $attributes[] = [
+                            'id' => $attribute['id'],
+                            'option' => $value,
+                        ];
+                    }
+                }
+
+                $woo->post("products/{$product['id']}/variations", [
+                    'sku' => $variation['sku'],
+                    'regular_price' => $variation['regular_price'] ?: '0',
+                    'sale_price' => $variation['sale_price'] ?: '',
+                    'stock_quantity' => $variation['stock_quantity'] ?: 0,
+                    'manage_stock' => true,
+                    'status' => $variation['active'] ? 'publish' : 'private',
+                    'attributes' => $attributes,
+                    'dimensions' => [
+                        'length' => $variation['length'] ?: '',
+                        'width' => $variation['width'] ?: '',
+                        'height' => $variation['height'] ?: '',
+                    ],
+                    'description' => $variation['description'] ?: '',
+                ]);
+            }
+
+            $this->dispatch('toast', ['type' => 'success', 'message' => '✅ تم حفظ المنتج والمتغيرات والخصائص بنجاح!']);
+        } catch (\Exception $e) {
+            logger()->error('❌ WooCommerce Product Save Error: ' . $e->getMessage());
+            $this->dispatch('toast', ['type' => 'error', 'message' => '❌ فشل في حفظ المنتج']);
+        }
     }
 
-    public function uploadImage(): array
+    protected function cartesian($arrays)
     {
-        $this->validate();
-        $realPath = $this->file->getRealPath();
+        if (empty($arrays)) return [];
 
-        $response = $this->wooService->post('media', [
-            'headers' => [
-                'Content-Disposition' => 'attachment; filename="image.jpg"',
-                'Content-Type' => 'image/jpeg',
-            ],
-            'body' => file_get_contents($realPath),
-        ]);
+        $result = [[]];
 
-        return json_decode($response->getBody()->getContents(), true);
+        foreach ($arrays as $values) {
+            $tmp = [];
+            foreach ($result as $combo) {
+                foreach ($values as $value) {
+                    $tmp[] = array_merge($combo, [$value]);
+                }
+            }
+            $result = $tmp;
+        }
+
+        return $result;
     }
+
+    public function requestLatestVariations()
+    {
+        $this->dispatch('requestLatestVariations')->to('variation-manager');
+    }
+
 
     public function render()
     {

@@ -134,7 +134,7 @@ class Index extends Component
             'slug' => $this->data['slug'],
         ]);
 
-        Toaster::success('User created!');
+        Toaster::success(__('Save successfully'));
 
         $this->loadAttributes();
     }
