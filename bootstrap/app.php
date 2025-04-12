@@ -18,6 +18,9 @@ return Application::configure(basePath: dirname(__DIR__))
             'localeSessionRedirect'   => \Mcamara\LaravelLocalization\Middleware\LocaleSessionRedirect::class,
             'localeCookieRedirect'    => \Mcamara\LaravelLocalization\Middleware\LocaleCookieRedirect::class,
             'localeViewPath'          => \Mcamara\LaravelLocalization\Middleware\LaravelLocalizationViewPath::class,
+
+            'DNS1D' => Milon\Barcode\Facades\DNS1DFacade::class,
+            'DNS2D' => Milon\Barcode\Facades\DNS2DFacade::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

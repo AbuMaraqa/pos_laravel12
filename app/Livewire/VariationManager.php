@@ -71,12 +71,11 @@ class VariationManager extends Component
             ];
         })->toArray();
 
-        $this->emitData(); // 👈 إرسال البيانات تلقائيًا بعد التوليد
+        $this->emitData();
     }
 
     public function updatedVariations()
     {
-        // 👈 أي تعديل على جدول المتغيرات يرسل البيانات
         $this->emitData();
     }
 
@@ -108,9 +107,11 @@ class VariationManager extends Component
     #[On('requestLatestVariations')]
     public function sendLatestToParent()
     {
-        $this->emitData();
+        $this->dispatch('latestVariationsSent', [
+            'variations' => $this->variations,
+            'attributeMap' => $this->attributeMap,
+        ])->to('pages.product.add');
     }
-
 
     public function render()
     {

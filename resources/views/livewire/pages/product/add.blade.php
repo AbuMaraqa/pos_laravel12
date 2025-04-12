@@ -54,7 +54,7 @@
                         <flux:heading size="xl">{{ __('Product Information') }}</flux:heading>
                     </div>
                     <div class="mb-3">
-                        <flux:button wire:click="saveProduct" class="btn btn-primary">
+                        <flux:button wire:click="syncBeforeSave" class="btn btn-primary">
                             حفظ المنتج
                         </flux:button>
                     </div>
@@ -88,7 +88,11 @@
 </div>
 
 <script>
-    Livewire.on('variationsGenerated', (variations, map) => {
+    function syncVariationsBeforeSubmit() {
+        Livewire.dispatch('requestLatestVariations');
 
-    });
+        setTimeout(() => {
+            Livewire.dispatch('continueProductSave');
+        }, 500);
+    }
 </script>

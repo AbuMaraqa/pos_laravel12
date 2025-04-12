@@ -70,6 +70,11 @@ class WooCommerceService
         return $this->get('products', $query);
     }
 
+    public function getProductsById($id): array
+    {
+        return $this->get('products/' . $id);
+    }
+
     public function getCategories(array $query = []): array
     {
         return $this->get('products/categories' , $query);

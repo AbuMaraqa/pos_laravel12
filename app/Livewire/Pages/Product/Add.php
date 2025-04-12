@@ -5,6 +5,7 @@ namespace App\Livewire\Pages\Product;
 use App\Services\WooCommerceService;
 use Livewire\Attributes\On;
 use Livewire\Component;
+use Livewire\Livewire;
 use Spatie\LivewireFilepond\WithFilePond;
 
 class Add extends Component
@@ -113,9 +114,12 @@ class Add extends Component
         $this->attributeMap = $data['attributeMap'] ?? [];
     }
 
+    #[On('continueProductSave')]
+
     public function saveProduct()
     {
         $this->requestLatestVariations();
+        dd($this->variations);
         $woo = $this->wooService;
 
         try {
@@ -226,11 +230,21 @@ class Add extends Component
         return $result;
     }
 
-    public function requestLatestVariations()
+    #[On('latestVariationsSent')]
+    public function handleLatestVariations($data)
     {
-        $this->dispatch('requestLatestVariations')->to('variation-manager');
+        $this->variations = $data['variations'] ?? [];
+        $this->attributeMap = $data['attributeMap'] ?? [];
+
+        // الآن نكمل حفظ المنتج
+        $this->saveProduct();
     }
 
+    public function syncBeforeSave()
+    {
+        // هذا سيطلب من VariationManager إرسال أحدث البيانات
+        $this->dispatch('requestLatestVariations')->to('variation-manager');
+    }
 
     public function render()
     {

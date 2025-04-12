@@ -1,4 +1,67 @@
 <div>
+
+    <flux:modal name="barcode-product-modal" class="md:w-[600px]">
+        <div class="space-y-6">
+            <div>
+                <flux:heading size="lg">طباعة الباركود</flux:heading>
+            </div>
+            {{-- المنتج الرئيسي --}}
+            <div class="flex items-center justify-between border-b pb-2">
+                <div class="text-sm font-bold text-gray-800">
+                    المنتج: {{ $product['name'] ?? '' }}
+                </div>
+                <div>{!! DNS1D::getBarcodeHTML('AS', 'C39'); !!}</div>
+                <div class="w-24">
+                    <input type="number" min="1"
+                           wire:model.defer="quantities.main"
+                           class="w-full border border-gray-300 rounded px-2 py-1 text-sm" />
+                </div>
+            </div>
+
+            {{-- المتغيرات إن وجدت --}}
+            @if(!empty($variations))
+                <div class="mt-4 space-y-4">
+                    @foreach($variations as $variation)
+                        @php
+                            $variationName = 'متغير';
+                            if (!empty($variation['attributes']) && is_array($variation['attributes'])) {
+                                $attrList = [];
+                                foreach ($variation['attributes'] as $attr) {
+                                    if (is_array($attr) && isset($attr['name']) && isset($attr['option'])) {
+                                        $attrList[] = "{$attr['name']}: {$attr['option']}";
+                                    }
+                                }
+                                if (!empty($attrList)) {
+                                    $variationName = implode(', ', $attrList);
+                                }
+                            }
+                        @endphp
+
+                        <div class="flex items-center justify-between border-b pb-2">
+                            <div class="text-sm text-gray-700">
+                                {{ $variationName }}
+                            </div>
+                            <div>{!! DNS1D::getBarcodeHTML($variation, 'C39'); !!}</div>
+                            <div class="w-24">
+                                <input type="number" min="1"
+                                       wire:model.defer="quantities.{{ $variation }}"
+                                       class="w-full border border-gray-300 rounded px-2 py-1 text-sm" />
+                            </div>
+                        </div>
+                    @endforeach
+                </div>
+            @endif
+
+            {{-- زر الطباعة --}}
+            <div class="flex pt-4">
+                <flux:spacer />
+                <flux:button wire:click="printBarcodes" variant="primary">طباعة</flux:button>
+            </div>
+        </div>
+    </flux:modal>
+
+
+
     <flux:button href="{{ route('product.add') }}" variant="primary" icon="plus">{{ __('Add product') }}</flux:button>
 
     <flux:input class="mt-3" wire:model.live.debounce.500ms="search" placeholder="{{ __('Search') }}"/>
@@ -93,7 +156,7 @@
                                 <flux:button icon:trailing="chevron-down">{{ __('Options') }}</flux:button>
 
                                 <flux:menu>
-                                    <flux:menu.item icon="eye">{{ __('View product') }}</flux:menu.item>
+                                    <flux:menu.item wire:click="openPrintBarcodeModal({{ $product['id'] }})" icon="eye">{{ __('Barcode Product') }}</flux:menu.item>
                                     <flux:menu.item target="_black" href="{{ $product['permalink'] }}" icon="eye">{{ __('View in website') }}</flux:menu.item>
                                     <flux:menu.item icon="pencil-square">{{ __('Edit product') }}</flux:menu.item>
                                     <flux:menu.item variant="danger" icon="trash">{{ __('Delete') }}</flux:menu.item>
