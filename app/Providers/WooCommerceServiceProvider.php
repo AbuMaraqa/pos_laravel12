@@ -36,6 +36,15 @@ class WooCommerceService
         return json_decode($response->getBody()->getContents(), true);
     }
 
+    public function getWithHeaders(string $endpoint, array $query = []): array
+    {
+        $response = $this->client->get($endpoint, ['query' => $query]);
+        return [
+            'body' => $response->getBody()->getContents(),
+            'headers' => $response->getHeaders()
+        ];
+    }
+
     public function put(string $endpoint, array $data = []): array
     {
         try {
@@ -95,9 +104,23 @@ class WooCommerceService
         return $this->get('products/attributes', $query);
     }
 
+    public function getVariationById($id): array
+    {
+        return $this->get('products/variations/' . $id);
+    }
+
     public function getTerms(int $attributeId): array
     {
         return $this->request('GET', "products/attributes/{$attributeId}/terms");
+    }
+
+    public function getAttributesWithTerms()
+    {
+        $attributes = $this->getAttributes();
+        foreach ($attributes as &$attribute) {
+            $attribute['terms'] = $this->getTermsForAttribute($attribute['id']);
+        }
+        return $attributes;
     }
 
     protected function request(string $method, string $uri, array $options = []): array

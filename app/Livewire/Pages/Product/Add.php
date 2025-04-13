@@ -3,38 +3,51 @@
 namespace App\Livewire\Pages\Product;
 
 use App\Services\WooCommerceService;
+use Livewire\Attributes\Computed;
 use Livewire\Attributes\On;
+use Livewire\Attributes\Reactive;
 use Livewire\Component;
 use Livewire\Livewire;
+use Masmerise\Toaster\Toaster;
 use Spatie\LivewireFilepond\WithFilePond;
 
 class Add extends Component
 {
     use WithFilePond;
 
-    public $file;
+    public $productId;                         // ID المنتج الجديد بعد الحفظ
 
-    // بيانات المنتج
-    public $productId;
-    public $productName;
+// بيانات المنتج الأساسية
+    public $productName;                       // اسم المنتج
     public $productDescription;
+    public $productType = 'simple';
+
     public $regularPrice;
-    public $salePrice;
-    public $sku;
+    public $salePrice;                        // سعر الخصم
+    public $sku;                              // SKU الخاص بالمنتج
 
-    // المخزون
-    public $isStockManagementEnabled = false;
-    public $stockQuantity = null;
-    public $allowBackorders = false;
-    public $stockStatus = 'instock';
-    public $soldIndividually = false;
+// إدارة المخزون
+    public $isStockManagementEnabled = false; // هل يتم إدارة المخزون؟
+    public $stockQuantity = null;             // كمية المخزون
+    public $allowBackorders = false;          // السماح بالطلبات الخلفية
+    public $stockStatus = 'instock';          // حالة التوفر في المخزون
+    public $soldIndividually = false;         // هل يباع بشكل فردي فقط؟
 
-    // الخصائص والمتغيرات
-    public $productAttributes = [];
-    public $attributeTerms = [];
-    public $selectedAttributes = [];
-    public $attributeMap = [];
-    public $variations = [];
+// تحميل الصور
+    public $file;                             // صورة الغلاف
+    public $files = [];                       // صور المعرض
+
+// الخصائص والمتغيرات
+    public $productAttributes = [];           // قائمة جميع الخصائص (attributes)
+    public $attributeTerms = [];              // قائمة جميع القيم (terms) الخاصة بكل خاصية
+    public $selectedAttributes = [];          // الخصائص والقيم التي تم اختيارها من قبل المستخدم
+    #[Locked]
+    public $attributeMap = [];                // خريطة الخصائص (id + name) حسب الترتيب
+    #[Locked]
+    public $variations = [];                  // جميع المتغيرات المولدة بناءً على الخصائص المحددة
+
+// حالة الحفظ
+    public $isSaving = false;                 // تستخدم لمنع التكرار عند الحفظ
 
     protected WooCommerceService $wooService;
 
@@ -45,7 +58,15 @@ class Add extends Component
 
     public function mount()
     {
-        $this->fetchProductAttributes();
+//        $this->fetchProductAttributes();
+    }
+
+    #[On('updateMultipleFieldsFromTabs')]
+    public function updateFieldsFromTabs($data)
+    {
+        $this->regularPrice = $data['regularPrice'] ?? null;
+        $this->salePrice = $data['salePrice'] ?? null;
+        $this->sku = $data['sku'] ?? null;
     }
 
     public function fetchProductAttributes()
@@ -59,6 +80,10 @@ class Add extends Component
 
     public function generateVariations()
     {
+        $this->validate([
+            'named' => 'required|string|max:255',
+        ]);
+
         $filtered = [];
 
         foreach ($this->selectedAttributes as $attributeId => $termIds) {
@@ -107,6 +132,29 @@ class Add extends Component
         ], $combinations);
     }
 
+    #[Computed]
+    public function getCategories(): array
+    {
+        $categories = $this->wooService->getCategories(['per_page' => 100]);
+        $grouped = [];
+        foreach ($categories as $cat) {
+            $grouped[$cat['parent']][] = $cat;
+        }
+
+        $buildTree = function ($parentId = 0) use (&$buildTree, $grouped) {
+            $tree = [];
+            if (isset($grouped[$parentId])) {
+                foreach ($grouped[$parentId] as $cat) {
+                    $cat['children'] = $buildTree($cat['id']);
+                    $tree[] = $cat;
+                }
+            }
+            return $tree;
+        };
+
+        return $buildTree();
+    }
+
     #[On('variationsGenerated')]
     public function setVariations($data)
     {
@@ -115,28 +163,21 @@ class Add extends Component
     }
 
     #[On('continueProductSave')]
-
     public function saveProduct()
     {
-        $this->requestLatestVariations();
-        dd($this->variations);
+        $this->validate([
+            'categoryId' => 'required|integer',
+        ]);
+
         $woo = $this->wooService;
 
         try {
-            // 🧠 تحضير الخصائص والقيم الافتراضية
             $productAttributes = [];
             $defaultAttributes = [];
-
-            // التأكد من ترتيب attributeMap الصحيح
             $attributeMap = array_values($this->attributeMap);
 
             foreach ($attributeMap as $index => $attribute) {
-                // الحصول على كل القيم لهذا الـ attribute من كل المتغيرات
-                $options = collect($this->variations)
-                    ->pluck("options.$index")
-                    ->unique()
-                    ->values()
-                    ->toArray();
+                $options = collect($this->variations)->pluck("options.$index")->unique()->values()->toArray();
 
                 if (!empty($options)) {
                     $productAttributes[] = [
@@ -153,11 +194,11 @@ class Add extends Component
                 }
             }
 
-            // 🛠 إنشاء المنتج
             $data = [
                 'name' => $this->productName ?? 'منتج بدون اسم',
-                'type' => 'variable',
-                'description' => $this->productDescription,
+                'type' => $this->productType ?? 'simple',
+                'description' => $this->productDescription ?? '',
+                'short_description' => $this->productShortDescription ?? '',
                 'sku' => $this->sku ?: null,
                 'status' => 'publish',
                 'manage_stock' => $this->isStockManagementEnabled,
@@ -165,49 +206,75 @@ class Add extends Component
                 'backorders' => $this->allowBackorders ? 'yes' : 'no',
                 'stock_status' => $this->stockStatus,
                 'sold_individually' => $this->soldIndividually,
-                'attributes' => $productAttributes,
-                'default_attributes' => $defaultAttributes,
             ];
+
+            // ✅ أسعار خاصة للأنواع التي تدعم السعر
+            if (in_array($this->productType, ['simple', 'external'])) {
+                $data['price'] = $this->regularPrice ?: '0';
+                $data['regular_price'] = $this->regularPrice ?: '0';
+                $data['sale_price'] = $this->salePrice ?: '0';
+            }
+
+            // ✅ إعدادات خاصة بمنتج خارجي
+            if ($this->productType === 'external') {
+                $data['external_url'] = $this->externalUrl ?? '';
+                $data['button_text'] = $this->buttonText ?? 'Buy Now';
+            }
+
+            // ✅ إعدادات المتغيرات
+            if ($this->productType === 'variable') {
+                $data['attributes'] = $productAttributes;
+                $data['default_attributes'] = $defaultAttributes;
+            }
+
+            // ✅ التصنيفات والصور إذا حابب تضيفهم لاحقاً
+            // $data['categories'] = [['id' => 9], ['id' => 14]];
+            // $data['images'] = [['src' => 'https://example.com/image.jpg']];
 
             $product = $woo->post('products', $data);
             $this->productId = $product['id'];
 
-            // 🧩 إنشاء المتغيرات وربطها
-            foreach ($this->variations as $variation) {
-                $attributes = [];
+            // 🧩 إنشاء المتغيرات في حالة variable
+            if ($this->productType === 'variable') {
+                foreach ($this->variations as $variation) {
+                    $attributes = [];
 
-                foreach ($variation['options'] as $index => $value) {
-                    $attribute = $attributeMap[$index] ?? null;
+                    foreach ($variation['options'] as $index => $value) {
+                        $attribute = $attributeMap[$index] ?? null;
 
-                    if ($attribute) {
-                        $attributes[] = [
-                            'id' => $attribute['id'],
-                            'option' => $value,
-                        ];
+                        if ($attribute) {
+                            $attributes[] = [
+                                'id' => $attribute['id'],
+                                'option' => $value,
+                            ];
+                        }
                     }
-                }
 
-                $woo->post("products/{$product['id']}/variations", [
-                    'sku' => $variation['sku'],
-                    'regular_price' => $variation['regular_price'] ?: '0',
-                    'sale_price' => $variation['sale_price'] ?: '',
-                    'stock_quantity' => $variation['stock_quantity'] ?: 0,
-                    'manage_stock' => true,
-                    'status' => $variation['active'] ? 'publish' : 'private',
-                    'attributes' => $attributes,
-                    'dimensions' => [
-                        'length' => $variation['length'] ?: '',
-                        'width' => $variation['width'] ?: '',
-                        'height' => $variation['height'] ?: '',
-                    ],
-                    'description' => $variation['description'] ?: '',
-                ]);
+                    $woo->post("products/{$product['id']}/variations", [
+                        'sku' => $variation['sku'],
+                        'regular_price' => $variation['regular_price'] ?: '0',
+                        'sale_price' => $variation['sale_price'] ?: '',
+                        'stock_quantity' => $variation['stock_quantity'] ?: 0,
+                        'manage_stock' => true,
+                        'status' => $variation['active'] ? 'publish' : 'private',
+                        'attributes' => $attributes,
+                        'dimensions' => [
+                            'length' => $variation['length'] ?: '',
+                            'width' => $variation['width'] ?: '',
+                            'height' => $variation['height'] ?: '',
+                        ],
+                        'description' => $variation['description'] ?: '',
+                    ]);
+                }
             }
 
-            $this->dispatch('toast', ['type' => 'success', 'message' => '✅ تم حفظ المنتج والمتغيرات والخصائص بنجاح!']);
+            Toaster::success('✅ تم حفظ المنتج بنجاح');
+            $this->redirectRoute('product.index');
+
         } catch (\Exception $e) {
-            logger()->error('❌ WooCommerce Product Save Error: ' . $e->getMessage());
-            $this->dispatch('toast', ['type' => 'error', 'message' => '❌ فشل في حفظ المنتج']);
+            $this->isSaving = false;
+
+            Toaster::error('❌ حدث خطاء في حفظ المنتج: ' . $e->getMessage());
         }
     }
 
@@ -242,7 +309,9 @@ class Add extends Component
 
     public function syncBeforeSave()
     {
-        // هذا سيطلب من VariationManager إرسال أحدث البيانات
+        if ($this->isSaving) return; // 🚫 لو جاري الحفظ لا تعمل شي
+
+        $this->isSaving = true;
         $this->dispatch('requestLatestVariations')->to('variation-manager');
     }
 

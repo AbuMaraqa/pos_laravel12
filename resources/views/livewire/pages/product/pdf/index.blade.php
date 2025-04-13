@@ -2,82 +2,72 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <title>طباعة باركود المنتج</title>
+    <title>باركود</title>
     <style>
+        @page {
+            margin: 0;
+        }
+
         body {
-            direction: rtl;
-            padding: 20px;
+            margin: 0;
+            padding: 0;
+            font-family: sans-serif;
         }
 
-        h1, h2 {
-            text-align: center;
-            margin-bottom: 30px;
-        }
-
-        .product, .variation {
-            border: 1px solid #333;
-            border-radius: 5px;
-            padding: 10px 15px;
-            margin-bottom: 20px;
-        }
-
-        .label {
-            font-weight: bold;
-            margin-bottom: 5px;
-            display: block;
+        .barcode-container {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: center;
+            page-break-inside: avoid;
         }
 
         .barcode-box {
-            margin-top: 10px;
-            border-top: 1px dashed #aaa;
-            padding-top: 10px;
+            margin: 0;
+            padding: 0;
+            text-align: center;
         }
 
-
+        .barcode-label {
+            font-size: 10px;
+            margin-top: 4px;
+        }
     </style>
 </head>
 <body>
 
-<h1>طباعة باركود المنتج</h1>
-
-{{-- المنتج الرئيسي --}}
-<div class="product">
-    <span class="label">المنتج الرئيسي:</span>
-    <p><strong>الاسم:</strong> {{ $product['name'] ?? 'غير معروف' }}</p>
-    <p><strong>الكمية المطلوبة:</strong> {{ $quantities['main'] ?? 1 }}</p>
-    <div class="barcode-box">
-{{--        <img src="data:image/png;base64, {!! base64_encode(\DNS1D::getBarcodePNG($product['id'], 'C39')) !!} ">--}}
-{{--        <div>{!! DNS1D::getBarcodeHTML('4445645656', 'C39'); !!}</div>--}}
-        {!! str_replace('<?xml version="1.0" standalone="no"?>', '', DNS1D::getBarcodeSVG($product['id'], 'C39' , 3,33)); !!}
-
-    </div>
-</div>
-
-{{-- المتغيرات إن وجدت --}}
-@if(!empty($variations))
-    <h2>المتغيرات:</h2>
-    @foreach($variations as $variation)
-        @php
-            $variationId = $variation;
-            $variationQty = $quantities[$variationId] ?? 0;
-            $variationName = collect($variation['attributes'] ?? [])
-                ->map(fn($attr) => "{$attr['name']}: {$attr['option']}")
-                ->join(' - ');
-        @endphp
-
-        <div class="variation">
-            <span class="label">متغير:</span>
-            <p><strong>{{ $variationName ?: 'غير محدد' }}</strong></p>
-            <p><strong>الكمية المطلوبة:</strong> {{ $variationQty }}</p>
-
-            {{-- توليد باركود نصي أو كصورة لاحقاً --}}
-            <div class="barcode-box">
-                <p><strong>الباركود:</strong> {{ $variationId }}</p>
-                {!! str_replace('<?xml version="1.0" standalone="no"?>', '', DNS1D::getBarcodeSVG($variationId, 'C39' , 3,33)); !!}
+<div class="barcode-container">
+    {{-- المنتج الرئيسي --}}
+    @for ($i = 0; $i < ($quantities['main'] ?? 1); $i++)
+        <div class="barcode-box">
+            <div style="padding-top: 20px">
+                {!! str_replace('<?xml version="1.0" standalone="no"?>', '', DNS1D::getBarcodeSVG($product['id'], 'C39', 2.5, 60)) !!}
             </div>
+            <div class="barcode-label">{{ $product['name'] }}</div>
         </div>
-    @endforeach
-@endif
+    @endfor
+
+    {{-- المتغيرات --}}
+    @if (!empty($variations))
+        @foreach ($variations as $variation)
+            @php
+                $variationId = is_array($variation) ? $variation['id'] ?? '' : $variation;
+                $qty = $quantities[$variationId] ?? 1;
+            @endphp
+
+            @for ($j = 0; $j < $qty; $j++)
+                <div class="barcode-box">
+                    <div style="padding-top: 20px">
+                        {!! str_replace('<?xml version="1.0" standalone="no"?>', '', DNS1D::getBarcodeSVG($variationId, 'C39', 2.5, 60)) !!}
+                    </div>
+                    <div class="barcode-label">{{ $variation['name'] }}</div>
+                </div>
+            @endfor
+        @endforeach
+    @endif
+</div>
 
 </body>
 </html>

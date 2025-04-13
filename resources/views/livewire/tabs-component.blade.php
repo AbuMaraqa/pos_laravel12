@@ -1,9 +1,13 @@
 <div x-data="{
         openTab: @entangle('activeTab'),
         isStockManagementEnabled: @entangle('isStockManagementEnabled'),
-        showStockFields() {
-            return this.isStockManagementEnabled;
-        }
+{{--        regularPrice: @entangle('regularPrice')--}}
+        salePrice: @entangle('salePrice'),
+        sku: @entangle('sku'),
+        stockQuantity: @entangle('stockQuantity'),
+        allowBackorders: @entangle('allowBackorders'),
+        stockStatus: @entangle('stockStatus'),
+        soldIndividually: @entangle('soldIndividually')
     }">
 
     <!-- قائمة التبويبات -->
@@ -52,13 +56,13 @@
         <!-- محتوى التبويب الأول -->
         <div x-show="openTab === 1" x-transition>
             <div class="mb-3">
-                <flux:input wire:model="username" label="{{ __('Regular price') }}"/>
+                <flux:input wire:model.live="localRegularPrice" label="{{ __('Regular price') }}" />
             </div>
             <div class="mb-3">
-                <flux:input wire:model="username" label="{{ __('Sale price') }}"/>
+                <flux:input wire:model.live="localSalePrice" label="{{ __('Sale price') }}"/>
             </div>
             <div class="mb-3">
-                <flux:input wire:model="username" label="{{ __('SKU') }}"/>
+                <flux:input wire:model.live="localSku" label="{{ __('SKU') }}"/>
             </div>
         </div>
 
@@ -115,7 +119,7 @@
         </div>
 
         <div x-show="openTab === 4" x-transition>
-            @livewire('variation-manager')
+            <livewire:variation-manager />
         </div>
 
         <div x-show="openTab === 5" x-transition>

@@ -172,8 +172,8 @@
     @endif
 
 
-    <pre class="text-xs bg-gray-100 p-2 mt-4 rounded">
-    {{ json_encode($selectedAttributes, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) }}
-</pre>
+{{--    <pre class="text-xs bg-gray-100 p-2 mt-4 rounded">--}}
+{{--    {{ json_encode($selectedAttributes, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) }}--}}
+{{--</pre>--}}
 
 </div>

@@ -3,20 +3,27 @@
 namespace App\Livewire\Pages\Product;
 
 use App\Services\WooCommerceService;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Livewire\Component;
-use PDF;
+use Livewire\Attributes\Url;
 
 class Index extends Component
 {
-    public $search;
+    #[Url(as: 'page')]
+    public int $page = 1;
+
+    #[Url]
+    public string $search = '';
+
     public $categoryId = null;
-    public $products = [];
     public $categories = [];
+
+    public int $perPage = 10;
+    public int $total = 0;
 
     public $product = [];
     public $variations = [];
     public $quantities = [];
-
 
     protected WooCommerceService $wooService;
 
@@ -27,93 +34,80 @@ class Index extends Component
 
     public function mount(): void
     {
-        $this->loadProducts();
-        $this->loadCategories();
-    }
-
-    public function loadProducts(array $query = []): void
-    {
-        if (!empty($this->search)) {
-            $query['search'] = $this->search;
-        }
-
-        if ($this->categoryId) {
-            $query['category'] = $this->categoryId;
-        }
-
-        $this->products = $this->wooService->getProducts($query);
+        $this->categories = $this->wooService->getCategories(['parent' => 0]);
     }
 
     public function updatedSearch(): void
     {
-        $this->loadProducts();
-    }
-
-    public function loadCategories(array $query = []): void
-    {
-        $query['parent'] = 0;
-        $this->categories = $this->wooService->getCategories($query);
+        $this->page = 1;
     }
 
     public function resetCategory(): void
     {
         $this->categoryId = null;
-        $this->loadProducts(); // تحميل كل المنتجات بدون فلتر
+        $this->page = 1;
     }
 
     public function setCategory($categoryId): void
     {
         $this->categoryId = $categoryId;
-        $this->loadProducts(['category' => $categoryId]);
+        $this->page = 1;
     }
+
     public function openPrintBarcodeModal($productId)
     {
         $product = $this->wooService->getProductsById($productId);
-
         $this->product = $product;
-        $this->variations = $product['variations'] ?? [];
-
-        // إعداد الكميات
-        $this->quantities = [];
-
-        // الكمية الافتراضية للمنتج الرئيسي
-        $this->quantities['main'] = 1;
-
-        // الكمية الافتراضية لكل متغير
-        foreach ($this->variations as $variation) {
-            $this->quantities[$variation] = 1;
+        $this->quantities = ['main' => 1];
+        foreach ($product['variations'] as $variation) {
+            $this->variations[$variation] = $this->wooService->getProductsById($variation);
         }
-
         $this->modal('barcode-product-modal')->show();
+//        $this->dispatch('open-modal', name: 'barcode-product-modal');
     }
 
     public function printBarcodes()
     {
-        // طباعة المنتج الرئيسي
-//        \Log::info("Print barcode for main product ID {$this->product['id']} with quantity {$this->quantities['main']}");
-
-//        return view('livewire.pages.product.pdf.index');
-
-
-        // طباعة المتغيرات إن وجدت
-        foreach ($this->variations as $variation) {
-            $variationId = $variation;
-            $qty = $this->quantities[$variationId] ?? 0;
-        }
-
-        $pdf = PDF::loadView('livewire.pages.product.pdf.index' , [
+        $pdf = \PDF::loadView('livewire.pages.product.pdf.index', [
             'product' => $this->product,
             'variations' => $this->variations,
             'quantities' => $this->quantities,
+        ], [], [
+            'format' => [80, 30]
         ]);
 
         return response()->streamDownload(function () use ($pdf) {
             $pdf->stream();
-        }, 'documentname.pdf');
+        }, 'barcode.pdf');
     }
 
     public function render()
     {
-        return view('livewire.pages.product.index');
+        $query = [
+            'search' => $this->search,
+            'per_page' => $this->perPage,
+            'page' => $this->page,
+        ];
+
+        if ($this->categoryId) {
+            $query['category'] = $this->categoryId;
+        }
+
+        $response = $this->wooService->getProducts($query);
+        $collection = collect($response['data'] ?? $response);
+        $total = $response['total'] ?? 1000;
+
+        $products = new LengthAwarePaginator(
+            $collection,
+            $total,
+            $this->perPage,
+            $this->page,
+            ['path' => request()->url(), 'query' => request()->query()]
+        );
+
+        return view('livewire.pages.product.index', [
+            'products' => $products,
+            'categories' => $this->categories,
+        ]);
     }
 }

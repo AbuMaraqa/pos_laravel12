@@ -17,11 +17,12 @@ class VariationManager extends Component
     public function mount()
     {
         $woo = new WooCommerceService();
+        $attributesWithTerms = $woo->getAttributesWithTerms();
 
-        $this->productAttributes = $woo->getAttributes();
+        $this->productAttributes = $attributesWithTerms;
 
-        foreach ($this->productAttributes as $attribute) {
-            $this->attributeTerms[$attribute['id']] = $woo->getTerms($attribute['id']);
+        foreach ($attributesWithTerms as $attribute) {
+            $this->attributeTerms[$attribute['id']] = $attribute['terms'];
         }
     }
 
@@ -29,88 +30,92 @@ class VariationManager extends Component
     {
         $this->variations = [];
         $attributeOptions = [];
-        $wooService = new WooCommerceService();
         $this->attributeMap = [];
 
         foreach ($this->selectedAttributes as $attributeId => $termMap) {
             $termIds = array_keys(array_filter($termMap));
 
             if (!empty($termIds)) {
-                $attribute = collect($this->productAttributes)->firstWhere('id', $attributeId);
+                $terms = array_map(function ($termId) use ($attributeId) {
+                    return [
+                        'id' => $termId,
+                        'name' => $this->getTermName($attributeId, $termId)
+                    ];
+                }, $termIds);
+
+                $attribute = $this->getAttributeById($attributeId);
+
+                $attributeOptions[] = array_column($terms, 'name');
+
                 $this->attributeMap[] = [
                     'id' => $attributeId,
-                    'name' => $attribute['name'] ?? 'خاصية',
+                    'name' => $attribute['name'] ?? ''
                 ];
-
-                $terms = $wooService->getTermsForAttribute($attributeId);
-                $selectedNames = [];
-
-                foreach ($termIds as $id) {
-                    $term = collect($terms)->firstWhere('id', $id);
-                    if ($term) {
-                        $selectedNames[] = $term['name'];
-                    }
-                }
-
-                $attributeOptions[] = $selectedNames;
             }
         }
 
-        $this->variations = collect($this->cartesian($attributeOptions))->map(function ($combo) {
-            return [
-                'options' => $combo,
-                'sku' => '',
-                'regular_price' => '',
-                'sale_price' => '',
-                'stock_quantity' => '',
-                'active' => true,
-                'length' => '',
-                'width' => '',
-                'height' => '',
-                'description' => '',
-            ];
-        })->toArray();
+        if (!empty($attributeOptions)) {
+            $combinations = $this->generateCombinations($attributeOptions);
 
-        $this->emitData();
-    }
-
-    public function updatedVariations()
-    {
-        $this->emitData();
-    }
-
-    public function emitData()
-    {
-        $this->dispatch('variationsGenerated', [
-            'variations' => $this->variations,
-            'attributeMap' => $this->attributeMap,
-        ])->to('pages.product.add');
-    }
-
-    protected function cartesian($arrays)
-    {
-        if (empty($arrays)) return [];
-
-        $result = [[]];
-        foreach ($arrays as $values) {
-            $tmp = [];
-            foreach ($result as $combo) {
-                foreach ($values as $value) {
-                    $tmp[] = array_merge($combo, [$value]);
-                }
+            foreach ($combinations as $combo) {
+                $this->variations[] = [
+                    'sku' => '',
+                    'regular_price' => '',
+                    'sale_price' => '',
+                    'stock_quantity' => 0,
+                    'active' => true,
+                    'length' => '',
+                    'width' => '',
+                    'height' => '',
+                    'description' => '',
+                    'options' => $combo,
+                ];
             }
-            $result = $tmp;
         }
-        return $result;
     }
 
     #[On('requestLatestVariations')]
     public function sendLatestToParent()
     {
         $this->dispatch('latestVariationsSent', [
-            'variations' => $this->variations,
-            'attributeMap' => $this->attributeMap,
+            'variations' => array_map(fn($v) => (array) $v, $this->variations),
+            'attributeMap' => array_map(fn($m) => (array) $m, $this->attributeMap),
         ])->to('pages.product.add');
+    }
+
+    protected function getAttributeById($id)
+    {
+        foreach ($this->productAttributes as $attribute) {
+            if ($attribute['id'] == $id) {
+                return $attribute;
+            }
+        }
+        return null;
+    }
+
+    protected function getTermName($attributeId, $termId)
+    {
+        foreach ($this->attributeTerms[$attributeId] ?? [] as $term) {
+            if ($term['id'] == $termId) {
+                return $term['name'];
+            }
+        }
+        return '';
+    }
+
+    protected function generateCombinations($arrays)
+    {
+        $result = [[]];
+        foreach ($arrays as $array) {
+            $append = [];
+            foreach ($result as $product) {
+                foreach ($array as $item) {
+                    $append[] = array_merge($product, [$item]);
+                }
+            }
+            $result = $append;
+        }
+        return $result;
     }
 
     public function render()

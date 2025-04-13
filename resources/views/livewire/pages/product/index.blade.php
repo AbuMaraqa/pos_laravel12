@@ -22,30 +22,13 @@
             @if(!empty($variations))
                 <div class="mt-4 space-y-4">
                     @foreach($variations as $variation)
-                        @php
-                            $variationName = 'متغير';
-                            if (!empty($variation['attributes']) && is_array($variation['attributes'])) {
-                                $attrList = [];
-                                foreach ($variation['attributes'] as $attr) {
-                                    if (is_array($attr) && isset($attr['name']) && isset($attr['option'])) {
-                                        $attrList[] = "{$attr['name']}: {$attr['option']}";
-                                    }
-                                }
-                                if (!empty($attrList)) {
-                                    $variationName = implode(', ', $attrList);
-                                }
-                            }
-                        @endphp
-
                         <div class="flex items-center justify-between border-b pb-2">
-                            <div class="text-sm text-gray-700">
-                                {{ $variationName }}
-                            </div>
-                            <div>{!! DNS1D::getBarcodeHTML($variation, 'C39'); !!}</div>
+                            <div class="text-sm text-gray-700">{{ $variation['name'] ?? '' }}</div>
+                            <div>{!! DNS1D::getBarcodeHTML($variation['id'], 'C39') !!}</div>
                             <div class="w-24">
-                                <input type="number" min="1"
-                                       wire:model.defer="quantities.{{ $variation }}"
-                                       class="w-full border border-gray-300 rounded px-2 py-1 text-sm" />
+                                <flux:field>
+                                    <flux:input type="number" min="1" wire:model.defer="quantities.{{ $variation['id'] }}"/>
+                                </flux:field>
                             </div>
                         </div>
                     @endforeach
@@ -62,7 +45,7 @@
 
 
 
-    <flux:button href="{{ route('product.add') }}" variant="primary" icon="plus">{{ __('Add product') }}</flux:button>
+    <flux:button href="{{ route('product.add') }}" wire:navigate variant="primary" icon="plus">{{ __('Add product') }}</flux:button>
 
     <flux:input class="mt-3" wire:model.live.debounce.500ms="search" placeholder="{{ __('Search') }}"/>
 
@@ -168,4 +151,9 @@
             </tbody>
         </table>
     </div>
+
+    <div class="mt-4">
+        {{ $products->links() }}
+    </div>
+
 </div>
