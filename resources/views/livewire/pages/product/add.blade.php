@@ -96,12 +96,6 @@
                         <div class="mb-3">
                             <flux:heading size="xl">{{ __('Category') }}</flux:heading>
                         </div>
-                        <div class="mb-3">
-                            <flux:field>
-                                <flux:label>{{ __('Category Name') }}</flux:label>
-                                <flux:input wire:model="categoryName"/>
-                            </flux:field>
-                        </div>
                         @php
                             function renderCategoryTree($categories, $level = 0) {
                                 foreach ($categories as $category) {
@@ -116,17 +110,20 @@
                         @endphp
 
                         <div class="mb-3">
-                            @foreach($this->getCategories() as $cat)
-                                <flux:checkbox label="{{ $cat['name'] }}" value="{{ $cat['id'] }}" />
+                            <flux:checkbox.group wire:model="selectedCategories">
+                                @foreach($this->getCategories() as $cat)
+                                    <flux:checkbox label="{{ $cat['name'] }}" value="{{ $cat['id'] }}" />
 
-                                @if (!empty($cat['children']))
-                                    @foreach($cat['children'] as $child)
-                                        <div class="ml-4">
-                                            <flux:checkbox label="— {{ $child['name'] }}" value="{{ $child['id'] }}" />
-                                        </div>
-                                    @endforeach
-                                @endif
-                            @endforeach
+                                    @if (!empty($cat['children']))
+                                        @foreach($cat['children'] as $child)
+                                            <div class="ml-4">
+                                                <flux:checkbox label="— {{ $child['name'] }}" value="{{ $child['id'] }}" />
+                                            </div>
+                                        @endforeach
+                                    @endif
+                                @endforeach
+                            </flux:checkbox.group>
+
                         </div>
                     </div>
                 </div>

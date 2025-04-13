@@ -49,6 +49,8 @@ class Add extends Component
 // حالة الحفظ
     public $isSaving = false;                 // تستخدم لمنع التكرار عند الحفظ
 
+    public array $selectedCategories = [];
+
     protected WooCommerceService $wooService;
 
     public function boot(WooCommerceService $wooService): void
@@ -165,10 +167,6 @@ class Add extends Component
     #[On('continueProductSave')]
     public function saveProduct()
     {
-        $this->validate([
-            'categoryId' => 'required|integer',
-        ]);
-
         $woo = $this->wooService;
 
         try {
@@ -206,6 +204,7 @@ class Add extends Component
                 'backorders' => $this->allowBackorders ? 'yes' : 'no',
                 'stock_status' => $this->stockStatus,
                 'sold_individually' => $this->soldIndividually,
+                'categories' => array_map(fn($id) => ['id' => $id], $this->selectedCategories),
             ];
 
             // ✅ أسعار خاصة للأنواع التي تدعم السعر
