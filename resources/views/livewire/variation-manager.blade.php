@@ -124,10 +124,20 @@
                                 {{ $label['name'] }}
                             </th>
                         @endforeach
-                        <th class="px-4 py-2 font-medium text-gray-700 whitespace-nowrap">SKU</th>
-                        <th class="px-4 py-2 font-medium text-gray-700 whitespace-nowrap">السعر</th>
-                        <th class="px-4 py-2 font-medium text-gray-700 whitespace-nowrap">سعر الخصم</th>
-                        <th class="px-4 py-2 font-medium text-gray-700 whitespace-nowrap">الكمية</th>
+                        {{-- <th class="px-4 py-2 font-medium text-gray-700 whitespace-nowrap">SKU</th> --}}
+                        <th class="px-4 py-2 font-medium text-gray-700 whitespace-nowrap"><div class="flex items-center gap-2">
+                            <span><flux:input style="width: 100px;" size="sm" placeholder="{{ __('All Prices')}}" /></span><span>السعر</span>
+                        </div></th>
+                        <th class="px-4 py-2 font-medium text-gray-700 whitespace-nowrap">
+                            <div class="flex items-center gap-2">
+                                <span><flux:input style="width: 100px;" size="sm" placeholder="{{ __('All Sale Prices')}}" /></span><span>سعر الخصم</span>
+                            </div>
+                        </th>
+                        <th class="px-4 py-2 font-medium text-gray-700 whitespace-nowrap">
+                            <div class="flex items-center gap-2">
+                                <span><flux:input style="width: 100px;" size="sm" placeholder="{{ __('All Quantitnes')}}" /></span><span>الكمية</span>
+                            </div>
+                        </th>
                         <th class="px-4 py-2 font-medium text-gray-700 whitespace-nowrap">الوصف</th>
                     </tr>
                     </thead>
@@ -139,20 +149,20 @@
                                     {{ is_array($option) ? implode(', ', $option) : $option }}
                                 </td>
                             @endforeach
+                            {{-- <td class="px-2 py-2">
+                                <flux:input size="sm" wire:model="variations.{{ $index }}.sku" style="background-color: #ffcc00;" type="number"/>
+                            </td> --}}
                             <td class="px-2 py-2">
-                                <input type="text" wire:model="variations.{{ $index }}.sku" class="input input-sm input-bordered w-full" />
+                                <flux:input size="sm" style="background-color: #ffcc00;" type="number" wire:model="variations.{{ $index }}.regular_price"/>
                             </td>
                             <td class="px-2 py-2">
-                                <input type="number" wire:model="variations.{{ $index }}.regular_price" class="input input-sm input-bordered w-full" />
+                                <flux:input size="sm" style="background-color: #ffcc00;" type="number" wire:model="variations.{{ $index }}.sale_price"/>
                             </td>
                             <td class="px-2 py-2">
-                                <input type="number" wire:model="variations.{{ $index }}.sale_price" class="input input-sm input-bordered w-full" />
+                                <flux:input size="sm" style="background-color: #ffcc00;" type="number" wire:model="variations.{{ $index }}.stock_quantity"/>
                             </td>
                             <td class="px-2 py-2">
-                                <input type="number" wire:model="variations.{{ $index }}.stock_quantity" class="input input-sm input-bordered w-full" />
-                            </td>
-                            <td class="px-2 py-2">
-                                <textarea wire:model="variations.{{ $index }}.description" class="textarea textarea-sm textarea-bordered w-full"></textarea>
+                                <flux:input size="sm" style="background-color: #ffcc00;" type="number" wire:model="variations.{{ $index }}.description"/>
                             </td>
                         </tr>
                     @endforeach
@@ -163,10 +173,10 @@
     @endif
 
     {{-- Debug information --}}
-    <div class="mt-4 p-4 bg-gray-100 rounded">
+    {{-- <div class="mt-4 p-4 bg-gray-100 rounded">
         <h4 class="font-semibold mb-2">معلومات التصحيح:</h4>
         <pre class="text-xs">{{ json_encode($selectedAttributes, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) }}</pre>
-    </div>
+    </div> --}}
 
 {{--    <div class="mb-4">
         <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">الخصائص</label>

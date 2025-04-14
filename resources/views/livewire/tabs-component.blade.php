@@ -1,7 +1,7 @@
 <div x-data="{
         openTab: @entangle('activeTab'),
         isStockManagementEnabled: @entangle('isStockManagementEnabled'),
-{{--        regularPrice: @entangle('regularPrice')--}}
+        regularPrice: @entangle('regularPrice'),
         salePrice: @entangle('salePrice'),
         sku: @entangle('sku'),
         stockQuantity: @entangle('stockQuantity'),
@@ -94,7 +94,7 @@
                 </div>
             </div>
 
-            <div x-show="!isStockManagementEnabled" class="mb-3">
+            <div x-show="isStockManagementEnabled" class="mb-3">
                 <flux:radio.group variant="segmented" label="{{ __('Stock Status') }}">
                     <flux:radio value="in_stock" label="{{ __('In stock') }}" checked />
                     <flux:radio value="out_of_stock" label="{{ __('Out of stock') }}" />
