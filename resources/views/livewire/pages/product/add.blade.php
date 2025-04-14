@@ -166,32 +166,40 @@
                         <div class="mb-3">
                             <flux:heading size="xl">{{ __('Featured Image') }}</flux:heading>
                         </div>
-                        <div class="mb-3">
-                            @if($this->featuredImage)
-                                <img src="{{ $this->featuredImage }}" alt="Featured Image" class="w-full h-48 object-cover rounded-lg mb-2">
+                        <div class="mb-4">
+                            @if($featuredImage)
+                                <div class="relative">
+                                    <img src="{{ $featuredImage }}" alt="Featured Image" class="w-full h-48 object-cover rounded-lg mb-2">
+                                    <button wire:click="removeFeaturedImage" type="button" class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                                        </svg>
+                                    </button>
+                                </div>
                             @endif
                             <x-filepond::upload wire:model="file" />
-                            <button wire:click="uploadImage" class="mt-2 btn btn-primary">
-                                {{ __('Upload Featured Image') }}
-                            </button>
                         </div>
                     </div>
                     <div class="col-span-1 max-w p-6 bg-white border border-gray-200 rounded-lg shadow-sm dark:bg-gray-800 dark:border-gray-700">
                         <div class="mb-3">
                             <flux:heading size="xl">{{ __('Gallery Images') }}</flux:heading>
                         </div>
-                        <div class="mb-3">
-                            @if(!empty($this->galleryImages))
+                        <div class="mb-4">
+                            @if(!empty($galleryImages))
                                 <div class="grid grid-cols-3 gap-2 mb-2">
-                                    @foreach($this->galleryImages as $image)
-                                        <img src="{{ $image }}" alt="Gallery Image" class="w-full h-24 object-cover rounded-lg">
+                                    @foreach($galleryImages as $index => $image)
+                                        <div class="relative">
+                                            <img src="{{ $image }}" alt="Gallery Image" class="w-full h-24 object-cover rounded-lg">
+                                            <button wire:click="removeGalleryImage({{ $index }})" type="button" class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1">
+                                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                                                </svg>
+                                            </button>
+                                        </div>
                                     @endforeach
                                 </div>
                             @endif
                             <x-filepond::upload multiple wire:model="files" />
-                            <button wire:click="uploadImage" class="mt-2 btn btn-primary">
-                                {{ __('Upload Gallery Images') }}
-                            </button>
                         </div>
                     </div>
                     <div class="col-span-1 max-w p-6 bg-white border border-gray-200 rounded-lg shadow-sm dark:bg-gray-800 dark:border-gray-700">

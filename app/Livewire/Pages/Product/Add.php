@@ -266,6 +266,7 @@ class Add extends Component
         try {
             $woo = $this->wooService;
 
+            // تجهيز بيانات المنتج الأساسية
             $data = [
                 'name' => $this->productName,
                 'type' => $this->productType,
@@ -312,6 +313,44 @@ class Add extends Component
 
                 $data['attributes'] = $productAttributes;
                 $data['default_attributes'] = $defaultAttributes;
+            }
+
+            // إضافة الصور إذا وجدت
+            $images = [];
+
+            // إضافة الصورة الرئيسية
+            if ($this->file) {
+                logger()->info('Uploading featured image');
+                $uploadedImage = $this->wooService->uploadImage($this->file);
+                if (isset($uploadedImage['id'])) {
+                    $images[] = [
+                        'id' => $uploadedImage['id'],
+                        'src' => $uploadedImage['src'],
+                        'position' => 0
+                    ];
+                    $this->featuredImage = $uploadedImage['src'];
+                }
+            }
+
+            // إضافة صور المعرض
+            if (!empty($this->files)) {
+                logger()->info('Uploading gallery images');
+                foreach ($this->files as $index => $file) {
+                    $uploadedImage = $this->wooService->uploadImage($file);
+                    if (isset($uploadedImage['id'])) {
+                        $images[] = [
+                            'id' => $uploadedImage['id'],
+                            'src' => $uploadedImage['src'],
+                            'position' => $index + 1
+                        ];
+                        $this->galleryImages[] = $uploadedImage['src'];
+                    }
+                }
+            }
+
+            // إضافة الصور إلى بيانات المنتج
+            if (!empty($images)) {
+                $data['images'] = $images;
             }
 
             // إنشاء المنتج
@@ -473,6 +512,20 @@ class Add extends Component
                 'type' => 'error',
                 'message' => 'حدث خطأ في رفع الصور: ' . $e->getMessage()
             ]);
+        }
+    }
+
+    public function removeFeaturedImage()
+    {
+        $this->file = null;
+        $this->featuredImage = null;
+    }
+
+    public function removeGalleryImage($index)
+    {
+        if (isset($this->galleryImages[$index])) {
+            unset($this->galleryImages[$index]);
+            $this->galleryImages = array_values($this->galleryImages);
         }
     }
 
