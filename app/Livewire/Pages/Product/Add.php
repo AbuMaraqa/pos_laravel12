@@ -36,6 +36,8 @@ class Add extends Component
 // تحميل الصور
     public $file;                             // صورة الغلاف
     public $files = [];                       // صور المعرض
+    public $featuredImage = null;             // رابط صورة الغلاف
+    public $galleryImages = [];               // روابط صور المعرض
 
 // الخصائص والمتغيرات
     public $productAttributes = [];           // قائمة جميع الخصائص (attributes)
@@ -412,6 +414,64 @@ class Add extends Component
             $this->dispatch('show-toast', [
                 'type' => 'error',
                 'message' => 'حدث خطأ أثناء حفظ المنتج: ' . $e->getMessage()
+            ]);
+        }
+    }
+
+    public function uploadImage()
+    {
+        try {
+            if ($this->file) {
+                logger()->info('Starting featured image upload');
+
+                // التحقق من الملف
+                if (!$this->file->isValid()) {
+                    throw new \Exception('الملف غير صالح: ' . $this->file->getErrorMessage());
+                }
+
+                $uploadedImage = $this->wooService->uploadImage($this->file);
+
+                logger()->info('Featured image upload response: ' . json_encode($uploadedImage));
+
+                if (isset($uploadedImage['src'])) {
+                    $this->featuredImage = $uploadedImage['src'];
+                    $this->file = null;
+                    $this->dispatch('show-toast', [
+                        'type' => 'success',
+                        'message' => 'تم رفع صورة الغلاف بنجاح: ' . $uploadedImage['name']
+                    ]);
+                } else {
+                    throw new \Exception('لم يتم الحصول على رابط الصورة من الخادم');
+                }
+            }
+
+            if (!empty($this->files)) {
+                logger()->info('Starting gallery images upload. Count: ' . count($this->files));
+
+                foreach ($this->files as $index => $file) {
+                    if (!$file->isValid()) {
+                        logger()->error('Invalid gallery file: ' . $file->getErrorMessage());
+                        continue;
+                    }
+
+                    $uploadedImage = $this->wooService->uploadMedia($file);
+                    logger()->info('Gallery image ' . ($index + 1) . ' upload response: ' . json_encode($uploadedImage));
+
+                    if (isset($uploadedImage['src'])) {
+                        $this->galleryImages[] = $uploadedImage['src'];
+                    }
+                }
+                $this->files = [];
+                $this->dispatch('show-toast', [
+                    'type' => 'success',
+                    'message' => 'تم رفع ' . count($this->galleryImages) . ' صورة للمعرض بنجاح'
+                ]);
+            }
+        } catch (\Exception $e) {
+            logger()->error('Image upload error: ' . $e->getMessage());
+            $this->dispatch('show-toast', [
+                'type' => 'error',
+                'message' => 'حدث خطأ في رفع الصور: ' . $e->getMessage()
             ]);
         }
     }

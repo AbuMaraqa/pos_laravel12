@@ -167,15 +167,31 @@
                             <flux:heading size="xl">{{ __('Featured Image') }}</flux:heading>
                         </div>
                         <div class="mb-3">
+                            @if($this->featuredImage)
+                                <img src="{{ $this->featuredImage }}" alt="Featured Image" class="w-full h-48 object-cover rounded-lg mb-2">
+                            @endif
                             <x-filepond::upload wire:model="file" />
+                            <button wire:click="uploadImage" class="mt-2 btn btn-primary">
+                                {{ __('Upload Featured Image') }}
+                            </button>
                         </div>
                     </div>
                     <div class="col-span-1 max-w p-6 bg-white border border-gray-200 rounded-lg shadow-sm dark:bg-gray-800 dark:border-gray-700">
                         <div class="mb-3">
-                            <flux:heading size="xl">{{ __('Galary Images') }}</flux:heading>
+                            <flux:heading size="xl">{{ __('Gallery Images') }}</flux:heading>
                         </div>
                         <div class="mb-3">
+                            @if(!empty($this->galleryImages))
+                                <div class="grid grid-cols-3 gap-2 mb-2">
+                                    @foreach($this->galleryImages as $image)
+                                        <img src="{{ $image }}" alt="Gallery Image" class="w-full h-24 object-cover rounded-lg">
+                                    @endforeach
+                                </div>
+                            @endif
                             <x-filepond::upload multiple wire:model="files" />
+                            <button wire:click="uploadImage" class="mt-2 btn btn-primary">
+                                {{ __('Upload Gallery Images') }}
+                            </button>
                         </div>
                     </div>
                     <div class="col-span-1 max-w p-6 bg-white border border-gray-200 rounded-lg shadow-sm dark:bg-gray-800 dark:border-gray-700">
