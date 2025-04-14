@@ -81,6 +81,11 @@ class Index extends Component
         }, 'barcode.pdf');
     }
 
+    public function deleteProduct($productId)
+    {
+        $this->wooService->deleteProductById($productId);
+    }
+
     public function render()
     {
         $query = [

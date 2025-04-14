@@ -58,6 +58,14 @@ class WooCommerceService
         }
     }
 
+    public function delete(string $endpoint, array $data = []): array
+    {
+        $response = $this->client->delete($endpoint, [
+            'json' => $data
+        ]);
+        return json_decode($response->getBody()->getContents(), true);
+    }
+
     public function post(string $endpoint, array $data = []): array
     {
         array_walk_recursive($data, function (&$value) {
@@ -77,6 +85,11 @@ class WooCommerceService
     public function getProducts(array $query = []): array
     {
         return $this->get('products', $query);
+    }
+
+    public function deleteProductById($id): array
+    {
+        return $this->delete('products/' . $id);
     }
 
     public function getProductsById($id): array

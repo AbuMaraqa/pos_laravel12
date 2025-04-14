@@ -142,7 +142,7 @@
                                     <flux:menu.item wire:click="openPrintBarcodeModal({{ $product['id'] }})" icon="eye">{{ __('Barcode Product') }}</flux:menu.item>
                                     <flux:menu.item target="_black" href="{{ $product['permalink'] }}" icon="eye">{{ __('View in website') }}</flux:menu.item>
                                     <flux:menu.item icon="pencil-square">{{ __('Edit product') }}</flux:menu.item>
-                                    <flux:menu.item variant="danger" icon="trash">{{ __('Delete') }}</flux:menu.item>
+                                    <flux:menu.item variant="danger" wire:confirm="Are you sure you want to delete this product?" wire:click="deleteProduct({{ $product['id'] }})" icon="trash">{{ __('Delete') }}</flux:menu.item>
                                 </flux:menu>
                             </flux:dropdown>
                         </td>

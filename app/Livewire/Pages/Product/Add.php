@@ -164,39 +164,110 @@ class Add extends Component
         $this->attributeMap = $data['attributeMap'] ?? [];
     }
 
-    #[On('continueProductSave')]
-    public function saveProduct()
+    #[On('latestVariationsSent')]
+    public function handleLatestVariations($data)
     {
-        $woo = $this->wooService;
+        $this->variations = $data['variations'] ?? [];
+        $this->attributeMap = $data['attributeMap'] ?? [];
+        $this->selectedAttributes = $data['selectedAttributes'] ?? [];
+    }
+
+    public function syncBeforeSave()
+    {
+        if ($this->isSaving) return;
 
         try {
-            $productAttributes = [];
-            $defaultAttributes = [];
-            $attributeMap = array_values($this->attributeMap);
+            // التحقق من الحقول المشتركة لجميع أنواع المنتجات
+            $this->validate([
+                'productName' => 'required|string|min:3',
+                'productType' => 'required|in:simple,variable,grouped,external',
+                'selectedCategories' => 'required|array|min:1',
+            ], [
+                'productName.required' => 'اسم المنتج مطلوب',
+                'productName.min' => 'يجب أن يكون اسم المنتج 3 أحرف على الأقل',
+                'productType.required' => 'نوع المنتج مطلوب',
+                'productType.in' => 'نوع المنتج غير صالح',
+                'selectedCategories.required' => 'يجب اختيار تصنيف واحد على الأقل',
+                'selectedCategories.min' => 'يجب اختيار تصنيف واحد على الأقل',
+            ]);
 
-            foreach ($attributeMap as $index => $attribute) {
-                $options = collect($this->variations)->pluck("options.$index")->unique()->values()->toArray();
+            // التحقق حسب نوع المنتج
+            switch ($this->productType) {
+                case 'simple':
+                    $this->validate([
+                        'regularPrice' => 'required|numeric|min:0',
+                    ], [
+                        'regularPrice.required' => 'السعر العادي مطلوب للمنتج البسيط',
+                        'regularPrice.numeric' => 'السعر يجب أن يكون رقماً',
+                        'regularPrice.min' => 'السعر يجب أن يكون أكبر من أو يساوي صفر',
+                    ]);
+                    break;
 
-                if (!empty($options)) {
-                    $productAttributes[] = [
-                        'id' => $attribute['id'],
-                        'variation' => true,
-                        'visible' => true,
-                        'options' => $options,
-                    ];
+                case 'variable':
+                    // التحقق من وجود صفات مختارة
+                    $hasSelectedAttributes = false;
+                    foreach ($this->selectedAttributes as $attributeId => $terms) {
+                        if (is_array($terms)) {
+                            foreach ($terms as $isSelected) {
+                                if ($isSelected === true) {
+                                    $hasSelectedAttributes = true;
+                                    break 2;
+                                }
+                            }
+                        }
+                    }
 
-                    $defaultAttributes[] = [
-                        'id' => $attribute['id'],
-                        'option' => $options[0],
-                    ];
-                }
+                    if (!$hasSelectedAttributes) {
+                        throw new \Exception('يجب اختيار صفات للمنتج المتغير');
+                    }
+
+                    // التحقق من وجود تباينات
+                    if (empty($this->variations)) {
+                        throw new \Exception('يجب توليد التباينات للمنتج المتغير');
+                    }
+                    break;
+
+                case 'grouped':
+                    $this->validate([
+                        'groupedProducts' => 'required|array|min:1',
+                    ], [
+                        'groupedProducts.required' => 'يجب إضافة منتجات للمجموعة',
+                        'groupedProducts.min' => 'يجب إضافة منتج واحد على الأقل للمجموعة',
+                    ]);
+                    break;
+
+                case 'external':
+                    $this->validate([
+                        'regularPrice' => 'required|numeric|min:0',
+                        'externalUrl' => 'required|url',
+                    ], [
+                        'regularPrice.required' => 'السعر العادي مطلوب للمنتج الخارجي',
+                        'regularPrice.numeric' => 'السعر يجب أن يكون رقماً',
+                        'regularPrice.min' => 'السعر يجب أن يكون أكبر من أو يساوي صفر',
+                        'externalUrl.required' => 'رابط المنتج الخارجي مطلوب',
+                        'externalUrl.url' => 'يجب إدخال رابط صحيح',
+                    ]);
+                    break;
             }
 
+            $this->isSaving = true;
+            $this->saveProduct();
+
+        } catch (\Exception $e) {
+            $this->isSaving = false;
+            Toaster::error('❌ ' . $e->getMessage());
+        }
+    }
+
+    public function saveProduct()
+    {
+        try {
+            $woo = $this->wooService;
+
             $data = [
-                'name' => $this->productName ?? 'منتج بدون اسم',
-                'type' => $this->productType ?? 'simple',
+                'name' => $this->productName,
+                'type' => $this->productType,
                 'description' => $this->productDescription ?? '',
-                'short_description' => $this->productShortDescription ?? '',
                 'sku' => $this->sku ?: null,
                 'status' => 'publish',
                 'manage_stock' => $this->isStockManagementEnabled,
@@ -207,33 +278,45 @@ class Add extends Component
                 'categories' => array_map(fn($id) => ['id' => $id], $this->selectedCategories),
             ];
 
-            // ✅ أسعار خاصة للأنواع التي تدعم السعر
+            // إضافة السعر للمنتجات البسيطة والخارجية
             if (in_array($this->productType, ['simple', 'external'])) {
-                $data['price'] = $this->regularPrice ?: '0';
-                $data['regular_price'] = $this->regularPrice ?: '0';
-                $data['sale_price'] = $this->salePrice ?: '0';
+                $data['regular_price'] = $this->regularPrice;
+                $data['sale_price'] = $this->salePrice ?: '';
             }
 
-            // ✅ إعدادات خاصة بمنتج خارجي
-            if ($this->productType === 'external') {
-                $data['external_url'] = $this->externalUrl ?? '';
-                $data['button_text'] = $this->buttonText ?? 'Buy Now';
-            }
-
-            // ✅ إعدادات المتغيرات
+            // إعدادات المنتجات المتغيرة
             if ($this->productType === 'variable') {
+                $productAttributes = [];
+                $defaultAttributes = [];
+                $attributeMap = array_values($this->attributeMap);
+
+                foreach ($attributeMap as $index => $attribute) {
+                    $options = collect($this->variations)->pluck("options.$index")->unique()->values()->toArray();
+
+                    if (!empty($options)) {
+                        $productAttributes[] = [
+                            'id' => $attribute['id'],
+                            'variation' => true,
+                            'visible' => true,
+                            'options' => $options,
+                        ];
+
+                        $defaultAttributes[] = [
+                            'id' => $attribute['id'],
+                            'option' => $options[0],
+                        ];
+                    }
+                }
+
                 $data['attributes'] = $productAttributes;
                 $data['default_attributes'] = $defaultAttributes;
             }
 
-            // ✅ التصنيفات والصور إذا حابب تضيفهم لاحقاً
-            // $data['categories'] = [['id' => 9], ['id' => 14]];
-            // $data['images'] = [['src' => 'https://example.com/image.jpg']];
-
+            // إنشاء المنتج
             $product = $woo->post('products', $data);
             $this->productId = $product['id'];
 
-            // 🧩 إنشاء المتغيرات في حالة variable
+            // إنشاء المتغيرات للمنتجات المتغيرة
             if ($this->productType === 'variable') {
                 foreach ($this->variations as $variation) {
                     $attributes = [];
@@ -249,21 +332,21 @@ class Add extends Component
                         }
                     }
 
-                    $woo->post("products/{$product['id']}/variations", [
+                    $variationData = [
                         'sku' => $variation['sku'],
                         'regular_price' => $variation['regular_price'] ?: '0',
                         'sale_price' => $variation['sale_price'] ?: '',
                         'stock_quantity' => $variation['stock_quantity'] ?: 0,
                         'manage_stock' => true,
-                        'status' => $variation['active'] ? 'publish' : 'private',
+                        'status' => 'publish',
                         'attributes' => $attributes,
-                        'dimensions' => [
-                            'length' => $variation['length'] ?: '',
-                            'width' => $variation['width'] ?: '',
-                            'height' => $variation['height'] ?: '',
-                        ],
-                        'description' => $variation['description'] ?: '',
-                    ]);
+                    ];
+
+                    if (!empty($variation['description'])) {
+                        $variationData['description'] = $variation['description'];
+                    }
+
+                    $woo->post("products/{$product['id']}/variations", $variationData);
                 }
             }
 
@@ -272,8 +355,7 @@ class Add extends Component
 
         } catch (\Exception $e) {
             $this->isSaving = false;
-
-            Toaster::error('❌ حدث خطاء في حفظ المنتج: ' . $e->getMessage());
+            Toaster::error('❌ حدث خطأ في حفظ المنتج: ' . $e->getMessage());
         }
     }
 
@@ -296,22 +378,42 @@ class Add extends Component
         return $result;
     }
 
-    #[On('latestVariationsSent')]
-    public function handleLatestVariations($data)
+    #[On('validation-failed')]
+    public function handleValidationFailed($data)
     {
-        $this->variations = $data['variations'] ?? [];
-        $this->attributeMap = $data['attributeMap'] ?? [];
+        $this->isSaving = false;
 
-        // الآن نكمل حفظ المنتج
-        $this->saveProduct();
+        if (isset($data['errors']) && is_array($data['errors'])) {
+            foreach ($data['errors'] as $field => $errors) {
+                if (is_array($errors)) {
+                    foreach ($errors as $error) {
+                        $this->dispatch('show-toast', [
+                            'type' => 'error',
+                            'message' => $error
+                        ]);
+                    }
+                } else {
+                    $this->dispatch('show-toast', [
+                        'type' => 'error',
+                        'message' => $errors
+                    ]);
+                }
+            }
+        }
     }
 
-    public function syncBeforeSave()
+    #[On('validation-passed')]
+    public function handleValidationPassed()
     {
-        if ($this->isSaving) return; // 🚫 لو جاري الحفظ لا تعمل شي
-
-        $this->isSaving = true;
-        $this->dispatch('requestLatestVariations')->to('variation-manager');
+        try {
+            $this->saveProduct();
+        } catch (\Exception $e) {
+            $this->isSaving = false;
+            $this->dispatch('show-toast', [
+                'type' => 'error',
+                'message' => 'حدث خطأ أثناء حفظ المنتج: ' . $e->getMessage()
+            ]);
+        }
     }
 
     public function render()
