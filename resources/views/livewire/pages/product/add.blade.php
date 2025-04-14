@@ -1,69 +1,90 @@
 <div>
-    <!-- رسائل التحقق -->
-    @if ($errors->any())
-        <div class="alert alert-error mb-4">
-            <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <div class="flex flex-col gap-1">
-                <span class="font-bold">يرجى تصحيح الأخطاء التالية:</span>
-                <ul class="list-disc list-inside">
-                    @foreach ($errors->all() as $error)
-                        <li>{{ $error }}</li>
-                    @endforeach
-                </ul>
-            </div>
-        </div>
-    @endif
+    <style>
+        .category-tree {
+            position: relative;
+            padding: 1rem;
+            background-color: #f9fafb;
+            border-radius: 0.5rem;
+        }
 
-    <!-- رسائل التحقق حسب نوع المنتج -->
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-        <!-- معلومات المنتج الأساسية -->
-        <div class="card bg-base-100 shadow-xl">
-            <div class="card-body">
-                <h2 class="card-title">معلومات المنتج الأساسية</h2>
-                @error('productName')
-                    <div class="text-error text-sm">{{ $message }}</div>
-                @enderror
-                @error('productType')
-                    <div class="text-error text-sm">{{ $message }}</div>
-                @enderror
-                @if($productType === 'simple' || $productType === 'external')
-                    @error('regularPrice')
-                        <div class="text-error text-sm">{{ $message }}</div>
-                    @enderror
-                @endif
-                @if($productType === 'external')
-                    @error('externalUrl')
-                        <div class="text-error text-sm">{{ $message }}</div>
-                    @enderror
-                @endif
-            </div>
-        </div>
+        .category-item {
+            position: relative;
+            margin-bottom: 0.75rem;
+            padding-right: 1rem;
+        }
 
-        <!-- التصنيفات والخصائص -->
-        <div class="card bg-base-100 shadow-xl">
-            <div class="card-body">
-                <h2 class="card-title">التصنيفات والخصائص</h2>
-                @error('selectedCategories')
-                    <div class="text-error text-sm">{{ $message }}</div>
-                @enderror
-                @if($productType === 'variable')
-                    @error('selectedAttributes')
-                        <div class="text-error text-sm">{{ $message }}</div>
-                    @enderror
-                    @error('variations')
-                        <div class="text-error text-sm">{{ $message }}</div>
-                    @enderror
-                @endif
-                @if($productType === 'grouped')
-                    @error('groupedProducts')
-                        <div class="text-error text-sm">{{ $message }}</div>
-                    @enderror
-                @endif
-            </div>
-        </div>
-    </div>
+        .category-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .category-item-content {
+            display: flex;
+            align-items: center;
+            padding: 0.5rem;
+            background-color: white;
+            border-radius: 0.375rem;
+            border: 1px solid #e5e7eb;
+            transition: all 0.2s;
+        }
+
+        .category-item-content:hover {
+            border-color: #3b82f6;
+            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+        }
+
+        .category-children {
+            margin-right: 1.5rem;
+            margin-top: 0.5rem;
+            border-right: 2px solid #e5e7eb;
+            padding-right: 1rem;
+        }
+
+        .category-checkbox {
+            width: 1rem;
+            height: 1rem;
+            border-radius: 0.25rem;
+            border: 2px solid #d1d5db;
+            transition: all 0.2s;
+        }
+
+        .category-checkbox:checked {
+            background-color: #3b82f6;
+            border-color: #3b82f6;
+        }
+
+        .category-checkbox:focus {
+            outline: 2px solid transparent;
+            outline-offset: 2px;
+            box-shadow: 0 0 0 2px #bfdbfe;
+        }
+
+        .category-label {
+            margin-right: 0.5rem;
+            font-size: 0.875rem;
+            color: #374151;
+            transition: color 0.2s;
+        }
+
+        .category-item-content:hover .category-label {
+            color: #3b82f6;
+        }
+
+        /* تحسين مظهر الأيقونات */
+        .category-icon {
+            margin-left: 0.5rem;
+            color: #9ca3af;
+        }
+
+        /* تحسين مظهر رسالة الخطأ */
+        .error-message {
+            margin-top: 0.5rem;
+            padding: 0.5rem;
+            border-radius: 0.375rem;
+            background-color: #fee2e2;
+            border: 1px solid #fecaca;
+            color: #dc2626;
+        }
+    </style>
 
     <div class="grid grid-cols-4 gap-4">
         <div class="col-span-3">
@@ -83,7 +104,7 @@
                                     description="{{ __('A simple product is a standalone item without variations like size or color. It is sold as-is.') }}"
                                     checked
                                 />
-                                <flux:radio
+                                {{-- <flux:radio
                                     value="grouped"
                                     label="{{ __('Grouped Product') }}"
                                     description="{{ __('A grouped product is a collection of related products. It is sold as a group.') }}"
@@ -92,7 +113,7 @@
                                     value="external"
                                     label="{{ __('External/Affiliate Product') }}"
                                     description="{{ __('An external or affiliate product is a product that is not sold by your store. It is sold separately from your store.') }}"
-                                />
+                                /> --}}
                                 <flux:radio
                                     value="variable"
                                     label="{{ __('Variable Product') }}"
@@ -121,7 +142,7 @@
 
 {{--                        </div>--}}
 
-                        <livewire:tabs-component :regular-price="$regularPrice" wire:reactive />
+                        <livewire:tabs-component :productType="$productType" :regular-price="$regularPrice" wire:reactive />
 
                     </div>
                 </div>
@@ -163,39 +184,43 @@
                         </div>
                         <div class="mb-4">
                             <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">التصنيفات</label>
-                            <div class="space-y-2">
+                            <div class="category-tree">
                                 @foreach($this->getCategories() as $category)
-                                    <div class="flex items-center">
-                                        <input type="checkbox"
-                                               wire:model="selectedCategories"
-                                               value="{{ $category['id'] }}"
-                                               id="category_{{ $category['id'] }}"
-                                               class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded dark:border-gray-600 dark:bg-gray-700">
-                                        <label for="category_{{ $category['id'] }}" class="ml-2 block text-sm text-gray-900 dark:text-gray-300">
-                                            {{ $category['name'] }}
-                                        </label>
-                                    </div>
-                                    @if($category['children'])
-                                        <div class="ml-4">
-                                            @foreach($category['children'] as $child)
-                                                <div class="flex items-center">
-                                                    <input type="checkbox"
-                                                           wire:model="selectedCategories"
-                                                           value="{{ $child['id'] }}"
-                                                           id="category_{{ $child['id'] }}"
-                                                           class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded dark:border-gray-600 dark:bg-gray-700">
-                                                    <label for="category_{{ $child['id'] }}" class="ml-2 block text-sm text-gray-900 dark:text-gray-300">
-                                                        {{ $child['name'] }}
-                                                    </label>
-                                                </div>
-                                            @endforeach
+                                    <div class="category-item">
+                                        <div class="category-item-content">
+                                            <input type="checkbox"
+                                                   wire:model="selectedCategories"
+                                                   value="{{ $category['id'] }}"
+                                                   id="category_{{ $category['id'] }}"
+                                                   class="category-checkbox">
+                                            <label for="category_{{ $category['id'] }}" class="category-label">
+                                                {{ $category['name'] }}
+                                            </label>
                                         </div>
-                                    @endif
+                                        @if($category['children'])
+                                            <div class="category-children">
+                                                @foreach($category['children'] as $child)
+                                                    <div class="category-item">
+                                                        <div class="category-item-content">
+                                                            <input type="checkbox"
+                                                                   wire:model="selectedCategories"
+                                                                   value="{{ $child['id'] }}"
+                                                                   id="category_{{ $child['id'] }}"
+                                                                   class="category-checkbox">
+                                                            <label for="category_{{ $child['id'] }}" class="category-label">
+                                                                {{ $child['name'] }}
+                                                            </label>
+                                                        </div>
+                                                    </div>
+                                                @endforeach
+                                            </div>
+                                        @endif
+                                    </div>
                                 @endforeach
                             </div>
                             @error('selectedCategories')
-                                <div class="mt-1 text-sm text-red-600 dark:text-red-400">
-                                    <i class="fas fa-exclamation-circle mr-1"></i>
+                                <div class="error-message">
+                                    <i class="fas fa-exclamation-circle ml-1"></i>
                                     {{ $message }}
                                 </div>
                             @enderror

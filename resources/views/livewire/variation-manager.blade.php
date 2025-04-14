@@ -67,22 +67,26 @@
 <div>
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
         @foreach ($loadedAttributes as $attr)
-            <div class="p-4 border rounded shadow-md bg-white">
-                <h3 class="font-semibold text-xl mb-2">{{ $attr['name'] }}</h3>
+            @if(isset($attr['id']) && isset($attr['name']))
+                <div class="p-4 border rounded shadow-md bg-white">
+                    <h3 class="font-semibold text-xl mb-2">{{ $attr['name'] }}</h3>
 
-                <div class="flex flex-col gap-1">
-                    @foreach ($attributeTerms[$attr['id']] ?? [] as $term)
-                        <label class="inline-flex items-center space-x-2">
-                            <input
-                                type="checkbox"
-                                wire:model.live="selectedAttributes.{{ $attr['id'] }}.{{ $term['id'] }}"
-                                class="form-checkbox"
-                            >
-                            <span>{{ $term['name'] }}</span>
-                        </label>
-                    @endforeach
+                    <div class="flex flex-col gap-1">
+                        @foreach ($attributeTerms[$attr['id']] ?? [] as $term)
+                            @if(isset($term['id']) && isset($term['name']))
+                                <label class="inline-flex items-center space-x-2">
+                                    <input
+                                        type="checkbox"
+                                        wire:model.live="selectedAttributes.{{ $attr['id'] }}.{{ $term['id'] }}"
+                                        class="form-checkbox"
+                                    >
+                                    <span>{{ $term['name'] }}</span>
+                                </label>
+                            @endif
+                        @endforeach
+                    </div>
                 </div>
-            </div>
+            @endif
         @endforeach
     </div>
 
@@ -126,11 +130,11 @@
                         @endforeach
                         {{-- <th class="px-4 py-2 font-medium text-gray-700 whitespace-nowrap">SKU</th> --}}
                         <th class="px-4 py-2 font-medium text-gray-700 whitespace-nowrap"><div class="flex items-center gap-2">
-                            <span><flux:input style="width: 100px;" size="sm" placeholder="{{ __('All Prices')}}" /></span><span>السعر</span>
+                            <span><flux:input style="width: 100px;" size="sm" placeholder="{{ __('All Prices')}}" wire:model.live="allRegularPrice" /></span><span>السعر</span>
                         </div></th>
                         <th class="px-4 py-2 font-medium text-gray-700 whitespace-nowrap">
                             <div class="flex items-center gap-2">
-                                <span><flux:input style="width: 100px;" size="sm" placeholder="{{ __('All Sale Prices')}}" /></span><span>سعر الخصم</span>
+                                <span><flux:input style="width: 100px;" size="sm" placeholder="{{ __('All Sale Prices')}}" wire:model.live="allSalePrice" /></span><span>سعر الخصم</span>
                             </div>
                         </th>
                         <th class="px-4 py-2 font-medium text-gray-700 whitespace-nowrap">

@@ -15,11 +15,13 @@ class TabsComponent extends Component
 
     public function updated($field, $value)
     {
-        $this->dispatch('updateMultipleFieldsFromTabs', [
-            'regularPrice' => $this->localRegularPrice,
-            'salePrice' => $this->localSalePrice,
-            'sku' => $this->localSku,
-        ])->to('pages.product.add');
+        $data = [
+            'regularPrice' => $this->localRegularPrice ?? '',
+            'salePrice' => $this->localSalePrice ?? '',
+            'sku' => $this->localSku ?? '',
+        ];
+
+        $this->dispatch('updateMultipleFieldsFromTabs', $data)->to('pages.product.add');
     }
 
 

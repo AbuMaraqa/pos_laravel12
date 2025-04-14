@@ -78,12 +78,20 @@ class VariationManager extends Component
         });
 
         foreach ($attributesWithTerms as $attribute) {
+            if (!isset($attribute['id'])) {
+                continue; // Skip attributes without ID
+            }
+
             $this->loadedAttributes[] = $attribute;
-            $this->attributeTerms[$attribute['id']] = $attribute['terms'];
+            $this->attributeTerms[$attribute['id']] = $attribute['terms'] ?? [];
             $this->attributeLookup[$attribute['id']] = $attribute;
 
-            foreach ($attribute['terms'] as $term) {
-                $this->termLookup[$attribute['id']][$term['id']] = $term;
+            if (isset($attribute['terms']) && is_array($attribute['terms'])) {
+                foreach ($attribute['terms'] as $term) {
+                    if (isset($term['id'])) {
+                        $this->termLookup[$attribute['id']][$term['id']] = $term;
+                    }
+                }
             }
         }
 
@@ -100,20 +108,7 @@ class VariationManager extends Component
 
     public function generateVariations()
     {
-        // التحقق من وجود صفات مختارة
-        $hasSelectedAttributes = false;
-        foreach ($this->selectedAttributes as $attributeId => $terms) {
-            if (is_array($terms)) {
-                foreach ($terms as $isSelected) {
-                    if ($isSelected === true) {
-                        $hasSelectedAttributes = true;
-                        break 2;
-                    }
-                }
-            }
-        }
-
-        if (!$hasSelectedAttributes) {
+        if (empty($this->selectedAttributes)) {
             $this->variations = [];
             return;
         }
@@ -122,32 +117,32 @@ class VariationManager extends Component
         $attributeOptions = [];
         $this->attributeMap = [];
 
-        foreach ($this->selectedAttributes as $attributeId => $terms) {
-            if (!is_array($terms)) continue;
+        // Pre-filter selected attributes to reduce processing
+        $filteredAttributes = array_filter($this->selectedAttributes, function($termMap) {
+            return !empty(array_filter($termMap));
+        });
 
-            $selectedTerms = [];
-            foreach ($terms as $termId => $isSelected) {
-                if ($isSelected === true) {
-                    $selectedTerms[] = [
-                        'id' => $termId,
-                        'name' => $this->getTermName($attributeId, $termId)
-                    ];
-                }
-            }
-
-            if (!empty($selectedTerms)) {
-                $attribute = $this->getAttributeById($attributeId);
-                $attributeOptions[] = $selectedTerms;
-                $this->attributeMap[] = [
-                    'id' => $attributeId,
-                    'name' => $attribute['name'] ?? ''
+        foreach ($filteredAttributes as $attributeId => $termMap) {
+            $termIds = array_keys(array_filter($termMap));
+            $terms = array_map(function ($termId) use ($attributeId) {
+                return [
+                    'id' => $termId,
+                    'name' => $this->getTermName($attributeId, $termId)
                 ];
-            }
+            }, $termIds);
+
+            $attribute = $this->getAttributeById($attributeId);
+            $attributeOptions[] = $terms;
+            $this->attributeMap[] = [
+                'id' => $attributeId,
+                'name' => $attribute['name'] ?? ''
+            ];
         }
 
         if (!empty($attributeOptions)) {
             $combinations = $this->generateCombinations($attributeOptions);
 
+            // Pre-allocate the variations array with the exact size needed
             $variationTemplate = [
                 'sku' => '',
                 'regular_price' => '',
@@ -163,15 +158,13 @@ class VariationManager extends Component
 
             $this->variations = array_fill(0, count($combinations), $variationTemplate);
 
+            // Fill in the options using array_map for better performance
             $this->variations = array_map(function($variation, $combo) {
                 $variation['options'] = array_map(function($term) {
                     return $term['name'];
                 }, $combo);
                 return $variation;
             }, $this->variations, $combinations);
-
-            // إرسال البيانات مباشرة إلى المكون الأب
-            $this->sendLatestToParent();
         }
     }
 
@@ -182,46 +175,23 @@ class VariationManager extends Component
 
     public function validateVariations()
     {
-        if (empty($this->selectedAttributes)) {
+        if (empty($this->variations)) {
             return false;
         }
 
-        // التحقق من وجود قيم للصفات المختارة
-        $hasSelectedTerms = false;
-        foreach ($this->selectedAttributes as $attributeId => $terms) {
-            if (!empty($terms) && is_array($terms)) {
-                $hasSelectedTerms = true;
-                break;
-            }
-        }
-
-        return $hasSelectedTerms;
+        return true;
     }
 
     #[On('requestLatestVariations')]
     public function sendLatestToParent()
     {
-        // التحقق من وجود صفات مختارة
-        $hasSelectedAttributes = false;
-        foreach ($this->selectedAttributes as $attributeId => $terms) {
-            if (is_array($terms)) {
-                foreach ($terms as $isSelected) {
-                    if ($isSelected === true) {
-                        $hasSelectedAttributes = true;
-                        break 2;
-                    }
-                }
-            }
-        }
-
-        if (!$hasSelectedAttributes) {
+        if (!$this->validateVariations()) {
             return;
         }
 
         $this->dispatch('latestVariationsSent', [
             'variations' => array_map(fn($v) => (array) $v, $this->variations),
             'attributeMap' => array_map(fn($m) => (array) $m, $this->attributeMap),
-            'selectedAttributes' => $this->selectedAttributes
         ])->to('pages.product.add');
     }
 
