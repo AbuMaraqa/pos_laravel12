@@ -106,19 +106,6 @@ class VariationManager extends Component
         }
     }
 
-    public function updated($propertyName)
-    {
-        if (str_starts_with($propertyName, 'selectedAttributes.')) {
-            $this->generateVariations();
-            $this->dispatch('attributesSelected', [
-                'selectedAttributes' => $this->selectedAttributes,
-                'attributeMap' => $this->attributeMap,
-                'variations' => $this->variations
-            ])->to('pages.product.add');
-        }
-        $this->validateOnly($propertyName);
-    }
-
     public function generateVariations()
     {
         if (empty($this->selectedAttributes)) {
@@ -135,16 +122,8 @@ class VariationManager extends Component
             return !empty(array_filter($termMap));
         });
 
-        if (empty($filteredAttributes)) {
-            return;
-        }
-
         foreach ($filteredAttributes as $attributeId => $termMap) {
             $termIds = array_keys(array_filter($termMap));
-            if (empty($termIds)) {
-                continue;
-            }
-
             $terms = array_map(function ($termId) use ($attributeId) {
                 return [
                     'id' => $termId,
@@ -152,43 +131,46 @@ class VariationManager extends Component
                 ];
             }, $termIds);
 
-            if (!empty($terms)) {
-                $attribute = $this->getAttributeById($attributeId);
-                $attributeOptions[] = $terms;
-                $this->attributeMap[] = [
-                    'id' => $attributeId,
-                    'name' => $attribute['name'] ?? ''
-                ];
-            }
+            $attribute = $this->getAttributeById($attributeId);
+            $attributeOptions[] = $terms;
+            $this->attributeMap[] = [
+                'id' => $attributeId,
+                'name' => $attribute['name'] ?? ''
+            ];
         }
 
         if (!empty($attributeOptions)) {
             $combinations = $this->generateCombinations($attributeOptions);
 
-            foreach ($combinations as $combo) {
-                $this->variations[] = [
-                    'sku' => '',
-                    'regular_price' => '',
-                    'sale_price' => '',
-                    'stock_quantity' => 0,
-                    'active' => true,
-                    'length' => '',
-                    'width' => '',
-                    'height' => '',
-                    'description' => '',
-                    'options' => array_map(function($term) {
-                        return $term['name'];
-                    }, $combo)
-                ];
-            }
-        }
+            // Pre-allocate the variations array with the exact size needed
+            $variationTemplate = [
+                'sku' => '',
+                'regular_price' => '',
+                'sale_price' => '',
+                'stock_quantity' => 0,
+                'active' => true,
+                'length' => '',
+                'width' => '',
+                'height' => '',
+                'description' => '',
+                'options' => [],
+            ];
 
-        // إرسال التحديثات إلى المكون الأب
-        $this->dispatch('attributesSelected', [
-            'selectedAttributes' => $this->selectedAttributes,
-            'attributeMap' => $this->attributeMap,
-            'variations' => $this->variations
-        ])->to('pages.product.add');
+            $this->variations = array_fill(0, count($combinations), $variationTemplate);
+
+            // Fill in the options using array_map for better performance
+            $this->variations = array_map(function($variation, $combo) {
+                $variation['options'] = array_map(function($term) {
+                    return $term['name'];
+                }, $combo);
+                return $variation;
+            }, $this->variations, $combinations);
+        }
+    }
+
+    public function updated($propertyName)
+    {
+        $this->validateOnly($propertyName);
     }
 
     public function validateVariations()

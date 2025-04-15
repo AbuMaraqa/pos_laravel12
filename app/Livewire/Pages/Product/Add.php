@@ -75,9 +75,6 @@ class Add extends Component
 
     public function updatedProductType($value)
     {
-        if ($value === 'variable') {
-            $this->fetchProductAttributes();
-        }
         $this->dispatch('productTypeChanged', $value)->to('tabs-component');
     }
 
@@ -547,14 +544,6 @@ class Add extends Component
             unset($this->galleryImages[$index]);
             $this->galleryImages = array_values($this->galleryImages);
         }
-    }
-
-    #[On('attributesSelected')]
-    public function handleAttributesSelected($data)
-    {
-        $this->selectedAttributes = $data['selectedAttributes'] ?? [];
-        $this->attributeMap = $data['attributeMap'] ?? [];
-        $this->variations = $data['variations'] ?? [];
     }
 
     public function render()

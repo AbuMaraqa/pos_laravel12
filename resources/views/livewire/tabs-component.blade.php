@@ -12,6 +12,9 @@
         showAttributesTab: @entangle('showAttributesTab'),
         showStockFields() {
             return this.isStockManagementEnabled;
+        },
+        showStockStatus(){
+            return this.isStockManagementEnabled && this.productType === 'simple';
         }
     }">
 
@@ -101,7 +104,7 @@
                 </div>
             </div>
 
-            <div x-show="isStockManagementEnabled" class="mb-3">
+            <div x-show="showStockStatus" class="mb-3">
                 <flux:radio.group variant="segmented" label="{{ __('Stock Status') }}">
                     <flux:radio value="in_stock" label="{{ __('In stock') }}" checked />
                     <flux:radio value="out_of_stock" label="{{ __('Out of stock') }}" />
