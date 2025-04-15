@@ -221,3 +221,8 @@
 {{--</pre>--}}
 
 </div>
+
+{{-- Remove any error messages --}}
+@if(!empty($errors))
+    {{-- This section is removed to disable validation errors --}}
+@endif

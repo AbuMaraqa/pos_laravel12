@@ -4,6 +4,7 @@ namespace App\Livewire;
 
 use Livewire\Component;
 use Livewire\Attributes\On;
+use App\Services\WooCommerceService;
 
 class TabsComponent extends Component
 {
@@ -22,6 +23,13 @@ class TabsComponent extends Component
     public $terms;
 
     // protected $listeners  = ['productTypeChanged'];
+
+    protected WooCommerceService $wooService;
+
+    public function boot(WooCommerceService $wooService): void
+    {
+        $this->wooService = $wooService;
+    }
 
     #[On('productTypeChanged')]
     public function handleProductTypeChange($type)
@@ -49,6 +57,11 @@ class TabsComponent extends Component
         ];
 
         $this->dispatch('updateMultipleFieldsFromTabs', $data)->to('pages.product.add');
+    }
+
+    #[Computed]
+    public function getRoles(){
+        return $this->wooService->getRoles();
     }
 
     public function render()

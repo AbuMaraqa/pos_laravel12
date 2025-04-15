@@ -81,10 +81,30 @@ class Index extends Component
         }, 'barcode.pdf');
     }
 
+    // #[Computed]
+    // public function getMrbpRole($productId){
+    //     $result = $this->wooService->getMrbpRoleById($productId);
+
+    //     // التحقق من نوع البيانات المرجعة وتحويلها إلى نص إذا كانت مصفوفة
+    //     if (is_array($result)) {
+    //         return isset($result['error']) ? 'خطأ: ' . $result['error'] : 'مصفوفة غير محددة';
+    //     }
+
+    //     // إذا كانت القيمة فارغة
+    //     if (is_null($result)) {
+    //         return 'غير محدد';
+    //     }
+
+    //     return (string) $result;
+    // }
+
+
     public function deleteProduct($productId)
     {
         $this->wooService->deleteProductById($productId);
     }
+
+
 
     public function render()
     {
@@ -115,4 +135,5 @@ class Index extends Component
             'categories' => $this->categories,
         ]);
     }
+
 }

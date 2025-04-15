@@ -170,28 +170,23 @@ class VariationManager extends Component
 
     public function updated($propertyName)
     {
-        $this->validateOnly($propertyName);
+        // No validation needed
     }
 
     public function validateVariations()
     {
-        if (empty($this->variations)) {
-            return false;
-        }
-
+        // Removing validation, always return true
         return true;
     }
 
     #[On('requestLatestVariations')]
     public function sendLatestToParent()
     {
-        if (!$this->validateVariations()) {
-            return;
-        }
-
+        // Always send data without validation
         $this->dispatch('latestVariationsSent', [
             'variations' => array_map(fn($v) => (array) $v, $this->variations),
             'attributeMap' => array_map(fn($m) => (array) $m, $this->attributeMap),
+            'selectedAttributes' => $this->selectedAttributes,
         ])->to('pages.product.add');
     }
 

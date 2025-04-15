@@ -87,6 +87,9 @@
                 <th scope="col" class="px-6 py-3">
                     {{ __('Area price') }}
                 </th>
+                {{-- <th scope="col" class="px-6 py-3">
+
+                </th> --}}
                 <th scope="col" class="px-6 py-3">
                     {{ __('Actions') }}
                 </th>
@@ -134,6 +137,9 @@
                                 @endif
                             @endforeach
                         </td>
+                        {{-- <td>
+                            {{ $this->getMrbpRole($product['id']) ?? 'role' }}
+                        </td> --}}
                         <td>
                             <flux:dropdown>
                                 <flux:button icon:trailing="chevron-down">{{ __('Options') }}</flux:button>

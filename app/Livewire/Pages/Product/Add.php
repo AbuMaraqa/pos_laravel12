@@ -97,10 +97,6 @@ class Add extends Component
 
     public function generateVariations()
     {
-        $this->validate([
-            'named' => 'required|string|max:255',
-        ]);
-
         $filtered = [];
 
         foreach ($this->selectedAttributes as $attributeId => $termIds) {
@@ -185,6 +181,9 @@ class Add extends Component
         $this->variations = $data['variations'] ?? [];
         $this->attributeMap = $data['attributeMap'] ?? [];
         $this->selectedAttributes = $data['selectedAttributes'] ?? [];
+
+        // Proceed directly to saving the product
+        $this->saveProduct();
     }
 
     public function syncBeforeSave()
@@ -219,31 +218,9 @@ class Add extends Component
                     break;
 
                 case 'variable':
-                    // التحقق من وجود خصائص مختارة
-                    if (empty($this->selectedAttributes)) {
-                        throw new \Exception('يجب اختيار خاصية واحدة على الأقل للمنتج المتغير');
-                    }
-
-                    $hasSelectedTerms = false;
-                    foreach ($this->selectedAttributes as $attributeId => $terms) {
-                        if (!empty($terms) && count(array_filter($terms)) > 0) {
-                            $hasSelectedTerms = true;
-                            break;
-                        }
-                    }
-
-                    if (!$hasSelectedTerms) {
-                        throw new \Exception('يجب اختيار قيمة واحدة على الأقل لكل خاصية');
-                    }
-
-                    // التحقق من وجود تباينات
-                    if (empty($this->variations)) {
-                        $this->generateVariations();
-                    }
-
-                    if (empty($this->variations)) {
-                        throw new \Exception('يجب توليد التباينات للمنتج المتغير');
-                    }
+                    // طلب آخر تحديث للمتغيرات قبل الحفظ
+                    $this->dispatch('requestLatestVariations')->to('variation-manager');
+                    return; // ننتظر الرد من مدير المتغيرات
                     break;
 
                 case 'grouped':

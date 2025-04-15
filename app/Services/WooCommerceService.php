@@ -291,4 +291,23 @@ class WooCommerceService
     {
         return $this->uploadImage($file); // نستخدم نفس دالة uploadImage لأنها تقوم بنفس المهمة
     }
+
+    public function getRoles(){
+        try {
+            $response = $this->wpClient->get('roles');
+            return json_decode($response->getBody()->getContents(), true);
+        } catch (\Exception $e) {
+            logger()->error('WP API Error getting roles: ' . $e->getMessage());
+            return ['error' => $e->getMessage()];
+        }
+    }
+
+    public function getMrbpRoleById($id){
+        $product = $this->getProductsById($id);
+        return ($product);
+        if($product['meta_data']['key'] == 'mrbp_role'){
+            return $product['meta_data']['key'];
+        }
+        return null;
+    }
 }
