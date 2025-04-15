@@ -206,24 +206,28 @@ class Add extends Component
                     break;
 
                 case 'variable':
-                    // التحقق من وجود صفات مختارة
-                    $hasSelectedAttributes = false;
+                    // التحقق من وجود خصائص مختارة
+                    if (empty($this->selectedAttributes)) {
+                        throw new \Exception('يجب اختيار خاصية واحدة على الأقل للمنتج المتغير');
+                    }
+
+                    $hasSelectedTerms = false;
                     foreach ($this->selectedAttributes as $attributeId => $terms) {
-                        if (is_array($terms)) {
-                            foreach ($terms as $isSelected) {
-                                if ($isSelected === true) {
-                                    $hasSelectedAttributes = true;
-                                    break 2;
-                                }
-                            }
+                        if (!empty($terms) && count(array_filter($terms)) > 0) {
+                            $hasSelectedTerms = true;
+                            break;
                         }
                     }
 
-                    if (!$hasSelectedAttributes) {
-                        throw new \Exception('يجب اختيار صفات للمنتج المتغير');
+                    if (!$hasSelectedTerms) {
+                        throw new \Exception('يجب اختيار قيمة واحدة على الأقل لكل خاصية');
                     }
 
                     // التحقق من وجود تباينات
+                    if (empty($this->variations)) {
+                        $this->generateVariations();
+                    }
+
                     if (empty($this->variations)) {
                         throw new \Exception('يجب توليد التباينات للمنتج المتغير');
                     }
