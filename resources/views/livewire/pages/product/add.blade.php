@@ -97,7 +97,7 @@
                         <flux:fieldset>
                             <flux:legend>{{ __('Product Type') }}</flux:legend>
 
-                            <flux:radio.group wire:model="productType">
+                            <flux:radio.group wire:model.live="productType">
                                 <flux:radio
                                     value="simple"
                                     label="{{ __('Simple Product') }}"

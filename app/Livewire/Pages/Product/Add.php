@@ -65,6 +65,19 @@ class Add extends Component
 //        $this->fetchProductAttributes();
     }
 
+    public function updated($field, $value)
+    {
+        if ($field === 'productType') {
+            \Log::info('Product Type Updated: ' . $value);
+            $this->dispatch('productTypeChanged', $value)->to('tabs-component');
+        }
+    }
+
+    public function updatedProductType($value)
+    {
+        $this->dispatch('productTypeChanged', $value)->to('tabs-component');
+    }
+
     #[On('updateMultipleFieldsFromTabs')]
     public function updateFieldsFromTabs($data)
     {

@@ -1,13 +1,18 @@
 <div x-data="{
         openTab: @entangle('activeTab'),
         isStockManagementEnabled: @entangle('isStockManagementEnabled'),
-        regularPrice: @entangle('regularPrice'),
-        salePrice: @entangle('salePrice'),
-        sku: @entangle('sku'),
+        regularPrice: @entangle('localRegularPrice'),
+        salePrice: @entangle('localSalePrice'),
+        sku: @entangle('localSku'),
         stockQuantity: @entangle('stockQuantity'),
         allowBackorders: @entangle('allowBackorders'),
         stockStatus: @entangle('stockStatus'),
-        soldIndividually: @entangle('soldIndividually')
+        soldIndividually: @entangle('soldIndividually'),
+        productType: @entangle('productType'),
+        showAttributesTab: @entangle('showAttributesTab'),
+        showStockFields() {
+            return this.isStockManagementEnabled;
+        }
     }">
 
     <!-- قائمة التبويبات -->
@@ -36,7 +41,9 @@
             {{ __('Shipping') }}
         </button>
 
+        <!-- تبويب الصفات (يظهر فقط للمنتج المتعدد) -->
         <button
+            x-show="showAttributesTab"
             @click="openTab = 4"
             :class="{'border-b-2 border-blue-500': openTab === 4}"
             class="py-2 px-4 text-sm font-semibold focus:outline-none">
@@ -109,7 +116,7 @@
             <!-- التفاعل مع الخيارات المدفوعة -->
             <div class="mb-3">
                 <flux:checkbox wire:model="terms" label="{{ __('Sold individually') }}" />
-                </div>
+            </div>
         </div>
 
         <!-- محتوى التبويب الثالث -->
@@ -118,7 +125,8 @@
             <p>هذا هو محتوى التبويب الثالث.</p>
         </div>
 
-        <div x-show="openTab === 4" x-transition>
+        <!-- محتوى تبويب الصفات (يظهر فقط للمنتج المتعدد) -->
+        <div x-show="openTab === 4 && showAttributesTab" x-transition>
             <livewire:variation-manager />
         </div>
 
