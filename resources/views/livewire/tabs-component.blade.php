@@ -53,6 +53,11 @@
             class="py-2 px-4 text-sm font-semibold focus:outline-none">
             {{ __('Price') }}
         </button>
+
+        <button @click="openTab = 7" :class="{ 'border-b-2 border-blue-500': openTab === 7 }"
+            class="py-2 px-4 text-sm font-semibold focus:outline-none">
+            {{ __('Translation') }}
+        </button>
     </div>
 
     <!-- محتوى التبويبات -->
@@ -166,6 +171,10 @@
                     </tbody>
                 </table>
             </div>
+        </div>
+
+        <div x-show="openTab === 7" x-transition>
+            {{ __('Translation') }}
         </div>
     </div>
 </div>

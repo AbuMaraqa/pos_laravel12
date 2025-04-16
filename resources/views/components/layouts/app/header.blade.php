@@ -18,7 +18,7 @@
                 <flux:dropdown class="max-lg:hidden">
                     <flux:navbar.item icon:trailing="chevron-down">{{ __('Products') }}</flux:navbar.item>
                     <flux:navmenu>
-                        <flux:navmenu.item wire:navigate href="{{ route('product.index') }}">{{ __('Products') }}</flux:navmenu.item>
+                        <flux:navmenu.item wire:navigate href="{{ route('product.index') }}">{{ __('List Products') }}</flux:navmenu.item>
                         <flux:navmenu.item wire:navigate href="{{ route('product.add') }}">{{ __('Add Product') }}</flux:navmenu.item>
                         <flux:navmenu.item wire:navigate href="{{ route('category.index') }}">{{ __('Categories') }}</flux:navmenu.item>
                         <flux:navmenu.item wire:navigate :href="route('product.attributes.add')" :current="request()->routeIs('product.attributes.add')" wire:navigate>
@@ -71,7 +71,7 @@
 {{--            </flux:navbar>--}}
 
             <flux:dropdown>
-                <flux:button icon:trailing="chevron-down">Lang</flux:button>
+                <flux:button icon:trailing="language"></flux:button>
 
                 <flux:menu>
                         @foreach(LaravelLocalization::getSupportedLocales() as $localeCode => $properties)
@@ -80,6 +80,7 @@
                         @endforeach
                 </flux:menu>
             </flux:dropdown>
+
 
             <!-- Desktop User Menu -->
             <flux:dropdown position="top" align="end">

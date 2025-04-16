@@ -203,10 +203,9 @@
                 </div>
                 <div class="col-span-1 max-w p-6 bg-white border border-gray-200 rounded-lg shadow-sm dark:bg-gray-800 dark:border-gray-700">
                     <div class="mb-3">
-                        <flux:heading size="xl">{{ __('Category') }}</flux:heading>
+                        <flux:heading size="xl">{{ __('Categories') }}</flux:heading>
                     </div>
                     <div class="mb-4">
-                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">التصنيفات</label>
                         <div class="category-tree">
                             @foreach($this->getCategories() as $category)
                                 @include('livewire.pages.product.partials.category-checkbox-item', ['category' => $category])
