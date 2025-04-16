@@ -30,7 +30,7 @@
                 <flux:navbar.item icon="layout-grid" :href="route('order.index')" :current="request()->routeIs('order.index')" wire:navigate>
                     {{ __('Orders') }}
                 </flux:navbar.item>
-                <flux:navbar.item icon="layout-grid" :href="route('dashboard')" :current="request()->routeIs('dashboard')" wire:navigate>
+                <flux:navbar.item icon="layout-grid" :href="route('inventory.index')" :current="request()->routeIs('inventory.index')" wire:navigate>
                     {{ __('Inventories') }}
                 </flux:navbar.item>
                 <flux:navbar.item icon="layout-grid" :href="route('dashboard')" :current="request()->routeIs('dashboard')" wire:navigate>

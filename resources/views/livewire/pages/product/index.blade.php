@@ -87,6 +87,9 @@
                 <th scope="col" class="px-6 py-3">
                     {{ __('Area price') }}
                 </th>
+                <th scope="col" class="px-6 py-3">
+                    {{ __('Stock Quantity') }}
+                </th>
                 {{-- <th scope="col" class="px-6 py-3">
 
                 </th> --}}
@@ -136,6 +139,9 @@
                                     @endforeach
                                 @endif
                             @endforeach
+                        </td>
+                        <td>
+                            {{ $product['stock_quantity'] }}
                         </td>
                         {{-- <td>
                             {{ $this->getMrbpRole($product['id']) ?? 'role' }}
