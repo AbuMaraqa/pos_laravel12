@@ -61,7 +61,7 @@ class Index extends Component
 
                     $currentStock = (int) ($currentProduct['stock_quantity'] ?? 0);
                     $requestedQuantity = (int) $product['quantity'];
-                    $newStock = $currentStock - $requestedQuantity;
+                    $newStock = $currentStock + $requestedQuantity;
 
                     logger()->info('Stock calculation:', [
                         'current_stock' => $currentStock,
@@ -115,8 +115,8 @@ class Index extends Component
                     $this->error = "فشل تحديث جميع المنتجات. يرجى التحقق من سجلات النظام للمزيد من التفاصيل.";
                 }
             } else {
-                $this->success = "تم تحديث الكميات بنجاح";
-                $this->scannedProducts = []; // Clear the list after successful save
+                $this->success = "تم إضافة الكميات بنجاح";
+                $this->scannedProducts = []; // مسح القائمة بعد الحفظ الناجح
             }
 
         } catch (Exception $e) {
