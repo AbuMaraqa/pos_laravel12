@@ -310,4 +310,14 @@ class WooCommerceService
         }
         return null;
     }
+
+    public function addCategory($name, $parentId, $description)
+    {
+        return $this->post('products/categories', [
+            'name' => $name,
+            'parent' => $parentId,
+            'description' => $description
+        ]);
+    }
+
 }

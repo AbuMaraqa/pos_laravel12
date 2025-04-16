@@ -34,6 +34,8 @@ Route::group(
         Route::get('settings/appearance', Appearance::class)->name('settings.appearance');
     });
 
+    Route::get('/category/index', \App\Livewire\Pages\Category\Index::class)->name('category.index');
+
 
     Route::get('/product/index', \App\Livewire\Pages\Product\Index::class)->name('product.index');
     Route::get('/product/add', \App\Livewire\Pages\Product\Add::class)->name('product.add');

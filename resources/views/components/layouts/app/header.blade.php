@@ -15,15 +15,16 @@
                 <flux:navbar.item icon="layout-grid" :href="route('dashboard')" :current="request()->routeIs('dashboard')" wire:navigate>
                     {{ __('Home') }}
                 </flux:navbar.item>
-                <flux:navbar.item icon="layout-grid" :href="route('product.index')" :current="request()->routeIs('product.index')" wire:navigate>
-                    {{ __('Products') }}
-                </flux:navbar.item>
-                <flux:navbar.item icon="layout-grid" :href="route('product.index')" :current="request()->routeIs('product.index')" wire:navigate>
-                    {{ __('Categories') }}
-                </flux:navbar.item>
-                <flux:navbar.item icon="layout-grid" :href="route('product.attributes.add')" :current="request()->routeIs('product.attributes.add')" wire:navigate>
-                    {{ __('Attributes') }}
-                </flux:navbar.item>
+                <flux:dropdown class="max-lg:hidden">
+                    <flux:navbar.item icon:trailing="chevron-down">{{ __('Products') }}</flux:navbar.item>
+                    <flux:navmenu>
+                        <flux:navmenu.item wire:navigate href="{{ route('category.index') }}">{{ __('Categories') }}</flux:navmenu.item>
+                        <flux:navmenu.item wire:navigate :href="route('product.attributes.add')" :current="request()->routeIs('product.attributes.add')" wire:navigate>
+                            {{ __('Attributes') }}
+                        </flux:navmenu.item>
+
+                    </flux:navmenu>
+                </flux:dropdown>
                 <flux:navbar.item icon="layout-grid" :href="route('order.index')" :current="request()->routeIs('order.index')" wire:navigate>
                     {{ __('Orders') }}
                 </flux:navbar.item>
