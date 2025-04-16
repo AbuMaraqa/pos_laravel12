@@ -21,6 +21,19 @@
 
     <div class="mt-6">
         @if(count($scannedProducts) > 0)
+            <div class="mb-4 bg-white rounded-lg shadow p-4">
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="text-right">
+                        <span class="text-gray-600">{{ __('إجمالي الكمية:') }}</span>
+                        <span class="font-bold text-lg mr-2">{{ $this->totalQuantity }}</span>
+                    </div>
+                    <div class="text-right">
+                        <span class="text-gray-600">{{ __('إجمالي المبلغ:') }}</span>
+                        <span class="font-bold text-lg mr-2">{{ $this->totalAmount }}</span>
+                    </div>
+                </div>
+            </div>
+
             <div class="bg-white rounded-lg shadow overflow-hidden">
                 <table class="min-w-full divide-y divide-gray-200">
                     <thead class="bg-gray-50">
@@ -30,6 +43,7 @@
                             <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{{ __('السعر') }}</th>
                             <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{{ __('الكمية المتوفرة') }}</th>
                             <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{{ __('الكمية المطلوبة') }}</th>
+                            <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{{ __('المجموع') }}</th>
                             <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{{ __('الإجراءات') }}</th>
                         </tr>
                     </thead>
@@ -53,6 +67,9 @@
                                             @if($product['quantity'] >= $product['stock_quantity']) disabled @endif
                                         >+</button>
                                     </div>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-right font-medium">
+                                    {{ number_format($product['quantity'] * floatval($product['price']), 2) }}
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap text-right">
                                     <button

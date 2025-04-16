@@ -23,10 +23,26 @@ class Index extends Component
         }
     }
 
+    // حساب إجمالي الكمية
+    public function getTotalQuantityProperty()
+    {
+        return array_sum(array_column($this->scannedProducts, 'quantity'));
+    }
+
+    // حساب إجمالي المبلغ
+    public function getTotalAmountProperty()
+    {
+        $total = 0;
+        foreach ($this->scannedProducts as $product) {
+            $total += $product['quantity'] * floatval($product['price']);
+        }
+        return number_format($total, 2);
+    }
+
     public function searchProduct()
     {
-        $searchId = trim($this->productId); // حفظ القيمة قبل تفريغها
-        $this->productId = ''; // تفريغ الحقل مباشرة
+        $searchId = trim($this->productId);
+        $this->productId = '';
 
         if (!empty($searchId)) {
             $this->processProduct($searchId);
@@ -51,22 +67,18 @@ class Index extends Component
                 return;
             }
 
-            // جلب المنتج مباشرة بواسطة ID
             $product = $this->woocommerce->getProductsById($id);
 
-            // التحقق من وجود خطأ في الاستجابة
             if (isset($product['code']) && $product['code'] === 'woocommerce_rest_product_invalid_id') {
                 $this->error = 'لم يتم العثور على المنتج';
                 return;
             }
 
-            // التحقق من أن المنتج متاح للبيع
             if ($product['status'] !== 'publish') {
                 $this->error = 'هذا المنتج غير متاح حالياً';
                 return;
             }
 
-            // تحديث المصفوفة بشكل صحيح
             if (isset($this->scannedProducts[$id])) {
                 $this->scannedProducts[$id]['quantity']++;
             } else {
