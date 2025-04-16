@@ -139,7 +139,7 @@
                         </th>
                         <th class="px-4 py-2 font-medium text-gray-700 whitespace-nowrap">
                             <div class="flex items-center gap-2">
-                                <span><flux:input style="width: 100px;" size="sm" placeholder="{{ __('All Quantitnes')}}" /></span><span>الكمية</span>
+                                <span><flux:input style="width: 100px;" size="sm" placeholder="{{ __('All Quantities')}}" wire:model.live="allStockQuantity" /></span><span>الكمية</span>
                             </div>
                         </th>
                         <th class="px-4 py-2 font-medium text-gray-700 whitespace-nowrap">الوصف</th>

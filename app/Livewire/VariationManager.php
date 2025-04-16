@@ -23,6 +23,9 @@ class VariationManager extends Component
     public $perPage = 5;
     public $totalAttributes = 0;
     public $errors = [];
+    public $allRegularPrice = '';
+    public $allSalePrice = '';
+    public $allStockQuantity = '';
 
     protected $rules = [
         'variations.*.sku' => 'required|string|max:100',
@@ -170,12 +173,28 @@ class VariationManager extends Component
 
     public function updated($propertyName)
     {
-        // No validation needed
+        if ($propertyName === 'allRegularPrice' && $this->allRegularPrice !== '') {
+            foreach ($this->variations as $index => $variation) {
+                $this->variations[$index]['regular_price'] = $this->allRegularPrice;
+            }
+        }
+
+        if ($propertyName === 'allSalePrice' && $this->allSalePrice !== '') {
+            foreach ($this->variations as $index => $variation) {
+                $this->variations[$index]['sale_price'] = $this->allSalePrice;
+            }
+        }
+
+        if ($propertyName === 'allStockQuantity' && $this->allStockQuantity !== '') {
+            foreach ($this->variations as $index => $variation) {
+                $this->variations[$index]['stock_quantity'] = $this->allStockQuantity;
+            }
+        }
     }
 
     public function validateVariations()
     {
-        // Removing validation, always return true
+        // Always return true
         return true;
     }
 

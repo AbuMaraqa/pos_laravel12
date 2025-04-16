@@ -6,10 +6,12 @@ use App\Services\WooCommerceService;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\On;
 use Livewire\Attributes\Reactive;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 use Livewire\Livewire;
 use Masmerise\Toaster\Toaster;
 use Spatie\LivewireFilepond\WithFilePond;
+use Illuminate\Support\Facades\Log;
 
 class Add extends Component
 {
@@ -68,7 +70,7 @@ class Add extends Component
     public function updated($field, $value)
     {
         if ($field === 'productType') {
-            \Log::info('Product Type Updated: ' . $value);
+            Log::info('Product Type Updated: ' . $value);
             $this->dispatch('productTypeChanged', $value)->to('tabs-component');
         }
     }
@@ -312,8 +314,16 @@ class Add extends Component
             // إضافة الصور إذا وجدت
             $images = [];
 
-            // إضافة الصورة الرئيسية
-            if ($this->file) {
+            // إضافة الصورة الرئيسية مباشرة إذا كانت موجودة
+            if ($this->featuredImage) {
+                logger()->info('Adding featured image: ' . $this->featuredImage);
+                $images[] = [
+                    'src' => $this->featuredImage,
+                    'position' => 0
+                ];
+            }
+            // ثم محاولة رفع الصورة من الملف إذا كان موجوداً
+            else if ($this->file) {
                 logger()->info('Uploading featured image');
                 $uploadedImage = $this->wooService->uploadImage($this->file);
                 if (isset($uploadedImage['id'])) {
@@ -326,16 +336,28 @@ class Add extends Component
                 }
             }
 
-            // إضافة صور المعرض
+            // إضافة صور المعرض المحملة سابقاً
+            if (!empty($this->galleryImages)) {
+                logger()->info('Adding gallery images: ' . count($this->galleryImages));
+                foreach ($this->galleryImages as $index => $imageSrc) {
+                    $images[] = [
+                        'src' => $imageSrc,
+                        'position' => $index + 1
+                    ];
+                }
+            }
+
+            // ثم محاولة رفع صور إضافية إذا كانت موجودة
             if (!empty($this->files)) {
                 logger()->info('Uploading gallery images');
+                $startIndex = count($this->galleryImages); // البدء من بعد آخر صورة موجودة
                 foreach ($this->files as $index => $file) {
                     $uploadedImage = $this->wooService->uploadImage($file);
                     if (isset($uploadedImage['id'])) {
                         $images[] = [
                             'id' => $uploadedImage['id'],
                             'src' => $uploadedImage['src'],
-                            'position' => $index + 1
+                            'position' => $startIndex + $index + 1
                         ];
                         $this->galleryImages[] = $uploadedImage['src'];
                     }
@@ -451,61 +473,91 @@ class Add extends Component
         }
     }
 
+    public function updatedFile()
+    {
+        if ($this->file) {
+            $this->uploadSingleImage();
+        }
+    }
+
+    public function updatedFiles()
+    {
+        if (!empty($this->files)) {
+            $this->uploadGalleryImages();
+        }
+    }
+
+    public function uploadSingleImage()
+    {
+        try {
+            logger()->info('Auto uploading featured image');
+
+            if (!$this->file->isValid()) {
+                throw new \Exception('الملف غير صالح: ' . $this->file->getErrorMessage());
+            }
+
+            $uploadedImage = $this->wooService->uploadImage($this->file);
+
+            logger()->info('Featured image upload response: ' . json_encode($uploadedImage));
+
+            if (isset($uploadedImage['src'])) {
+                $this->featuredImage = $uploadedImage['src'];
+                $this->file = null;
+                Toaster::success('تم رفع صورة الغلاف بنجاح');
+            } else {
+                throw new \Exception('لم يتم الحصول على رابط الصورة من الخادم');
+            }
+        } catch (\Exception $e) {
+            logger()->error('Featured image upload error: ' . $e->getMessage());
+            Toaster::error('حدث خطأ في رفع الصورة: ' . $e->getMessage());
+        }
+    }
+
+    public function uploadGalleryImages()
+    {
+        try {
+            logger()->info('Auto uploading gallery images. Count: ' . count($this->files));
+            $uploadedCount = 0;
+
+            foreach ($this->files as $index => $file) {
+                if (!$file->isValid()) {
+                    logger()->error('Invalid gallery file: ' . $file->getErrorMessage());
+                    continue;
+                }
+
+                $uploadedImage = $this->wooService->uploadImage($file);
+                logger()->info('Gallery image ' . ($index + 1) . ' upload response: ' . json_encode($uploadedImage));
+
+                if (isset($uploadedImage['src'])) {
+                    $this->galleryImages[] = $uploadedImage['src'];
+                    $uploadedCount++;
+                }
+            }
+
+            $this->files = [];
+
+            if ($uploadedCount > 0) {
+                Toaster::success('تم رفع ' . $uploadedCount . ' صورة للمعرض بنجاح');
+            }
+        } catch (\Exception $e) {
+            logger()->error('Gallery images upload error: ' . $e->getMessage());
+            Toaster::error('حدث خطأ في رفع صور المعرض: ' . $e->getMessage());
+        }
+    }
+
     public function uploadImage()
     {
         try {
             if ($this->file) {
-                logger()->info('Starting featured image upload');
-
-                // التحقق من الملف
-                if (!$this->file->isValid()) {
-                    throw new \Exception('الملف غير صالح: ' . $this->file->getErrorMessage());
-                }
-
-                $uploadedImage = $this->wooService->uploadImage($this->file);
-
-                logger()->info('Featured image upload response: ' . json_encode($uploadedImage));
-
-                if (isset($uploadedImage['src'])) {
-                    $this->featuredImage = $uploadedImage['src'];
-                    $this->file = null;
-                    $this->dispatch('show-toast', [
-                        'type' => 'success',
-                        'message' => 'تم رفع صورة الغلاف بنجاح: ' . $uploadedImage['name']
-                    ]);
-                } else {
-                    throw new \Exception('لم يتم الحصول على رابط الصورة من الخادم');
-                }
+                $this->uploadSingleImage();
             }
 
             if (!empty($this->files)) {
-                logger()->info('Starting gallery images upload. Count: ' . count($this->files));
-
-                foreach ($this->files as $index => $file) {
-                    if (!$file->isValid()) {
-                        logger()->error('Invalid gallery file: ' . $file->getErrorMessage());
-                        continue;
-                    }
-
-                    $uploadedImage = $this->wooService->uploadMedia($file);
-                    logger()->info('Gallery image ' . ($index + 1) . ' upload response: ' . json_encode($uploadedImage));
-
-                    if (isset($uploadedImage['src'])) {
-                        $this->galleryImages[] = $uploadedImage['src'];
-                    }
-                }
-                $this->files = [];
-                $this->dispatch('show-toast', [
-                    'type' => 'success',
-                    'message' => 'تم رفع ' . count($this->galleryImages) . ' صورة للمعرض بنجاح'
-                ]);
+                $this->uploadGalleryImages();
             }
         } catch (\Exception $e) {
             logger()->error('Image upload error: ' . $e->getMessage());
-            $this->dispatch('show-toast', [
-                'type' => 'error',
-                'message' => 'حدث خطأ في رفع الصور: ' . $e->getMessage()
-            ]);
+            Toaster::error('حدث خطأ في رفع الصور: ' . $e->getMessage());
         }
     }
 

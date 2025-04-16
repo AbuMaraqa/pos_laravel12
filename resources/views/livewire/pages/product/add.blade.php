@@ -159,99 +159,68 @@
                 </div>
             </div>
         </div>
-        <form wire:submit.prevent="uploadImage">
-            <div class="col-span-1">
-                <div class="grid grid-cols-1 gap-4">
-                    <div class="col-span-1 max-w p-6 bg-white border border-gray-200 rounded-lg shadow-sm dark:bg-gray-800 dark:border-gray-700">
-                        <div class="mb-3">
-                            <flux:heading size="xl">{{ __('Featured Image') }}</flux:heading>
-                        </div>
-                        <div class="mb-4">
-                            @if($featuredImage)
-                                <div class="relative">
-                                    <img src="{{ $featuredImage }}" alt="Featured Image" class="w-full h-48 object-cover rounded-lg mb-2">
-                                    <button wire:click="removeFeaturedImage" type="button" class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1">
-                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-                                        </svg>
-                                    </button>
-                                </div>
-                            @endif
-                            <x-filepond::upload wire:model="file" />
-                        </div>
+        <div class="col-span-1">
+            <div class="grid grid-cols-1 gap-4">
+                <div class="col-span-1 max-w p-6 bg-white border border-gray-200 rounded-lg shadow-sm dark:bg-gray-800 dark:border-gray-700">
+                    <div class="mb-3">
+                        <flux:heading size="xl">{{ __('Featured Image') }}</flux:heading>
                     </div>
-                    <div class="col-span-1 max-w p-6 bg-white border border-gray-200 rounded-lg shadow-sm dark:bg-gray-800 dark:border-gray-700">
-                        <div class="mb-3">
-                            <flux:heading size="xl">{{ __('Gallery Images') }}</flux:heading>
-                        </div>
-                        <div class="mb-4">
-                            @if(!empty($galleryImages))
-                                <div class="grid grid-cols-3 gap-2 mb-2">
-                                    @foreach($galleryImages as $index => $image)
-                                        <div class="relative">
-                                            <img src="{{ $image }}" alt="Gallery Image" class="w-full h-24 object-cover rounded-lg">
-                                            <button wire:click="removeGalleryImage({{ $index }})" type="button" class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1">
-                                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-                                                </svg>
-                                            </button>
-                                        </div>
-                                    @endforeach
-                                </div>
-                            @endif
-                            <x-filepond::upload multiple wire:model="files" />
-                        </div>
+                    <div class="mb-4">
+                        @if($featuredImage)
+                            <div class="relative">
+                                <img src="{{ $featuredImage }}" alt="Featured Image" class="w-full h-48 object-cover rounded-lg mb-2">
+                                <button wire:click="removeFeaturedImage" type="button" class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                                    </svg>
+                                </button>
+                            </div>
+                        @endif
+                        <x-filepond::upload wire:model="file" />
                     </div>
-                    <div class="col-span-1 max-w p-6 bg-white border border-gray-200 rounded-lg shadow-sm dark:bg-gray-800 dark:border-gray-700">
-                        <div class="mb-3">
-                            <flux:heading size="xl">{{ __('Category') }}</flux:heading>
-                        </div>
-                        <div class="mb-4">
-                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">التصنيفات</label>
-                            <div class="category-tree">
-                                @foreach($this->getCategories() as $category)
-                                    <div class="category-item">
-                                        <div class="category-item-content">
-                                            <input type="checkbox"
-                                                   wire:model="selectedCategories"
-                                                   value="{{ $category['id'] }}"
-                                                   id="category_{{ $category['id'] }}"
-                                                   class="category-checkbox">
-                                            <label for="category_{{ $category['id'] }}" class="category-label">
-                                                {{ $category['name'] }}
-                                            </label>
-                                        </div>
-                                        @if($category['children'])
-                                            <div class="category-children">
-                                                @foreach($category['children'] as $child)
-                                                    <div class="category-item">
-                                                        <div class="category-item-content">
-                                                            <input type="checkbox"
-                                                                   wire:model="selectedCategories"
-                                                                   value="{{ $child['id'] }}"
-                                                                   id="category_{{ $child['id'] }}"
-                                                                   class="category-checkbox">
-                                                            <label for="category_{{ $child['id'] }}" class="category-label">
-                                                                {{ $child['name'] }}
-                                                            </label>
-                                                        </div>
-                                                    </div>
-                                                @endforeach
-                                            </div>
-                                        @endif
+                </div>
+                <div class="col-span-1 max-w p-6 bg-white border border-gray-200 rounded-lg shadow-sm dark:bg-gray-800 dark:border-gray-700">
+                    <div class="mb-3">
+                        <flux:heading size="xl">{{ __('Gallery Images') }}</flux:heading>
+                    </div>
+                    <div class="mb-4">
+                        @if(!empty($galleryImages))
+                            <div class="grid grid-cols-3 gap-2 mb-2">
+                                @foreach($galleryImages as $index => $image)
+                                    <div class="relative">
+                                        <img src="{{ $image }}" alt="Gallery Image" class="w-full h-24 object-cover rounded-lg">
+                                        <button wire:click="removeGalleryImage({{ $index }})" type="button" class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                                            </svg>
+                                        </button>
                                     </div>
                                 @endforeach
                             </div>
-                            @error('selectedCategories')
-                                <div class="error-message">
-                                    <i class="fas fa-exclamation-circle ml-1"></i>
-                                    {{ $message }}
-                                </div>
-                            @enderror
+                        @endif
+                        <x-filepond::upload multiple wire:model="files" />
+                    </div>
+                </div>
+                <div class="col-span-1 max-w p-6 bg-white border border-gray-200 rounded-lg shadow-sm dark:bg-gray-800 dark:border-gray-700">
+                    <div class="mb-3">
+                        <flux:heading size="xl">{{ __('Category') }}</flux:heading>
+                    </div>
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">التصنيفات</label>
+                        <div class="category-tree">
+                            @foreach($this->getCategories() as $category)
+                                @include('livewire.pages.product.partials.category-checkbox-item', ['category' => $category])
+                            @endforeach
                         </div>
+                        @error('selectedCategories')
+                            <div class="error-message">
+                                <i class="fas fa-exclamation-circle ml-1"></i>
+                                {{ $message }}
+                            </div>
+                        @enderror
                     </div>
                 </div>
             </div>
-        </form>
+        </div>
     </div>
 </div>
