@@ -5,6 +5,7 @@ namespace App\Livewire\Pages\Inventory;
 use App\Services\WooCommerceService;
 use Livewire\Component;
 use Exception;
+use Masmerise\Toaster\Toaster;
 
 class Index extends Component
 {
@@ -168,43 +169,77 @@ class Index extends Component
 
             if (!$this->woocommerce) {
                 $this->error = 'خطأ في الاتصال بالخدمة';
+                logger()->error('WooCommerce service not initialized');
                 return;
             }
 
+            logger()->info('Searching for product', ['id' => $id]);
+
             // محاولة الحصول على المنتج
-            $product = $this->woocommerce->getProductsById($id);
+            try {
+                $product = $this->woocommerce->getProductsById($id);
+                logger()->info('Product search result', [
+                    'id' => $id,
+                    'product' => $product
+                ]);
+            } catch (Exception $e) {
+                logger()->error('Failed to fetch product', [
+                    'id' => $id,
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString()
+                ]);
+                throw $e;
+            }
 
             // التحقق مما إذا كان المنتج متغيراً
             $isVariation = false;
             if (isset($product['type']) && $product['type'] === 'variation' || isset($product['parent_id']) && $product['parent_id'] > 0) {
                 $isVariation = true;
+                logger()->info('Product is a variation', [
+                    'id' => $id,
+                    'parent_id' => $product['parent_id'] ?? null
+                ]);
+
                 // إعادة تحميل المنتج كمتغير
                 try {
                     $parentId = $product['parent_id'];
                     $variation = $this->woocommerce->get("products/{$parentId}/variations/{$id}");
+                    logger()->info('Variation data', [
+                        'id' => $id,
+                        'parent_id' => $parentId,
+                        'variation' => $variation
+                    ]);
+
                     if ($variation && !isset($variation['error'])) {
                         $product = $variation;
                     }
                 } catch (Exception $e) {
                     logger()->error('Failed to load variation', [
                         'product_id' => $id,
-                        'error' => $e->getMessage()
+                        'error' => $e->getMessage(),
+                        'trace' => $e->getTraceAsString()
                     ]);
                 }
             }
 
             if (!$product || (isset($product['code']) && $product['code'] === 'woocommerce_rest_invalid_product_id')) {
                 $this->error = 'لم يتم العثور على المنتج';
+                logger()->error('Product not found or invalid', ['id' => $id, 'product' => $product]);
                 return;
             }
 
             if ($product['status'] !== 'publish') {
                 $this->error = 'هذا المنتج غير متاح حالياً';
+                logger()->info('Product not published', ['id' => $id, 'status' => $product['status']]);
                 return;
             }
 
             if (isset($this->scannedProducts[$id])) {
                 $this->scannedProducts[$id]['quantity']++;
+                logger()->info('Increased product quantity', [
+                    'id' => $id,
+                    'new_quantity' => $this->scannedProducts[$id]['quantity']
+                ]);
             } else {
                 $this->scannedProducts[$id] = [
                     'name' => $product['name'],
@@ -215,17 +250,17 @@ class Index extends Component
                     'is_variation' => $isVariation,
                     'parent_id' => $product['parent_id'] ?? null
                 ];
+                logger()->info('Added new product to scan list', [
+                    'id' => $id,
+                    'product_data' => $this->scannedProducts[$id]
+                ]);
             }
 
             $this->error = '';
             $this->success = '';
 
         } catch (Exception $e) {
-            $this->error = 'حدث خطأ في البحث عن المنتج';
-            logger()->error('Product Search Error: ' . $e->getMessage(), [
-                'product_id' => $id ?? null,
-                'error' => $e->getMessage()
-            ]);
+            Toaster::error('خطأ في البحث عن المنتج');
         }
     }
 
