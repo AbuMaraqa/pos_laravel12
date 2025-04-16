@@ -18,6 +18,8 @@
                 <flux:dropdown class="max-lg:hidden">
                     <flux:navbar.item icon:trailing="chevron-down">{{ __('Products') }}</flux:navbar.item>
                     <flux:navmenu>
+                        <flux:navmenu.item wire:navigate href="{{ route('product.index') }}">{{ __('Products') }}</flux:navmenu.item>
+                        <flux:navmenu.item wire:navigate href="{{ route('product.add') }}">{{ __('Add Product') }}</flux:navmenu.item>
                         <flux:navmenu.item wire:navigate href="{{ route('category.index') }}">{{ __('Categories') }}</flux:navmenu.item>
                         <flux:navmenu.item wire:navigate :href="route('product.attributes.add')" :current="request()->routeIs('product.attributes.add')" wire:navigate>
                             {{ __('Attributes') }}
