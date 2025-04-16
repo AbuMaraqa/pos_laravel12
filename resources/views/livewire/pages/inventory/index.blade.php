@@ -130,7 +130,11 @@
                                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"/>
                                                 </svg>
                                             </flux:button>
-                                            <span class="text-sm font-medium text-gray-900 w-8 text-center">{{ $product['quantity'] }}</span>
+                                            <flux:badge variant="solid" color="zinc" style="font-size: 40px;padding-right:40px;padding-left:40px;min-width: 150px;display: flex;justify-content: center;align-items: center;">{{ $product['quantity'] }}</flux:badge>
+
+                                            {{-- <span class="text-lg font-medium text-gray-900 w-8 text-center">
+                                                {{ $product['quantity'] }}
+                                            </span> --}}
                                             <flux:button
                                                 wire:click="updateQuantity({{ $productId }}, {{ $product['quantity'] + 1 }})"
                                                 color="secondary"
