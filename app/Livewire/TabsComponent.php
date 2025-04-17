@@ -5,6 +5,7 @@ namespace App\Livewire;
 use Livewire\Component;
 use Livewire\Attributes\On;
 use App\Services\WooCommerceService;
+use Livewire\Attributes\Computed;
 
 class TabsComponent extends Component
 {
@@ -21,7 +22,7 @@ class TabsComponent extends Component
     public $soldIndividually;
     public $lowStockThreshold;
     public $terms;
-
+    public $mrbpData = [];
     // protected $listeners  = ['productTypeChanged'];
 
     protected WooCommerceService $wooService;
@@ -59,7 +60,15 @@ class TabsComponent extends Component
         $this->dispatch('updateMultipleFieldsFromTabs', $data)->to('pages.product.add');
     }
 
-    #[Computed]
+
+    public function updatedMrbpData($name, $value)
+    {
+        // if (is_string($name) && str_starts_with($name, 'mrbpData')) {
+            $this->dispatch('updateMrbpPrice', ['data' => $this->mrbpData])->to('pages.product.add');
+        // }
+    }
+
+    #[Computed()]
     public function getRoles(){
         return $this->wooService->getRoles();
     }

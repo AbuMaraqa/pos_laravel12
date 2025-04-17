@@ -160,14 +160,13 @@
                                     {{ $role['name'] }}
                                 </td>
                                 <td class="px-6 py-4">
-                                    <flux:input />
+                                    <flux:input wire:model.defer="mrbpData.{{ $role['role'] }}.regularPrice" />
                                 </td>
                                 <td class="px-6 py-4">
-                                    <flux:input />
+                                    <flux:input wire:model.defer="mrbpData.{{ $role['role'] }}.salePrice" />
                                 </td>
                             </tr>
                         @endforeach
-
                     </tbody>
                 </table>
             </div>
