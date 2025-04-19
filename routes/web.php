@@ -47,6 +47,7 @@ Route::group(
     Route::get('/order/index', \App\Livewire\Pages\Order\Index::class)->name('order.index');
     Route::get('/order/{order}/details', \App\Livewire\Pages\Order\Details::class)->name('order.details');
 
+    Route::get('/user/index', \App\Livewire\Pages\User\Index::class)->name('user.index');
 });
 
 require __DIR__.'/auth.php';

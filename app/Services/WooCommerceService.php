@@ -320,4 +320,11 @@ class WooCommerceService
         ]);
     }
 
+    public function getCustomers(){
+        return $this->get('customers');
+    }
+
+    public function getCustomerById($id){
+        return $this->get('customers/' . $id);
+    }
 }

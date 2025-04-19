@@ -33,7 +33,7 @@
                 <flux:navbar.item icon="layout-grid" :href="route('inventory.index')" :current="request()->routeIs('inventory.index')" wire:navigate>
                     {{ __('Inventories') }}
                 </flux:navbar.item>
-                <flux:navbar.item icon="layout-grid" :href="route('dashboard')" :current="request()->routeIs('dashboard')" wire:navigate>
+                <flux:navbar.item icon="layout-grid" wire:navigate :href="route('user.index')" :current="request()->routeIs('user.index')" wire:navigate>
                     {{ __('Users') }}
                 </flux:navbar.item>
                 <flux:navbar.item icon="layout-grid" :href="route('dashboard')" :current="request()->routeIs('dashboard')" wire:navigate>
