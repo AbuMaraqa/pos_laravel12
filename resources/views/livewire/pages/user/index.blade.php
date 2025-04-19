@@ -13,29 +13,37 @@
                     Email
                 </th>
                 <th>
+                    Role
+                </th>
+                <th>
                     Actions
                 </th>
             </tr>
             </thead>
             <tbody>
-            @foreach($this->customers as $customer)
-                <tr class="odd:bg-white odd:dark:bg-gray-900 even:bg-gray-50 even:dark:bg-gray-800 border-b dark:border-gray-700 border-gray-200">
-                    <td scope="row" class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white">
-                        {{ $customer['id'] }}
-                    </td>
-                    <td>
-                        {{ $customer['first_name'] }} {{ $customer['last_name'] }}
-                    </td>
-                    <td>
-                        {{ $customer['email'] }}
-                    </td>
-                    <td>
-                        <flux:dropdown>
-                            <flux:button wire:navigate icon="eye" size="sm"></flux:button>
-                        </flux:dropdown>
-                    </td>
-                </tr>
+                @foreach($this->customers as $customer)
+<tr>
+    <td>{{ $customer['id'] }}</td>
+    <td>{{ $customer['name'] }}</td>
+    <td>{{ $customer['email'] ?? '—' }}</td>
+    <td>
+        <div class="text-xs text-gray-500 mb-1">
+            الأدوار الحالية: {{ implode(', ', $customer['roles'] ?? []) }}
+        </div>
+
+        <select multiple wire:model="roles.{{ $customer['id'] }}" class="w-full">
+            @foreach($this->getRoles() as $role)
+                <option value="{{ $role['role'] }}">{{ $role['name'] }}</option>
             @endforeach
+        </select>
+    </td>
+    <td>
+        <flux:dropdown>
+            <flux:button wire:click="updateCustomerRole({{ $customer['id'] }})" size="sm">حفظ</flux:button>
+        </flux:dropdown>
+    </td>
+</tr>
+@endforeach
             </tbody>
         </table>
     </div>

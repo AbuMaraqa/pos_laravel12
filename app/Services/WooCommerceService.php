@@ -320,11 +320,34 @@ class WooCommerceService
         ]);
     }
 
-    public function getCustomers(){
-        return $this->get('customers');
-    }
+    public function getUsers()
+{
+    $response = $this->wpClient->get('users');
+    return json_decode($response->getBody()->getContents(), true);
+}
 
-    public function getCustomerById($id){
-        return $this->get('customers/' . $id);
+public function getUserById($id)
+{
+    $response = $this->wpClient->get('users/' . $id);
+    return json_decode($response->getBody()->getContents(), true);
+}
+
+public function updateUser($id , $query = [])
+{
+    try {
+        $response = $this->wpClient->put("users/{$id}", [
+            'json' => $query,
+        ]);
+
+        $result = json_decode($response->getBody()->getContents(), true);
+        logger()->info('Update user success', $result);
+        return $result;
+    } catch (\Exception $e) {
+        logger()->error('Update user failed', [
+            'message' => $e->getMessage(),
+            'trace' => $e->getTraceAsString(),
+        ]);
+        throw $e;
     }
+}
 }
