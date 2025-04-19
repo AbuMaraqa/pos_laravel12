@@ -14,6 +14,7 @@ class Index extends Component
     public $error = '';
     public $success = '';
     protected $woocommerce;
+    public $pendingProducts = [];
 
     public function boot()
     {
@@ -146,12 +147,52 @@ class Index extends Component
     public function searchProduct()
     {
         $searchId = trim($this->productId);
-        $this->productId = '';
+    $this->productId = '';
 
-        if (!empty($searchId)) {
-            $this->processProduct($searchId);
-        }
+    if (!empty($searchId)) {
+        // أضف الكود لقائمة الانتظار مؤقتاً
+        $this->pendingProducts[] = $searchId;
+
+        // نفذ المعالجة في الخلفية
+        $this->processProductAsync($searchId);
     }
+    }
+
+    public function processProductAsync($id)
+{
+    try {
+        // موجود مسبقًا؟ زد الكمية فقط
+        if (isset($this->scannedProducts[$id])) {
+            $this->scannedProducts[$id]['quantity']++;
+        } else {
+            // حاول تجيب المنتج
+            $product = $this->woocommerce->getProductsById($id);
+
+            if (!$product || isset($product['error']) || $product['status'] !== 'publish') {
+                throw new \Exception('فشل جلب المنتج أو غير متاح');
+            }
+
+            $this->scannedProducts[$id] = [
+                'name' => $product['name'],
+                'price' => $product['price'],
+                'quantity' => 1,
+                'stock_quantity' => $product['stock_quantity'] ?? 0,
+                'sku' => $product['sku'] ?? '',
+                'is_variation' => isset($product['parent_id']),
+                'parent_id' => $product['parent_id'] ?? null,
+            ];
+        }
+
+        $this->success = "تمت إضافة المنتج: {$id}";
+    } catch (\Exception $e) {
+        // سجل الخطأ
+        $this->error = "فشل في جلب المنتج: {$id}";
+        logger()->error('Error fetching product', ['id' => $id, 'error' => $e->getMessage()]);
+    } finally {
+        // احذف من قائمة الانتظار
+        $this->pendingProducts = array_filter($this->pendingProducts, fn($pid) => $pid !== $id);
+    }
+}
 
     public function updatedProductId()
     {

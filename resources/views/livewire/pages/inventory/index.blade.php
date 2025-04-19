@@ -96,6 +96,12 @@
             <!-- Products Table -->
             <div class="bg-white rounded-xl shadow-sm overflow-hidden">
                 <div class="overflow-x-auto">
+                    @if(count($pendingProducts) > 0)
+                    <div class="mt-2 text-sm text-yellow-600">
+                        {{ __('جاري معالجة المنتجات التالية:') }}
+                        {{ implode(', ', $pendingProducts) }}
+                    </div>
+                @endif
                     <table class="min-w-full divide-y divide-gray-200">
                         <thead class="bg-gray-50">
                             <tr>
@@ -108,6 +114,7 @@
                             </tr>
                         </thead>
                         <tbody class="bg-white divide-y divide-gray-200">
+
                             @foreach($scannedProducts as $productId => $product)
                                 <tr class="hover:bg-gray-50 transition-colors duration-200">
                                     <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium text-gray-900">{{ $productId }}</td>
@@ -152,7 +159,6 @@
                                                 </svg>
                                             </flux:button>
                                         </div>
-
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-right text-sm">
                                         <flux:button
