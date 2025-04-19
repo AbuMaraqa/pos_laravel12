@@ -263,15 +263,37 @@ class Index extends Component
     }
 
     public function updateQuantity($productId, $quantity)
-    {
-        if (isset($this->scannedProducts[$productId])) {
-            if ($quantity > 0) {
-                $this->scannedProducts[$productId]['quantity'] = $quantity;
-            } else {
-                $this->removeProduct($productId);
-            }
+{
+    if (isset($this->scannedProducts[$productId])) {
+        $quantity = (int) $quantity;
+
+        if ($quantity > 0) {
+            $this->scannedProducts[$productId]['quantity'] = $quantity;
+        } else {
+            // حذف المنتج لو تم إدخال 0 أو رقم سالب
+            $this->removeProduct($productId);
         }
     }
+}
+
+public function incrementQuantity($productId)
+{
+    if (isset($this->scannedProducts[$productId])) {
+        $this->scannedProducts[$productId]['quantity']++;
+    }
+}
+
+public function decrementQuantity($productId)
+{
+    if (isset($this->scannedProducts[$productId])) {
+        $newQty = $this->scannedProducts[$productId]['quantity'] - 1;
+        if ($newQty > 0) {
+            $this->scannedProducts[$productId]['quantity'] = $newQty;
+        } else {
+            $this->removeProduct($productId);
+        }
+    }
+}
 
     public function render()
     {

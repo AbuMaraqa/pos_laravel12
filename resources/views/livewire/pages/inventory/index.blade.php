@@ -119,34 +119,40 @@
                                         </span>
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-right">
-                                        <div class="flex items-center justify-start gap-2">
+                                        <div class="flex items-center gap-2">
                                             <flux:button
-                                                wire:click="updateQuantity({{ $productId }}, {{ $product['quantity'] - 1 }})"
-                                                color="secondary"
-                                                size="xs"
-                                                class="!p-1"
-                                            >
+                                            wire:click="decrementQuantity({{ $productId }})"
+                                            color="secondary"
+                                            size="xs"
+                                            class="!p-1"
+                                                                                    >
                                                 <svg class="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"/>
                                                 </svg>
                                             </flux:button>
-                                            <flux:badge variant="solid" color="zinc" style="font-size: 40px;padding-right:40px;padding-left:40px;min-width: 150px;display: flex;justify-content: center;align-items: center;">{{ $product['quantity'] }}</flux:badge>
 
-                                            {{-- <span class="text-lg font-medium text-gray-900 w-8 text-center">
-                                                {{ $product['quantity'] }}
-                                            </span> --}}
+                                            <!-- حقل إدخال الكمية -->
+                                            <input
+                                                style="background-color: #52525C;color: white;min-width: 150px;max-width: 150px;min-height: 100px;max-height: 100px;border-radius: 10px;font-size: 25px;font-weight: bold;text-align: center;"
+                                                type="number"
+    min="1"
+    wire:model.live="scannedProducts.{{ $productId }}.quantity"
+    class="w-24 border border-gray-300 rounded-md text-center py-1 text-sm"
+                                            />
+
                                             <flux:button
-                                                wire:click="updateQuantity({{ $productId }}, {{ $product['quantity'] + 1 }})"
-                                                color="secondary"
-                                                size="xs"
-                                                class="!p-1"
-                                                {{-- :disabled="$product['quantity'] >= $product['stock_quantity']" --}}
+                                            wire:click="incrementQuantity({{ $productId }})"
+                                            color="secondary"
+                                            size="xs"
+                                            class="!p-1"
+
                                             >
                                                 <svg class="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
                                                 </svg>
                                             </flux:button>
                                         </div>
+
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-right text-sm">
                                         <flux:button
