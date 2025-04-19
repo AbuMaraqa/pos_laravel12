@@ -160,109 +160,100 @@ class Index extends Component
     }
 
     public function processProduct($id)
-    {
+{
+    try {
+        if (!is_numeric($id)) {
+            $this->error = 'الرجاء إدخال رقم صحيح';
+            return;
+        }
+
+        // ✅ تحقق إذا كان المنتج مضاف مسبقاً
+        if (isset($this->scannedProducts[$id])) {
+            // زيادة الكمية فقط دون استدعاء API
+            $this->scannedProducts[$id]['quantity']++;
+            logger()->info('Product already exists. Quantity increased.', [
+                'id' => $id,
+                'new_quantity' => $this->scannedProducts[$id]['quantity']
+            ]);
+            return;
+        }
+
+        if (!$this->woocommerce) {
+            $this->error = 'خطأ في الاتصال بالخدمة';
+            logger()->error('WooCommerce service not initialized');
+            return;
+        }
+
+        logger()->info('Searching for product', ['id' => $id]);
+
+        // 🟡 استدعاء API فقط في حال لم يكن المنتج موجود
         try {
-            if (!is_numeric($id)) {
-                $this->error = 'الرجاء إدخال رقم صحيح';
-                return;
-            }
+            $product = $this->woocommerce->getProductsById($id);
+        } catch (Exception $e) {
+            logger()->error('Failed to fetch product', [
+                'id' => $id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            throw $e;
+        }
 
-            if (!$this->woocommerce) {
-                $this->error = 'خطأ في الاتصال بالخدمة';
-                logger()->error('WooCommerce service not initialized');
-                return;
-            }
-
-            logger()->info('Searching for product', ['id' => $id]);
-
-            // محاولة الحصول على المنتج
+        $isVariation = false;
+        if (isset($product['type']) && $product['type'] === 'variation' || isset($product['parent_id']) && $product['parent_id'] > 0) {
+            $isVariation = true;
+            $parentId = $product['parent_id'];
             try {
-                $product = $this->woocommerce->getProductsById($id);
-                logger()->info('Product search result', [
-                    'id' => $id,
-                    'product' => $product
-                ]);
+                $variation = $this->woocommerce->get("products/{$parentId}/variations/{$id}");
+                if ($variation && !isset($variation['error'])) {
+                    $product = $variation;
+                }
             } catch (Exception $e) {
-                logger()->error('Failed to fetch product', [
-                    'id' => $id,
+                logger()->error('Failed to load variation', [
+                    'product_id' => $id,
                     'error' => $e->getMessage(),
                     'trace' => $e->getTraceAsString()
                 ]);
-                throw $e;
             }
-
-            // التحقق مما إذا كان المنتج متغيراً
-            $isVariation = false;
-            if (isset($product['type']) && $product['type'] === 'variation' || isset($product['parent_id']) && $product['parent_id'] > 0) {
-                $isVariation = true;
-                logger()->info('Product is a variation', [
-                    'id' => $id,
-                    'parent_id' => $product['parent_id'] ?? null
-                ]);
-
-                // إعادة تحميل المنتج كمتغير
-                try {
-                    $parentId = $product['parent_id'];
-                    $variation = $this->woocommerce->get("products/{$parentId}/variations/{$id}");
-                    logger()->info('Variation data', [
-                        'id' => $id,
-                        'parent_id' => $parentId,
-                        'variation' => $variation
-                    ]);
-
-                    if ($variation && !isset($variation['error'])) {
-                        $product = $variation;
-                    }
-                } catch (Exception $e) {
-                    logger()->error('Failed to load variation', [
-                        'product_id' => $id,
-                        'error' => $e->getMessage(),
-                        'trace' => $e->getTraceAsString()
-                    ]);
-                }
-            }
-
-            if (!$product || (isset($product['code']) && $product['code'] === 'woocommerce_rest_invalid_product_id')) {
-                $this->error = 'لم يتم العثور على المنتج';
-                logger()->error('Product not found or invalid', ['id' => $id, 'product' => $product]);
-                return;
-            }
-
-            if ($product['status'] !== 'publish') {
-                $this->error = 'هذا المنتج غير متاح حالياً';
-                logger()->info('Product not published', ['id' => $id, 'status' => $product['status']]);
-                return;
-            }
-
-            if (isset($this->scannedProducts[$id])) {
-                $this->scannedProducts[$id]['quantity']++;
-                logger()->info('Increased product quantity', [
-                    'id' => $id,
-                    'new_quantity' => $this->scannedProducts[$id]['quantity']
-                ]);
-            } else {
-                $this->scannedProducts[$id] = [
-                    'name' => $product['name'],
-                    'price' => $product['price'],
-                    'quantity' => 1,
-                    'stock_quantity' => $product['stock_quantity'] ?? 0,
-                    'sku' => $product['sku'] ?? '',
-                    'is_variation' => $isVariation,
-                    'parent_id' => $product['parent_id'] ?? null
-                ];
-                logger()->info('Added new product to scan list', [
-                    'id' => $id,
-                    'product_data' => $this->scannedProducts[$id]
-                ]);
-            }
-
-            $this->error = '';
-            $this->success = '';
-
-        } catch (Exception $e) {
-            Toaster::error('خطأ في البحث عن المنتج');
         }
+
+        if (!$product || (isset($product['code']) && $product['code'] === 'woocommerce_rest_invalid_product_id')) {
+            $this->error = 'لم يتم العثور على المنتج';
+            return;
+        }
+
+        if ($product['status'] !== 'publish') {
+            $this->error = 'هذا المنتج غير متاح حالياً';
+            return;
+        }
+
+        // ✅ أضف المنتج لأول مرة
+        $this->scannedProducts[$id] = [
+            'name' => $product['name'],
+            'price' => $product['price'],
+            'quantity' => 1,
+            'stock_quantity' => $product['stock_quantity'] ?? 0,
+            'sku' => $product['sku'] ?? '',
+            'is_variation' => $isVariation,
+            'parent_id' => $product['parent_id'] ?? null
+        ];
+
+        logger()->info('Added new product to scan list', [
+            'id' => $id,
+            'product_data' => $this->scannedProducts[$id]
+        ]);
+
+        $this->error = '';
+        $this->success = '';
+
+    } catch (Exception $e) {
+        logger()->error('Unexpected error in processProduct', [
+            'id' => $id,
+            'error' => $e->getMessage()
+        ]);
+        Toaster::error('خطأ في البحث عن المنتج');
     }
+}
+
 
     public function removeProduct($productId)
     {
