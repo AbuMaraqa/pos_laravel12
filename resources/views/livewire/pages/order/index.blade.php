@@ -33,20 +33,19 @@
                         {{ $order['date_created'] }}
                     </td>
                     <td class="px-6 py-4">
-                        @if($order['status'] == 'completed')
-                            <flux:badge color="green">
-                                {{ $order['status'] }}
-                            </flux:badge>
-                        @elseif($order['status'] == 'pending')
-                            <flux:badge color="yellow">
-                                {{ $order['status'] }}
-                            </flux:badge>
-                        @else
-                            <flux:badge color="red">
-                                {{ $order['status'] }}
-                            </flux:badge>
-                        @endif
+                        <div class="relative">
+                            <select
+                                wire:change="updateOrderStatus({{ $order['id'] }}, $event.target.value)"
+                                class="appearance-none bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-white text-sm rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 block w-full px-4 py-2 pr-10"
+                            >
+                                <option value="completed" {{ $order['status'] == 'completed' ? 'selected' : '' }}>{{ __('Completed') }}</option>
+                                <option value="processing" {{ $order['status'] == 'processing' ? 'selected' : '' }}>{{ __('Processing') }}</option>
+                                <option value="pending" {{ $order['status'] == 'pending' ? 'selected' : '' }}>{{ __('Pending') }}</option>
+                                <option value="failed" {{ $order['status'] == 'failed' ? 'selected' : '' }}>{{ __('Failed') }}</option>
+                            </select>
+                        </div>
                     </td>
+
                     <td>
                         <flux:dropdown>
                             <flux:button wire:navigate href="{{ route('order.details',['order' => $order['id']]) }}" icon="eye">{{ __('View order') }}</flux:button>

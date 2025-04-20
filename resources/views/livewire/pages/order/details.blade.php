@@ -123,6 +123,19 @@
                 </div>
             </div>
             <div class="bg-gray-50 dark:bg-gray-800 w-full xl:w-96 flex justify-between items-center md:items-start px-4 py-6 md:p-6 xl:p-8 flex-col">
+                <div class="w-full mb-3">
+                    <select
+                                style="background-color: #FACA15
+;"
+                                wire:change="updateOrderStatus({{ $order['id'] }}, $event.target.value)"
+                                class="appearance-none dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-white text-sm rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 block w-full px-4 py-2 pr-10"
+                            >
+                                <option value="completed" {{ $order['status'] == 'completed' ? 'selected' : '' }}>{{ __('Completed') }}</option>
+                                <option value="processing" {{ $order['status'] == 'processing' ? 'selected' : '' }}>{{ __('Processing') }}</option>
+                                <option value="pending" {{ $order['status'] == 'pending' ? 'selected' : '' }}>{{ __('Pending') }}</option>
+                                <option value="failed" {{ $order['status'] == 'failed' ? 'selected' : '' }}>{{ __('Failed') }}</option>
+                            </select>
+                </div>
                 <h3 class="text-xl dark:text-white font-semibold leading-5 text-gray-800">{{ __('Customer') }}</h3>
                 <div class="flex flex-col md:flex-row xl:flex-col justify-start items-stretch h-full w-full md:space-x-6 lg:space-x-8 xl:space-x-0">
                     <div class="flex flex-col justify-start items-start flex-shrink-0">

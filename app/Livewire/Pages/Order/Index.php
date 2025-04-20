@@ -4,6 +4,7 @@ namespace App\Livewire\Pages\Order;
 
 use App\Services\WooCommerceService;
 use Livewire\Component;
+use Masmerise\Toaster\Toaster;
 
 class Index extends Component
 {
@@ -25,6 +26,12 @@ class Index extends Component
     public function loadOrders(array $query = []): void
     {
         $this->orders = $this->wooService->getOrders($query);
+    }
+
+    public function updateOrderStatus(int $orderId, string $status): void
+    {
+        $this->wooService->updateOrderStatus($orderId, $status);
+        Toaster::success('Order status updated successfully');
     }
 
     public function render()

@@ -350,4 +350,11 @@ public function updateUser($id , $query = [])
         throw $e;
     }
 }
+
+public function updateOrderStatus($id, $status)
+{
+    return $this->put("orders/{$id}", [
+        'status' => $status
+    ]);
+}
 }
