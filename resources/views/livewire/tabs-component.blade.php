@@ -127,7 +127,9 @@
 
         <!-- محتوى تبويب الصفات (يظهر فقط للمنتج المتعدد) -->
         <div x-show="openTab === 4 && showAttributesTab" x-transition>
-            <livewire:variation-manager />
+            <livewire:variation-manager
+                :productId="$productId"
+            />
         </div>
 
         <div x-show="openTab === 5" x-transition>

@@ -23,9 +23,18 @@ class TabsComponent extends Component
     public $lowStockThreshold;
     public $terms;
     public $mrbpData = [];
+    public $productId;
     // protected $listeners  = ['productTypeChanged'];
 
     protected WooCommerceService $wooService;
+
+    public function mount($productType, $regularPrice = null, $productId)
+    {
+        $this->productType = $productType;
+        $this->localRegularPrice = $regularPrice;
+        $this->showAttributesTab = ($productType === 'variable');
+        $this->productId = $productId;
+    }
 
     public function boot(WooCommerceService $wooService): void
     {
@@ -38,7 +47,6 @@ class TabsComponent extends Component
         $this->productType = $type;
         $this->showAttributesTab = ($type === 'variable');
 
-        // إذا كان التبويب النشط هو تبويب الصفات وكان نوع المنتج بسيط، نعود للتبويب الأول
         if ($this->activeTab === 4 && $type === 'simple') {
             $this->activeTab = 1;
         }
@@ -51,21 +59,22 @@ class TabsComponent extends Component
 
     public function updated($field, $value)
     {
+        if ($field === 'productType') {
+            $this->showAttributesTab = ($value === 'variable');
+        }
+
         $data = [
             'regularPrice' => $this->localRegularPrice ?? '',
             'salePrice' => $this->localSalePrice ?? '',
             'sku' => $this->localSku ?? '',
         ];
 
-        $this->dispatch('updateMultipleFieldsFromTabs', $data)->to('pages.product.add');
+        $this->dispatch('updateMultipleFieldsFromTabs', $data)->to('pages.product.edit');
     }
-
 
     public function updatedMrbpData($name, $value)
     {
-        // if (is_string($name) && str_starts_with($name, 'mrbpData')) {
-            $this->dispatch('updateMrbpPrice', ['data' => $this->mrbpData])->to('pages.product.add');
-        // }
+        $this->dispatch('updateMrbpPrice', ['data' => $this->mrbpData])->to('pages.product.edit');
     }
 
     #[Computed()]

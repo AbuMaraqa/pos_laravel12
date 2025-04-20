@@ -26,6 +26,13 @@ class VariationManager extends Component
     public $allRegularPrice = '';
     public $allSalePrice = '';
     public $allStockQuantity = '';
+    public $productId;
+    protected WooCommerceService $wooService;
+
+    public function boot(WooCommerceService $wooService): void
+    {
+        $this->wooService = $wooService;
+    }
 
     protected $rules = [
         'variations.*.sku' => 'required|string|max:100',
@@ -49,10 +56,66 @@ class VariationManager extends Component
         'variations.*.description.max' => 'الوصف يجب أن لا يتجاوز 500 حرف',
     ];
 
-    public function mount()
+    public function mount($productId)
     {
-        $this->loadAttributesCount();
-        $this->loadAttributesPage();
+        try {
+            $this->productId = $productId;
+
+            // Get product data and existing variations
+            $product = $this->wooService->getProduct($this->productId);
+            $existingVariations = $this->wooService->getVariationsByProductId($this->productId);
+
+            // Get all available attributes with their terms
+            $allAttributes = $this->wooService->getAttributesWithTerms();
+
+            // Initialize attributes and terms
+            foreach ($allAttributes as $attribute) {
+                if (isset($attribute['id']) && isset($attribute['terms'])) {
+                    $this->loadedAttributes[] = $attribute;
+                    $this->attributeTerms[$attribute['id']] = $attribute['terms'];
+                    $this->selectedAttributes[$attribute['id']] = [];
+                }
+            }
+
+            // Process product attributes to mark which ones are used
+            if (isset($product['attributes']) && is_array($product['attributes'])) {
+                foreach ($product['attributes'] as $productAttr) {
+                    if (isset($productAttr['id']) && isset($productAttr['options']) && is_array($productAttr['options'])) {
+                        foreach ($productAttr['options'] as $option) {
+                            // Find the term ID that matches this option
+                            $termId = $this->findTermIdByName($productAttr['id'], $option);
+                            if ($termId) {
+                                $this->selectedAttributes[$productAttr['id']][$termId] = true;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Set attribute map from loaded attributes
+            $this->attributeMap = array_map(function($attr) {
+                return [
+                    'id' => $attr['id'],
+                    'name' => $attr['name']
+                ];
+            }, $this->loadedAttributes);
+
+            // Generate initial variations
+            $this->generateInitialVariations($existingVariations);
+
+            logger()->info('VariationManager mounted', [
+                'productId' => $this->productId,
+                'selectedAttributes' => $this->selectedAttributes,
+                'productAttributes' => $product['attributes'] ?? []
+            ]);
+
+        } catch (\Exception $e) {
+            logger()->error('Error in VariationManager mount:', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            session()->flash('error', 'حدث خطأ أثناء تحميل بيانات المنتج: ' . $e->getMessage());
+        }
     }
 
     protected function loadAttributesCount()
@@ -111,63 +174,23 @@ class VariationManager extends Component
 
     public function generateVariations()
     {
-        if (empty($this->selectedAttributes)) {
-            $this->variations = [];
-            return;
-        }
+        try {
+            $this->generateInitialVariations();
 
-        $this->variations = [];
-        $attributeOptions = [];
-        $this->attributeMap = [];
+            logger()->info('Variations generated', [
+                'count' => count($this->variations),
+                'variations' => $this->variations
+            ]);
 
-        // Pre-filter selected attributes to reduce processing
-        $filteredAttributes = array_filter($this->selectedAttributes, function($termMap) {
-            return !empty(array_filter($termMap));
-        });
+            session()->flash('success', sprintf('تم توليد %d متغير بنجاح', count($this->variations)));
+            $this->dispatch('variationsGenerated', ['count' => count($this->variations)]);
 
-        foreach ($filteredAttributes as $attributeId => $termMap) {
-            $termIds = array_keys(array_filter($termMap));
-            $terms = array_map(function ($termId) use ($attributeId) {
-                return [
-                    'id' => $termId,
-                    'name' => $this->getTermName($attributeId, $termId)
-                ];
-            }, $termIds);
-
-            $attribute = $this->getAttributeById($attributeId);
-            $attributeOptions[] = $terms;
-            $this->attributeMap[] = [
-                'id' => $attributeId,
-                'name' => $attribute['name'] ?? ''
-            ];
-        }
-
-        if (!empty($attributeOptions)) {
-            $combinations = $this->generateCombinations($attributeOptions);
-
-            // Pre-allocate the variations array with the exact size needed
-            $variationTemplate = [
-                'sku' => '',
-                'regular_price' => '',
-                'sale_price' => '',
-                'stock_quantity' => 0,
-                'active' => true,
-                'length' => '',
-                'width' => '',
-                'height' => '',
-                'description' => '',
-                'options' => [],
-            ];
-
-            $this->variations = array_fill(0, count($combinations), $variationTemplate);
-
-            // Fill in the options using array_map for better performance
-            $this->variations = array_map(function($variation, $combo) {
-                $variation['options'] = array_map(function($term) {
-                    return $term['name'];
-                }, $combo);
-                return $variation;
-            }, $this->variations, $combinations);
+        } catch (\Exception $e) {
+            logger()->error('Error generating variations', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            session()->flash('error', 'حدث خطأ أثناء توليد المتغيرات: ' . $e->getMessage());
         }
     }
 
@@ -216,18 +239,14 @@ class VariationManager extends Component
 
     protected function getTermName($attributeId, $termId)
     {
-        if (isset($this->termLookup[$attributeId][$termId])) {
-            return $this->termLookup[$attributeId][$termId]['name'];
-        }
-
-        // Fallback to search in attributeTerms if not found in lookup
-        foreach ($this->attributeTerms[$attributeId] ?? [] as $term) {
-            if ($term['id'] == $termId) {
-                return $term['name'];
+        if (isset($this->attributeTerms[$attributeId])) {
+            foreach ($this->attributeTerms[$attributeId] as $term) {
+                if ($term['id'] == $termId) {
+                    return $term['name'];
+                }
             }
         }
-
-        return '';
+        return null;
     }
 
     protected function generateCombinations($arrays)
@@ -248,6 +267,7 @@ class VariationManager extends Component
                 foreach ($current as $item) {
                     $temp[] = array_merge($product, [$item]);
                 }
+
             }
 
             $result = $temp;
@@ -261,9 +281,121 @@ class VariationManager extends Component
         return $result;
     }
 
+    protected function findAttributeId($attributeName)
+    {
+        foreach ($this->loadedAttributes as $attribute) {
+            if (strtolower($attribute['name']) === strtolower($attributeName)) {
+                return $attribute['id'];
+            }
+        }
+        return null;
+    }
+
+    protected function findTermIdByName($attributeId, $termName)
+    {
+        if (isset($this->attributeTerms[$attributeId])) {
+            foreach ($this->attributeTerms[$attributeId] as $term) {
+                if (strtolower($term['name']) === strtolower($termName)) {
+                    return $term['id'];
+                }
+            }
+        }
+        return null;
+    }
+
+    protected function generateInitialVariations($existingVariations = [])
+    {
+        try {
+            // Get all selected attributes and their values
+            $selectedAttributeValues = [];
+            foreach ($this->selectedAttributes as $attrId => $values) {
+                $selectedValues = array_keys(array_filter($values));
+                if (!empty($selectedValues)) {
+                    $selectedAttributeValues[$attrId] = $selectedValues;
+                }
+            }
+
+            if (empty($selectedAttributeValues)) {
+                return;
+            }
+
+            // Create a lookup for existing variations
+            $existingVariationsLookup = [];
+            foreach ($existingVariations as $variation) {
+                $key = [];
+                foreach ($variation['attributes'] as $attr) {
+                    $key[] = $attr['option'];
+                }
+                $existingVariationsLookup[implode('_', $key)] = $variation;
+            }
+
+            // Generate combinations
+            $combinations = $this->generateCombinations(array_values($selectedAttributeValues));
+            $newVariations = [];
+
+            foreach ($combinations as $combination) {
+                $options = [];
+                $attributes = [];
+                $i = 0;
+
+                foreach ($selectedAttributeValues as $attrId => $values) {
+                    if (isset($combination[$i])) {
+                        $termName = $this->getTermName($attrId, $combination[$i]);
+                        if ($termName) {
+                            $options[] = $termName;
+                            $attributes[] = [
+                                'id' => $attrId,
+                                'name' => $this->getAttributeById($attrId)['name'] ?? '',
+                                'option' => $termName
+                            ];
+                        }
+                    }
+                    $i++;
+                }
+
+                if (!empty($options)) {
+                    $key = implode('_', $options);
+                    if (isset($existingVariationsLookup[$key])) {
+                        // Use existing variation data
+                        $existingVar = $existingVariationsLookup[$key];
+                        $newVariations[] = [
+                            'id' => $existingVar['id'] ?? null,
+                            'regular_price' => $existingVar['regular_price'] ?? '',
+                            'sale_price' => $existingVar['sale_price'] ?? '',
+                            'stock_quantity' => $existingVar['stock_quantity'] ?? '',
+                            'description' => $existingVar['description'] ?? '',
+                            'options' => $options,
+                            'attributes' => $attributes
+                        ];
+                    } else {
+                        // Create new variation
+                        $newVariations[] = [
+                            'regular_price' => '',
+                            'sale_price' => '',
+                            'stock_quantity' => '',
+                            'description' => '',
+                            'options' => $options,
+                            'attributes' => $attributes
+                        ];
+                    }
+                }
+            }
+
+            // Update variations
+            $this->variations = $newVariations;
+
+        } catch (\Exception $e) {
+            logger()->error('Error generating initial variations', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+        }
+    }
+
     public function render()
     {
         return view('livewire.variation-manager');
     }
 }
+
 

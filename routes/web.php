@@ -39,6 +39,7 @@ Route::group(
 
     Route::get('/product/index', \App\Livewire\Pages\Product\Index::class)->name('product.index');
     Route::get('/product/add', \App\Livewire\Pages\Product\Add::class)->name('product.add');
+    Route::get('/products/{id}/edit', App\Livewire\Pages\Product\Edit::class)->name('products.edit');
 
     Route::get('/product/attributes/add', \App\Livewire\Pages\Product\Attributes\Index::class)->name('product.attributes.add');
 
@@ -48,6 +49,7 @@ Route::group(
     Route::get('/order/{order}/details', \App\Livewire\Pages\Order\Details::class)->name('order.details');
 
     Route::get('/user/index', \App\Livewire\Pages\User\Index::class)->name('user.index');
+
 });
 
 require __DIR__.'/auth.php';

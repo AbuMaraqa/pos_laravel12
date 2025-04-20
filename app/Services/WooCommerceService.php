@@ -136,6 +136,30 @@ class WooCommerceService
         return $this->get('products/categories', $query);
     }
 
+    public function getVariationsByProductId($productId): array
+    {
+        try {
+            $response = $this->get("products/{$productId}/variations", [
+                'per_page' => 100, // Get up to 100 variations
+                'status' => 'publish'
+            ]);
+
+            // Log the response for debugging
+            logger()->info('Retrieved variations for product', [
+                'productId' => $productId,
+                'count' => count($response)
+            ]);
+
+            return $response;
+        } catch (\Exception $e) {
+            logger()->error('Failed to get variations', [
+                'productId' => $productId,
+                'error' => $e->getMessage()
+            ]);
+            return [];
+        }
+    }
+
     public function getOrders(array $query = []): array
     {
         return $this->get('orders', $query);
@@ -355,6 +379,58 @@ public function updateOrderStatus($id, $status)
 {
     return $this->put("orders/{$id}", [
         'status' => $status
+    ]);
+}
+
+public function getProduct($id): array
+{
+    return $this->get('products/' . $id);
+}
+
+public function getMrbpData($productId): ?array
+{
+    $product = $this->getProduct($productId);
+
+    if (!$product || empty($product['meta_data'])) {
+        return null;
+    }
+
+    foreach ($product['meta_data'] as $meta) {
+        if ($meta['key'] === 'mrbp_role') {
+            $mrbpData = [];
+            foreach ($meta['value'] as $roleData) {
+                $role = array_key_first($roleData);
+                $mrbpData[$role] = [
+                    'regularPrice' => $roleData['mrbp_regular_price'] ?? '',
+                    'salePrice' => $roleData['mrbp_sale_price'] ?? ''
+                ];
+            }
+            return $mrbpData;
+        }
+    }
+
+    return null;
+}
+
+public function updateMrbpData($productId, array $mrbpData): array
+{
+    $formattedData = [];
+    foreach ($mrbpData as $role => $prices) {
+        $formattedData[] = [
+            $role => [
+                'mrbp_regular_price' => $prices['regularPrice'] ?? '',
+                'mrbp_sale_price' => $prices['salePrice'] ?? ''
+            ]
+        ];
+    }
+
+    return $this->put("products/{$productId}", [
+        'meta_data' => [
+            [
+                'key' => 'mrbp_role',
+                'value' => $formattedData
+            ]
+        ]
     ]);
 }
 }
