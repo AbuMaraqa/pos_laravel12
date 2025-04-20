@@ -433,4 +433,11 @@ public function updateMrbpData($productId, array $mrbpData): array
         ]
     ]);
 }
+
+public function updateProduct($id, $query = [])
+{
+    return $this->put("products/{$id}", [
+        'json' => $query,
+    ]);
+}
 }

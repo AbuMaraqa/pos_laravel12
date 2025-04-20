@@ -6,6 +6,7 @@ use Livewire\Component;
 use Livewire\WithFileUploads;
 use Livewire\Attributes\On;
 use App\Services\WooCommerceService;
+use Masmerise\Toaster\Toaster;
 
 class Edit extends Component
 {
@@ -30,7 +31,7 @@ class Edit extends Component
     public $selectedAttributes = [];
     public $mrbpData = [];
 
-    protected $wooService;
+    protected WooCommerceService $wooService;
 
     public function boot(WooCommerceService $wooService)
     {
@@ -168,81 +169,179 @@ class Edit extends Component
 
     public function syncBeforeSave()
     {
-        if ($this->productType === 'variable') {
-            $this->dispatch('requestLatestVariations')->to('variation-manager');
+        try {
+            if ($this->productType === 'variable') {
+                $this->dispatch('requestLatestVariations')->to('variation-manager');
+            }
+            $this->save();
+        } catch (\Exception $e) {
+            logger()->error('Error in syncBeforeSave', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            Toaster::error('حدث خطأ: ' . $e->getMessage());
         }
-
-        $this->save();
     }
 
     public function save()
     {
-        $productData = [
-            'name' => $this->productName,
-            'description' => $this->productDescription,
-            'type' => $this->productType,
-            'regular_price' => $this->regularPrice,
-            'sale_price' => $this->salePrice,
-            'sku' => $this->sku,
-            'stock_quantity' => $this->stockQuantity,
-            'stock_status' => $this->stockStatus,
-            'categories' => array_map(fn($id) => ['id' => $id], $this->selectedCategories),
-        ];
-
-        if ($this->productType === 'variable') {
-            $productData['variations'] = $this->variations;
-            $productData['attributes'] = $this->prepareAttributes();
-        }
-
-        // Handle image uploads if new images were added
-        if ($this->file) {
-            // Upload featured image
-            $featuredImageId = $this->wooService->uploadImage($this->file);
-            if ($featuredImageId) {
-                $productData['images'][] = ['id' => $featuredImageId];
+        try {
+            if (empty($this->productId)) {
+                throw new \Exception('معرف المنتج غير موجود');
             }
-        }
 
-        if ($this->files) {
-            // Upload gallery images
-            foreach ($this->files as $file) {
-                $imageId = $this->wooService->uploadImage($file);
-                if ($imageId) {
-                    $productData['images'][] = ['id' => $imageId];
+            logger()->info('Product data before save', [
+                'productId' => $this->productId,
+                'name' => $this->productName,
+                'type' => $this->productType,
+                'variations' => $this->variations,
+                'attributes' => $this->selectedAttributes
+            ]);
+
+            $productData = [];
+
+            // Basic product data
+            if (!empty($this->productName)) {
+                $productData['name'] = $this->productName;
+            }
+            if (!empty($this->productDescription)) {
+                $productData['description'] = $this->productDescription;
+            }
+            if (!empty($this->productType)) {
+                $productData['type'] = $this->productType;
+            }
+            if (!empty($this->regularPrice)) {
+                $productData['regular_price'] = (string)$this->regularPrice;
+            }
+            if (!empty($this->salePrice)) {
+                $productData['sale_price'] = (string)$this->salePrice;
+            }
+            if (!empty($this->sku)) {
+                $productData['sku'] = $this->sku;
+            }
+            if (isset($this->stockQuantity)) {
+                $productData['stock_quantity'] = (int)$this->stockQuantity;
+            }
+            if (!empty($this->stockStatus)) {
+                $productData['stock_status'] = $this->stockStatus;
+            }
+            if (!empty($this->selectedCategories)) {
+                $productData['categories'] = array_map(function($id) {
+                    return ['id' => (int)$id];
+                }, $this->selectedCategories);
+            }
+
+            // Handle variable product
+            if ($this->productType === 'variable') {
+                logger()->info('Processing variable product', [
+                    'variations_count' => count($this->variations)
+                ]);
+
+                if (!empty($this->variations)) {
+                    $processedVariations = [];
+                    foreach ($this->variations as $variation) {
+                        if (!is_array($variation)) {
+                            logger()->warning('Invalid variation data', ['variation' => $variation]);
+                            continue;
+                        }
+
+                        $processedVariation = [];
+
+                        if (isset($variation['id'])) {
+                            $processedVariation['id'] = (int)$variation['id'];
+                        }
+                        if (isset($variation['regular_price'])) {
+                            $processedVariation['regular_price'] = (string)$variation['regular_price'];
+                        }
+                        if (isset($variation['sale_price'])) {
+                            $processedVariation['sale_price'] = (string)$variation['sale_price'];
+                        }
+                        if (isset($variation['stock_quantity'])) {
+                            $processedVariation['stock_quantity'] = (int)$variation['stock_quantity'];
+                        }
+                        if (!empty($variation['attributes'])) {
+                            $processedVariation['attributes'] = array_map(function($attr) {
+                                return [
+                                    'id' => isset($attr['id']) ? (int)$attr['id'] : null,
+                                    'name' => $attr['name'] ?? '',
+                                    'option' => $attr['option'] ?? ''
+                                ];
+                            }, $variation['attributes']);
+                        }
+
+                        $processedVariations[] = $processedVariation;
+                    }
+
+                    $productData['variations'] = $processedVariations;
+                }
+
+                // Process attributes
+                if (!empty($this->selectedAttributes)) {
+                    $attributes = [];
+                    foreach ($this->selectedAttributes as $attrId => $terms) {
+                        if (empty($terms)) continue;
+
+                        $selectedTerms = array_keys(array_filter($terms));
+                        if (!empty($selectedTerms)) {
+                            $attributes[] = [
+                                'id' => (int)$attrId,
+                                'variation' => true,
+                                'visible' => true,
+                                'options' => array_values($selectedTerms)
+                            ];
+                        }
+                    }
+                    if (!empty($attributes)) {
+                        $productData['attributes'] = $attributes;
+                    }
                 }
             }
-        }
 
-        try {
-            // Update the product
-            $updatedProduct = $this->wooService->updateProduct($this->productId, $productData);
+            // Handle images
+            $images = [];
+            if ($this->file) {
+                $featuredImageId = $this->wooService->uploadImage($this->file);
+                if ($featuredImageId) {
+                    $images[] = ['id' => (int)$featuredImageId];
+                }
+            }
+            if (!empty($this->files)) {
+                foreach ($this->files as $file) {
+                    $imageId = $this->wooService->uploadImage($file);
+                    if ($imageId) {
+                        $images[] = ['id' => (int)$imageId];
+                    }
+                }
+            }
+            if (!empty($images)) {
+                $productData['images'] = $images;
+            }
 
-            // Update MRBP data if needed
+            logger()->info('Final product data', ['data' => $productData]);
+
+            // Update product
+            $response = $this->wooService->updateProduct($this->productId, $productData);
+
+            if (empty($response)) {
+                throw new \Exception('لم يتم استلام رد من الخادم');
+            }
+
             if (!empty($this->mrbpData)) {
                 $this->wooService->updateMrbpData($this->productId, $this->mrbpData);
             }
 
-            session()->flash('success', 'Product updated successfully');
+            Toaster::success('تم تحديث المنتج بنجاح');
             return redirect()->route('products.index');
-        } catch (\Exception $e) {
-            session()->flash('error', 'Failed to update product: ' . $e->getMessage());
-        }
-    }
 
-    protected function prepareAttributes()
-    {
-        $attributes = [];
-        foreach ($this->selectedAttributes as $attributeId => $terms) {
-            $selectedTerms = array_keys(array_filter($terms));
-            if (!empty($selectedTerms)) {
-                $attributes[] = [
-                    'id' => $attributeId,
-                    'options' => $selectedTerms,
-                    'variation' => true,
-                ];
-            }
+        } catch (\Exception $e) {
+            logger()->error('Error saving product', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'productData' => $productData ?? null
+            ]);
+
+            Toaster::error('فشل في حفظ المنتج: ' . $e->getMessage());
         }
-        return $attributes;
     }
 
     public function updatedProductType($value)
