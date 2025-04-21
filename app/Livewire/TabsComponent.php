@@ -67,8 +67,18 @@ class TabsComponent extends Component
             'regularPrice' => $this->localRegularPrice ?? '',
             'salePrice' => $this->localSalePrice ?? '',
             'sku' => $this->localSku ?? '',
+            'productId' => $this->productId ?? '',
+            'productType' => $this->productType ?? '',
+            'isStockManagementEnabled' => $this->isStockManagementEnabled ?? '',
+            'stockQuantity' => $this->stockQuantity ?? '',
+            'stockStatus' => $this->stockStatus ?? '',
+            'soldIndividually' => $this->soldIndividually ?? '',
+            'allowBackorders' => $this->allowBackorders ?? '',
+            'lowStockThreshold' => $this->lowStockThreshold ?? '',
+            'terms' => $this->terms ?? '',
         ];
 
+        dd($data);
         $this->dispatch('updateMultipleFieldsFromTabs', $data)->to('pages.product.edit');
     }
 

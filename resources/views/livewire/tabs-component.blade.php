@@ -78,7 +78,7 @@
         <!-- محتوى التبويب الثاني -->
         <div x-show="openTab === 2" x-transition>
             <div class="mb-3">
-                <flux:checkbox x-model="isStockManagementEnabled" value="Stock management"
+                <flux:checkbox x-model="isStockManagementEnabled" wire:model.live="isStockManagementEnabled" value="Stock management"
                     label="{{ __('Stock management') }}"
                     description="{{ __('Track stock quantity for this product.') }}" />
             </div>
@@ -86,10 +86,10 @@
             <!-- الحقول التي تظهر فقط عند تفعيل Stock Management -->
             <div x-show="showStockFields()" x-transition>
                 <div class="mb-3">
-                    <flux:input wire:model="stockQuantity" label="{{ __('Stock Quantity') }}" />
+                    <flux:input wire:model.live="stockQuantity" label="{{ __('Stock Quantity') }}" />
                 </div>
                 <div class="mb-3">
-                    <flux:radio.group wire:model="allowBackorders" variant="segmented"
+                    <flux:radio.group wire:model.live="allowBackorders" variant="segmented"
                         label="{{ __('Allow Backorders?') }}">
                         <flux:radio value="0" label="{{ __('Do not allow') }}" />
                         <flux:radio value="1" label="{{ __('Allow, but notify customer') }}" />
@@ -97,7 +97,7 @@
                     </flux:radio.group>
                 </div>
                 <div class="mb-3">
-                    <flux:input wire:model="lowStockThreshold" label="{{ __('Low Stock Threshold') }}" />
+                    <flux:input wire:model.live="lowStockThreshold" label="{{ __('Low Stock Threshold') }}" />
                 </div>
             </div>
 
@@ -115,7 +115,7 @@
 
             <!-- التفاعل مع الخيارات المدفوعة -->
             <div class="mb-3">
-                <flux:checkbox wire:model="terms" label="{{ __('Sold individually') }}" />
+                <flux:checkbox wire:model="soldIndividually" label="{{ __('Sold individually') }}" />
             </div>
         </div>
 

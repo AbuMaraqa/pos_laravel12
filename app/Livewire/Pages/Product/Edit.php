@@ -23,6 +23,7 @@ class Edit extends Component
     public $sku;
     public $stockQuantity;
     public $stockStatus;
+    public $soldIndividually;
     public $selectedCategories = [];
     public $featuredImage;
     public $galleryImages = [];
@@ -44,6 +45,11 @@ class Edit extends Component
         'file' => 'nullable|image|max:2048', // 2MB كحد أقصى
         'files.*' => 'nullable|image|max:2048',
     ];
+
+    // خصائص للتحديث الجماعي للمتغيرات
+    public $allRegularPrice = '';
+    public $allSalePrice = '';
+    public $allStockQuantity = '';
 
     protected WooCommerceService $wooService;
 
@@ -68,56 +74,137 @@ class Edit extends Component
         }
     }
 
+    /**
+     * تجهيز متغيرات المنتج بناءً على الخصائص المحددة
+     */
     public function generateVariations()
     {
-        $filtered = [];
-
-        foreach ($this->selectedAttributes as $attributeId => $termIds) {
-            if (is_array($termIds) && count($termIds)) {
-                $filtered[$attributeId] = $termIds;
-            }
+        if ($this->productType !== 'variable') {
+            session()->flash('error', 'هذه الوظيفة متاحة فقط للمنتجات المتغيرة');
+            return;
         }
 
-        $this->selectedAttributes = $filtered;
+        if (empty($this->selectedAttributes)) {
+            session()->flash('error', 'يجب تحديد خاصية واحدة على الأقل قبل إنشاء المتغيرات');
+            return;
+        }
 
-        $attributeOptions = [];
-        $this->attributeMap = []; // تأكد من تصفيرها أولاً
+        try {
+            Log::info('بدء توليد المتغيرات', [
+                'product_id' => $this->productId,
+                'selected_attributes' => $this->selectedAttributes
+            ]);
 
-        foreach ($this->selectedAttributes as $attributeId => $termIds) {
-            $terms = $this->attributeTerms[$attributeId] ?? [];
-            $termNames = [];
+            // تصفية الخصائص غير المحددة
+            $filtered = [];
+            foreach ($this->selectedAttributes as $attributeId => $termIds) {
+                if (is_array($termIds) && count($termIds)) {
+                    $filtered[$attributeId] = $termIds;
+                }
+            }
+            $this->selectedAttributes = $filtered;
 
-            foreach ($termIds as $id) {
-                $term = collect($terms)->firstWhere('id', $id);
-                if ($term) {
-                    $termNames[] = $term['name'];
+            // تحضير خيارات الخصائص
+            $attributeOptions = [];
+            $this->attributeMap = []; // تصفير الخريطة
+
+            foreach ($this->selectedAttributes as $attributeId => $termIds) {
+                $terms = $this->attributeTerms[$attributeId] ?? [];
+                $termNames = [];
+
+                foreach ($termIds as $id) {
+                    $term = collect($terms)->firstWhere('id', $id);
+                    if ($term) {
+                        $termNames[] = $term['name'];
+                    }
+                }
+
+                if (!empty($termNames)) {
+                    $attributeOptions[$attributeId] = $termNames;
+                    $this->attributeMap[] = [
+                        'id' => $attributeId,
+                        'name' => collect($this->productAttributes)->firstWhere('id', $attributeId)['name'] ?? 'خاصية',
+                    ];
                 }
             }
 
-            if (!empty($termNames)) {
-                $attributeOptions[$attributeId] = $termNames;
-                $this->attributeMap[] = [
-                    'id' => $attributeId,
-                    'name' => collect($this->productAttributes)->firstWhere('id', $attributeId)['name'] ?? 'خاصية',
-                ];
+            // توليد مجموعات المتغيرات
+            $combinations = $this->cartesian(array_values($attributeOptions));
+            $existingVariationOptions = collect($this->variations)->map(fn($v) => $v['options'] ?? [])->toArray();
+
+            // تحضير المتغيرات الجديدة مع الاحتفاظ بالبيانات الموجودة
+            $newVariations = [];
+
+            foreach ($combinations as $combo) {
+                // البحث عن متغير موجود بنفس الخيارات
+                $existingVariation = null;
+                foreach ($this->variations as $index => $variation) {
+                    if (isset($variation['options']) && $this->areOptionsEqual($variation['options'], $combo)) {
+                        $existingVariation = $variation;
+                        break;
+                    }
+                }
+
+                if ($existingVariation) {
+                    // استخدام المتغير الموجود
+                    $newVariations[] = $existingVariation;
+                } else {
+                    // إنشاء متغير جديد
+                    $newVariations[] = [
+                        'options' => $combo,
+                        'sku' => '',
+                        'regular_price' => '',
+                        'sale_price' => '',
+                        'stock_quantity' => '',
+                        'active' => true,
+                        'length' => '',
+                        'width' => '',
+                        'height' => '',
+                        'description' => '',
+                    ];
+                }
+            }
+
+            $this->variations = $newVariations;
+
+            Log::info('تم توليد المتغيرات بنجاح', [
+                'product_id' => $this->productId,
+                'variations_count' => count($this->variations)
+            ]);
+
+            session()->flash('success', 'تم توليد ' . count($this->variations) . ' متغير بنجاح');
+
+        } catch (\Exception $e) {
+            Log::error('خطأ في توليد المتغيرات', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            session()->flash('error', 'حدث خطأ أثناء توليد المتغيرات: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * مقارنة خيارات متغيرين
+     */
+    private function areOptionsEqual($options1, $options2)
+    {
+        if (count($options1) !== count($options2)) {
+            return false;
+        }
+
+        foreach ($options1 as $i => $option) {
+            if (isset($options2[$i]) && $option !== $options2[$i]) {
+                return false;
             }
         }
 
-        $combinations = $this->cartesian(array_values($attributeOptions));
-        $this->variations = array_map(fn($combo) => [
-            'options' => $combo,
-            'sku' => '',
-            'regular_price' => '',
-            'sale_price' => '',
-            'stock_quantity' => '',
-            'active' => true,
-            'length' => '',
-            'width' => '',
-            'height' => '',
-            'description' => '',
-        ], $combinations);
+        return true;
     }
 
+    /**
+     * توليد مجموعات المتغيرات (الضرب الديكارتي)
+     */
     protected function cartesian($arrays)
     {
         if (empty($arrays)) return [];
@@ -135,6 +222,57 @@ class Edit extends Component
         }
 
         return $result;
+    }
+
+    /**
+     * تطبيق سعر موحد على جميع المتغيرات
+     */
+    public function applyBulkPrices()
+    {
+        if (empty($this->variations)) {
+            session()->flash('error', 'لا توجد متغيرات لتطبيق الأسعار عليها');
+            return;
+        }
+
+        try {
+            $updatedCount = 0;
+
+            foreach ($this->variations as $index => $variation) {
+                if (!empty($this->allRegularPrice)) {
+                    $this->variations[$index]['regular_price'] = $this->allRegularPrice;
+                    $updatedCount++;
+                }
+
+                if (!empty($this->allSalePrice)) {
+                    $this->variations[$index]['sale_price'] = $this->allSalePrice;
+                }
+
+                if (!empty($this->allStockQuantity)) {
+                    $this->variations[$index]['stock_quantity'] = $this->allStockQuantity;
+                }
+            }
+
+            Log::info('تم تطبيق التحديث الجماعي على الأسعار', [
+                'regular_price' => $this->allRegularPrice,
+                'sale_price' => $this->allSalePrice,
+                'stock_quantity' => $this->allStockQuantity,
+                'updated_variations' => $updatedCount
+            ]);
+
+            // إفراغ القيم بعد التطبيق
+            $this->allRegularPrice = '';
+            $this->allSalePrice = '';
+            $this->allStockQuantity = '';
+
+            session()->flash('success', 'تم تطبيق الأسعار على ' . $updatedCount . ' متغير');
+
+        } catch (\Exception $e) {
+            Log::error('خطأ في تطبيق الأسعار الجماعية', [
+                'error' => $e->getMessage()
+            ]);
+
+            session()->flash('error', 'حدث خطأ أثناء تطبيق الأسعار: ' . $e->getMessage());
+        }
     }
 
     protected function loadProduct()
@@ -226,6 +364,9 @@ class Edit extends Component
         $this->regularPrice = $data['regularPrice'] ?? $this->regularPrice;
         $this->salePrice = $data['salePrice'] ?? $this->salePrice;
         $this->sku = $data['sku'] ?? $this->sku;
+        $this->stockQuantity = $data['stockQuantity'] ?? $this->stockQuantity;
+        $this->stockStatus = $data['stockStatus'] ?? $this->stockStatus;
+        $this->soldIndividually = $data['soldIndividually'] ?? $this->soldIndividually;
     }
 
     #[On('updateMrbpPrice')]
@@ -349,6 +490,11 @@ class Edit extends Component
     public function save()
     {
         try {
+            Log::info('بدء حفظ المنتج', [
+                'product_id' => $this->productId,
+                'product_type' => $this->productType
+            ]);
+
             // تجهيز بيانات المنتج الأساسية
             $productData = [
                 'name' => $this->productName,
@@ -380,37 +526,95 @@ class Edit extends Component
             // أضف الخصائص إذا كان المنتج متغير
             if ($this->productType === 'variable') {
                 $attributes = $this->prepareAttributes();
-                \Illuminate\Support\Facades\Log::info('Prepared attributes', ['attributes' => $attributes]);
-                $productData['attributes'] = $attributes;
+
+                Log::info('تم تجهيز خصائص المنتج المتغير', [
+                    'attributes_count' => count($attributes),
+                    'attributes' => $attributes
+                ]);
+
+                if (empty($attributes)) {
+                    session()->flash('warning', 'لم يتم إضافة أي خصائص للمنتج المتغير. سيتم حفظه كمنتج بسيط.');
+                    $this->productType = 'simple';
+                    $productData['type'] = 'simple';
+                } else {
+                    $productData['attributes'] = $attributes;
+                }
             }
 
-            $log = "بيانات المنتج قبل التحديث: " . json_encode($productData);
-            \Illuminate\Support\Facades\Log::info($log);
-
-            // يمكنك استخدام dd للتوقف مؤقتاً والتحقق من البيانات قبل الحفظ
-            // dd($productData);
-
-            $updatedProduct = $this->wooService->updateProduct($this->productId, $productData);
-
-            // تحديث تسعيرة MRBP إن وجدت
-            if (!empty($this->mrbpData)) {
-                $this->wooService->updateMrbpData($this->productId, $this->mrbpData);
-            }
-
-            // تحديث المتغيرات في حال كان المنتج متغير
-            if ($this->productType === 'variable' && !empty($this->variations)) {
-                $this->wooService->syncVariations($this->productId, $this->variations);
+            else {
+                $productData['attributes'] = [];
+                $productData['stock_quantity'] = $this->stockQuantity;
+                $productData['stock_status '] = $this->stockStatus;
+                $productData['sold_individually '] = $this->soldIndividually;
             }
 
             dd($productData);
 
-            \Illuminate\Support\Facades\Log::info('Product updated successfully', ['product_id' => $this->productId]);
+
+
+            Log::info('بيانات المنتج قبل التحديث', [
+                'product_id' => $this->productId,
+                'product_data' => $productData
+            ]);
+
+            // تحديث المنتج
+            $updatedProduct = $this->wooService->updateProduct($this->productId, $productData);
+
+            if (!$updatedProduct) {
+                throw new \Exception('فشل تحديث المنتج الأساسي');
+            }
+
+            Log::info('تم تحديث المنتج بنجاح', [
+                'product_id' => $this->productId
+            ]);
+
+            // تحديث تسعيرة MRBP إن وجدت
+            if (!empty($this->mrbpData)) {
+                try {
+                    $this->wooService->updateMrbpData($this->productId, $this->mrbpData);
+                    Log::info('تم تحديث بيانات MRBP بنجاح', [
+                        'product_id' => $this->productId
+                    ]);
+                } catch (\Exception $e) {
+                    Log::error('خطأ في تحديث بيانات MRBP', [
+                        'error' => $e->getMessage()
+                    ]);
+                    // نكمل عملية الحفظ حتى مع فشل تحديث MRBP
+                }
+            }
+
+            // تحديث المتغيرات في حال كان المنتج متغير
+            if ($this->productType === 'variable' && !empty($this->variations)) {
+                try {
+                    $syncResult = $this->wooService->syncVariations($this->productId, $this->variations);
+
+                    Log::info('تم مزامنة المتغيرات بنجاح', [
+                        'product_id' => $this->productId,
+                        'created' => $syncResult['created'] ?? 0,
+                        'updated' => $syncResult['updated'] ?? 0
+                    ]);
+                } catch (\Exception $e) {
+                    Log::error('خطأ في مزامنة المتغيرات', [
+                        'error' => $e->getMessage(),
+                        'trace' => $e->getTraceAsString()
+                    ]);
+
+                    // إظهار الخطأ ولكن نكمل عملية الحفظ
+                    session()->flash('warning', 'تم تعديل المنتج الأساسي، لكن حدث خطأ في تحديث المتغيرات: ' . $e->getMessage());
+                }
+            }
+
+            Log::info('تم تعديل المنتج بنجاح', [
+                'product_id' => $this->productId,
+                'product_type' => $this->productType
+            ]);
+
             session()->flash('success', 'تم تعديل المنتج بنجاح');
             return redirect()->route('products.index');
 
         } catch (\Exception $e) {
             // تسجيل الخطأ بشكل مفصل
-            \Illuminate\Support\Facades\Log::error('Error updating product', [
+            Log::error('خطأ في تحديث المنتج', [
                 'product_id' => $this->productId,
                 'error' => $e->getMessage(),
                 'file' => $e->getFile(),
@@ -419,14 +623,8 @@ class Edit extends Component
             ]);
 
             // عرض رسالة خطأ مفصلة للمستخدم
-            $error = "فشل تعديل المنتج: " . $e->getMessage() .
-                     " في الملف " . $e->getFile() .
-                     " السطر " . $e->getLine();
-
+            $error = "فشل تعديل المنتج: " . $e->getMessage();
             session()->flash('error', $error);
-
-            // يمكنك أيضًا عرض النتيجة مباشرة (ليس مستحسنًا في الإنتاج)
-            // dd("خطأ: " . $e->getMessage(), $e->getTraceAsString());
         }
     }
 
@@ -769,7 +967,70 @@ class Edit extends Component
 
     public function updatedProductType($value)
     {
+        // تسجيل تغيير نوع المنتج
+        Log::info('تم تغيير نوع المنتج', [
+            'product_id' => $this->productId,
+            'old_type' => $this->productType !== $value ? $this->productType : 'unknown',
+            'new_type' => $value
+        ]);
+
+        // إرسال حدث تغيير نوع المنتج إلى مكونات أخرى
         $this->dispatch('productTypeChanged', $value)->to('tabs-component');
+
+        // إذا تم التغيير من بسيط إلى متغير، تأكد من وجود خصائص
+        if ($value === 'variable' && empty($this->attributeMap)) {
+            // إعلام المستخدم بضرورة إضافة خصائص للمنتج المتغير
+            session()->flash('info', 'للمنتج المتغير، يجب إضافة خصائص وإنشاء متغيرات');
+        }
+
+        // إذا تم التغيير من متغير إلى بسيط، تأكد من تحديث الواجهة
+        if ($value === 'simple' && !empty($this->variations)) {
+            // إعلام المستخدم بأن المتغيرات لن يتم حفظها
+            session()->flash('warning', 'تم التغيير إلى منتج بسيط. لن يتم حفظ المتغيرات.');
+            // إفراغ المتغيرات لتجنب التشوش
+            $this->variations = [];
+            $this->attributeMap = [];
+            $this->selectedAttributes = [];
+        }
+    }
+
+    /**
+     * تحويل المنتج البسيط إلى متغير
+     */
+    public function convertToVariable()
+    {
+        $this->productType = 'variable';
+        $this->updatedProductType('variable');
+
+        // إعادة توجيه المستخدم إلى تبويب الخصائص
+        $this->dispatch('switchTab', 'attributes')->to('tabs-component');
+
+        session()->flash('info', 'تم تحويل المنتج إلى متغير. يرجى إضافة الخصائص والمتغيرات.');
+    }
+
+    /**
+     * تحويل المنتج المتغير إلى بسيط
+     */
+    public function convertToSimple()
+    {
+        // تأكيد قبل التحويل
+        if (!empty($this->variations)) {
+            if (!session()->has('confirm_simple_conversion')) {
+                session()->flash('confirm_simple_conversion', true);
+                session()->flash('warning', 'تحويل المنتج إلى بسيط سيؤدي إلى فقدان جميع المتغيرات. هل تريد المتابعة؟');
+                return;
+            }
+
+            session()->forget('confirm_simple_conversion');
+        }
+
+        $this->productType = 'simple';
+        $this->updatedProductType('simple');
+
+        // إعادة توجيه المستخدم إلى تبويب المعلومات العامة
+        $this->dispatch('switchTab', 'general')->to('tabs-component');
+
+        session()->flash('info', 'تم تحويل المنتج إلى بسيط.');
     }
 
     public function getCategories(): array
