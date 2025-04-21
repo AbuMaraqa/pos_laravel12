@@ -129,6 +129,7 @@
         <div x-show="openTab === 4 && showAttributesTab" x-transition>
             <livewire:variation-manager
                 :productId="$productId"
+                :key="'variation-manager-'.$productId"
             />
         </div>
 

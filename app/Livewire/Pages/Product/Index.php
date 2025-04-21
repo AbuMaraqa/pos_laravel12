@@ -34,7 +34,8 @@ class Index extends Component
 
     public function mount(): void
     {
-        $this->categories = $this->wooService->getCategories(['parent' => 0]);
+        $response = $this->wooService->getCategories(['parent' => 0]);
+        $this->categories = $response['data'] ?? []; // 🔥 المهم
     }
 
     public function updatedSearch(): void
@@ -59,11 +60,15 @@ class Index extends Component
         $product = $this->wooService->getProductsById($productId);
         $this->product = $product;
         $this->quantities = ['main' => 1];
-        foreach ($product['variations'] as $variation) {
-            $this->variations[$variation] = $this->wooService->getProductsById($variation);
+        $this->variations = [];
+
+        foreach ($product['variations'] ?? [] as $variationId) {
+            $variation = $this->wooService->getProductsById($variationId);
+            $this->variations[] = $variation;
+            $this->quantities[$variationId] = 1;
         }
+
         $this->modal('barcode-product-modal')->show();
-//        $this->dispatch('open-modal', name: 'barcode-product-modal');
     }
 
     public function printBarcodes()

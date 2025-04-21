@@ -228,6 +228,71 @@ class WooCommerceService
         return $this->delete("products/attributes/{$attributeId}/terms/{$termId}", $query);
     }
 
+    public function updateProduct($productId, array $data, array $queryParams = []): array
+    {
+        try {
+            logger()->info('Updating product', [
+                'productId' => $productId,
+                'data' => $data
+            ]);
+
+            return $this->put("products/{$productId}", $data);
+
+        } catch (\Exception $e) {
+            logger()->error('Failed to update product', [
+                'productId' => $productId,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            throw $e;
+        }
+    }
+
+    public function updateProductAttributes($productId, array $data): array
+    {
+        try {
+            logger()->info('Updating product attributes', [
+                'productId' => $productId,
+                'data' => $data
+            ]);
+
+            // First update the product attributes
+            if (isset($data['attributes'])) {
+                $productData = ['attributes' => $data['attributes']];
+                $this->put("products/{$productId}", $productData);
+            }
+
+            // Then update or create variations
+            if (isset($data['variations'])) {
+                foreach ($data['variations'] as $variation) {
+                    if (isset($variation['id'])) {
+                        // Update existing variation
+                        $this->put("products/{$productId}/variations/{$variation['id']}", $variation);
+                    } else {
+                        // Create new variation
+                        $this->post("products/{$productId}/variations", $variation);
+                    }
+                }
+            }
+
+            return [
+                'success' => true,
+                'message' => 'Product attributes and variations updated successfully'
+            ];
+        } catch (\Exception $e) {
+            logger()->error('Failed to update product attributes', [
+                'productId' => $productId,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return [
+                'success' => false,
+                'message' => $e->getMessage()
+            ];
+        }
+    }
+
     public function uploadImage($file)
     {
         try {
@@ -434,10 +499,130 @@ public function updateMrbpData($productId, array $mrbpData): array
     ]);
 }
 
-public function updateProduct($id, $query = [])
+public function syncVariations($productId, array $variations): array
 {
-    return $this->put("products/{$id}", [
-        'json' => $query,
-    ]);
+    try {
+        logger()->info('Syncing variations for product', [
+            'productId' => $productId,
+            'variationsCount' => count($variations)
+        ]);
+
+        // 1. Get existing variations to compare
+        $existingVariations = $this->getVariationsByProductId($productId);
+        $existingVariationsMap = [];
+
+        foreach ($existingVariations as $variation) {
+            $existingVariationsMap[$variation['id']] = $variation;
+        }
+
+        $results = [
+            'created' => 0,
+            'updated' => 0,
+            'deleted' => 0,
+            'errors' => []
+        ];
+
+        // 2. Process each variation
+        foreach ($variations as $variation) {
+            try {
+                // تجهيز بيانات المتغيّر
+                $variationData = [
+                    'regular_price' => $variation['regular_price'] ?? '',
+                    'sale_price' => $variation['sale_price'] ?? '',
+                    'stock_quantity' => $variation['stock_quantity'] ?? 0,
+                    'description' => $variation['description'] ?? ''
+                ];
+
+                // إضافة الخصائص للمتغيّر
+                if (isset($variation['options']) && !empty($variation['options'])) {
+                    $attributes = [];
+                    foreach ($variation['options'] as $index => $option) {
+                        if (isset($variation['attributes'][$index]) && isset($variation['attributes'][$index]['id'])) {
+                            $attributes[] = [
+                                'id' => $variation['attributes'][$index]['id'],
+                                'option' => $option
+                            ];
+                        }
+                    }
+                    if (!empty($attributes)) {
+                        $variationData['attributes'] = $attributes;
+                    }
+                }
+
+                // إضافة صورة إذا وجدت
+                if (isset($variation['image']) && !empty($variation['image'])) {
+                    if (is_string($variation['image'])) {
+                        $variationData['image'] = ['src' => $variation['image']];
+                    } else if (isset($variation['image']['src'])) {
+                        $variationData['image'] = ['src' => $variation['image']['src']];
+                    }
+                }
+
+                // تحديث أو إنشاء
+                if (isset($variation['id']) && !empty($variation['id'])) {
+                    // Update existing variation
+                    $this->put("products/{$productId}/variations/{$variation['id']}", $variationData);
+                    $results['updated']++;
+
+                    // Remove from map to track which variations need to be deleted
+                    if (isset($existingVariationsMap[$variation['id']])) {
+                        unset($existingVariationsMap[$variation['id']]);
+                    }
+                } else {
+                    // Create new variation
+                    $this->post("products/{$productId}/variations", $variationData);
+                    $results['created']++;
+                }
+            } catch (\Exception $e) {
+                $results['errors'][] = [
+                    'message' => $e->getMessage(),
+                    'variation' => $variation
+                ];
+
+                logger()->error('Error processing variation', [
+                    'error' => $e->getMessage(),
+                    'variation' => $variation
+                ]);
+            }
+        }
+
+        // 3. Delete variations that no longer exist
+        foreach ($existingVariationsMap as $variationId => $variation) {
+            try {
+                // Only delete if the client requested management of all variations
+                $this->delete("products/{$productId}/variations/{$variationId}");
+                $results['deleted']++;
+            } catch (\Exception $e) {
+                $results['errors'][] = [
+                    'message' => $e->getMessage(),
+                    'variation_id' => $variationId
+                ];
+
+                logger()->error('Error deleting variation', [
+                    'error' => $e->getMessage(),
+                    'variation_id' => $variationId
+                ]);
+            }
+        }
+
+        logger()->info('Variations sync completed', $results);
+
+        return [
+            'success' => true,
+            'results' => $results
+        ];
+
+    } catch (\Exception $e) {
+        logger()->error('Failed to sync variations', [
+            'productId' => $productId,
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+
+        return [
+            'success' => false,
+            'message' => $e->getMessage()
+        ];
+    }
 }
 }

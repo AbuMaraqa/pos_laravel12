@@ -68,16 +68,51 @@
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
         @foreach ($loadedAttributes as $attribute)
             <div class="p-4 border rounded shadow-md bg-white">
-                <h3 class="font-semibold text-xl mb-2">{{ $attribute['name'] }}</h3>
+                <h3 class="font-semibold text-xl mb-2">{{ $attribute['name'] }} <span class="text-sm text-gray-500">({{ count($attributeTerms[$attribute['id']] ?? []) }})</span></h3>
                 <div class="flex flex-wrap gap-2">
+                    @php
+                        $hasSelectedTerms = false;
+                        if (isset($selectedAttributes[$attribute['id']])) {
+                            if (is_array($selectedAttributes[$attribute['id']])) {
+                                $hasSelectedTerms = count(array_filter($selectedAttributes[$attribute['id']])) > 0;
+                            } else {
+                                $hasSelectedTerms = count($selectedAttributes[$attribute['id']]) > 0;
+                            }
+                        }
+                    @endphp
+
+                    @if ($hasSelectedTerms && is_array($selectedAttributes[$attribute['id']]))
+                        <div class="mb-2 w-full p-2 bg-blue-50 text-blue-700 text-sm rounded">
+                            المحدد:
+                            @foreach($selectedAttributes[$attribute['id']] as $termId => $isSelected)
+                                @if($isSelected)
+                                    @php
+                                        $termName = '';
+                                        foreach ($attributeTerms[$attribute['id']] ?? [] as $term) {
+                                            if ($term['id'] == $termId) {
+                                                $termName = $term['name'];
+                                                break;
+                                            }
+                                        }
+                                    @endphp
+                                    <span class="inline-block px-2 py-1 m-1 bg-blue-100 text-blue-800 rounded-full">{{ $termName }}</span>
+                                @endif
+                            @endforeach
+                        </div>
+                    @endif
+
                     @foreach ($attributeTerms[$attribute['id']] ?? [] as $term)
-                        <label class="inline-flex items-center">
+                        <label class="inline-flex items-center p-2 border rounded-md hover:bg-gray-50 cursor-pointer
+                            @if(isset($selectedAttributes[$attribute['id']][$term['id']]) && $selectedAttributes[$attribute['id']][$term['id']])
+                                bg-blue-50 border-blue-300
+                            @endif"
+                        >
                             <input
                                 type="checkbox"
                                 wire:model.live="selectedAttributes.{{ $attribute['id'] }}.{{ $term['id'] }}"
-                                class="form-checkbox"
+                                class="form-checkbox h-5 w-5 text-blue-600"
                             >
-                            <span class="mr-2">{{ $term['name'] }}</span>
+                            <span class="mr-2 text-sm">{{ $term['name'] }}</span>
                         </label>
                     @endforeach
                 </div>
@@ -149,18 +184,18 @@
                                 </th>
                             @endforeach
                             <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                <span class="sr-only">السعر</span>
-                                <span><input type="number" wire:model.live="allRegularPrice" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500"></span>
+                                <span>{{ __('السعر') }}</span>
+                                <div><input type="number" wire:model.blur="allRegularPrice" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500" placeholder="السعر للكل"></div>
                             </th>
                             <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                <span class="sr-only">السعر الخصم</span>
-                                <span><input type="number" wire:model.live="allSalePrice" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500"></span>
+                                <span>{{ __('سعر الخصم') }}</span>
+                                <div><input type="number" wire:model.blur="allSalePrice" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500" placeholder="سعر الخصم للكل"></div>
                             </th>
                             <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                <span class="sr-only">الكمية</span>
-                                <span><input type="number" wire:model.live="allStockQuantity" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500"></span>
+                                <span>{{ __('الكمية') }}</span>
+                                <div><input type="number" wire:model.blur="allStockQuantity" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500" placeholder="الكمية للكل"></div>
                             </th>
-                            <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">الوصف</th>
+                            <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{{ __('الوصف') }}</th>
                         </tr>
                     </thead>
                     <tbody class="bg-white divide-y divide-gray-200">
@@ -170,21 +205,70 @@
                                     <td class="px-6 py-4 whitespace-nowrap">{{ $option }}</td>
                                 @endforeach
                                 <td class="px-6 py-4 whitespace-nowrap">
-                                    <flux:input wire:model="variations.{{ $index }}.regular_price" class="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500" style="background-color: #FACA15;" />
+                                    <input
+                                        type="number"
+                                        wire:model.blur="variations.{{ $index }}.regular_price"
+                                        step="0.01"
+                                        min="0"
+                                        class="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 bg-yellow-100"
+                                        placeholder="السعر"
+                                    >
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap">
-                                    <flux:input wire:model="variations.{{ $index }}.sale_price" class="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500" style="background-color: #FACA15;" />
+                                    <input
+                                        type="number"
+                                        wire:model.blur="variations.{{ $index }}.sale_price"
+                                        step="0.01"
+                                        min="0"
+                                        class="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 bg-yellow-100"
+                                        placeholder="سعر الخصم"
+                                    >
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap">
-                                    <flux:input wire:model="variations.{{ $index }}.stock_quantity" class="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500" style="background-color: #FACA15;" />
+                                    <input
+                                        type="number"
+                                        wire:model.blur="variations.{{ $index }}.stock_quantity"
+                                        step="1"
+                                        min="0"
+                                        class="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 bg-yellow-100"
+                                        placeholder="الكمية"
+                                    >
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap">
-                                    <flux:input wire:model="variations.{{ $index }}.description" class="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500" style="background-color: #FACA15;" />
+                                    <input
+                                        type="text"
+                                        wire:model.blur="variations.{{ $index }}.description"
+                                        class="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 bg-yellow-100"
+                                        placeholder="الوصف"
+                                    >
                                 </td>
                             </tr>
                         @endforeach
                     </tbody>
                 </table>
+            </div>
+
+            <!-- زر حفظ التغييرات -->
+            <div class="mt-6 flex justify-center">
+                <button
+                    id="save-variations-button"
+                    type="button"
+                    wire:click="save"
+                    wire:loading.attr="disabled"
+                    wire:target="save"
+                    class="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                    <span wire:loading.remove wire:target="save">
+                        {{ __('حفظ التغييرات') }}
+                    </span>
+                    <span wire:loading wire:target="save">
+                        {{ __('جاري الحفظ...') }}
+                        <svg class="animate-spin h-5 w-5 text-white inline-block" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                    </span>
+                </button>
             </div>
         </div>
     @endif
@@ -238,5 +322,27 @@
 @if(!empty($errors))
     {{-- This section is removed to disable validation errors --}}
 @endif
+
+{{-- إضافة سكريبت للتأكد من حفظ البيانات --}}
+<script>
+    document.addEventListener('livewire:initialized', function () {
+        // تأكيد عند الضغط على زر الحفظ
+        document.getElementById('save-variations-button')?.addEventListener('click', function(e) {
+            // إظهار رسالة تأكيد للمستخدم
+            console.log('حفظ المتغيرات...');
+        });
+
+        // الاستماع لحدث showAlert من Livewire
+        @this.on('showAlert', function(data) {
+            if (data.type === 'success') {
+                // يمكن إضافة إشعار نجاح هنا إذا كنت تستخدم مكتبة إشعارات
+                console.log('تم الحفظ بنجاح:', data.message);
+            } else {
+                // يمكن إضافة إشعار خطأ هنا إذا كنت تستخدم مكتبة إشعارات
+                console.error('خطأ في الحفظ:', data.message);
+            }
+        });
+    });
+</script>
 
 

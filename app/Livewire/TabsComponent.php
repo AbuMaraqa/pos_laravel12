@@ -28,7 +28,7 @@ class TabsComponent extends Component
 
     protected WooCommerceService $wooService;
 
-    public function mount($productType, $regularPrice = null, $productId)
+    public function mount($productType, $regularPrice = null, $productId = null)
     {
         $this->productType = $productType;
         $this->localRegularPrice = $regularPrice;
