@@ -185,15 +185,15 @@
                             @endforeach
                             <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                                 <span>{{ __('السعر') }}</span>
-                                <div><input type="number" wire:model.blur="allRegularPrice" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500" placeholder="السعر للكل"></div>
+                                <div><input type="number" wire:model.live="allRegularPrice" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500" placeholder="السعر للكل"></div>
                             </th>
                             <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                                 <span>{{ __('سعر الخصم') }}</span>
-                                <div><input type="number" wire:model.blur="allSalePrice" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500" placeholder="سعر الخصم للكل"></div>
+                                <div><input type="number" wire:model.live="allSalePrice" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500" placeholder="سعر الخصم للكل"></div>
                             </th>
                             <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                                 <span>{{ __('الكمية') }}</span>
-                                <div><input type="number" wire:model.blur="allStockQuantity" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500" placeholder="الكمية للكل"></div>
+                                <div><input type="number" wire:model.live="allStockQuantity" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500" placeholder="الكمية للكل"></div>
                             </th>
                             <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{{ __('الوصف') }}</th>
                         </tr>
@@ -207,7 +207,7 @@
                                 <td class="px-6 py-4 whitespace-nowrap">
                                     <input
                                         type="number"
-                                        wire:model.blur="variations.{{ $index }}.regular_price"
+                                        wire:model="variations.{{ $index }}.regular_price"
                                         step="0.01"
                                         min="0"
                                         class="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 bg-yellow-100"
@@ -217,7 +217,7 @@
                                 <td class="px-6 py-4 whitespace-nowrap">
                                     <input
                                         type="number"
-                                        wire:model.blur="variations.{{ $index }}.sale_price"
+                                        wire:model="variations.{{ $index }}.sale_price"
                                         step="0.01"
                                         min="0"
                                         class="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 bg-yellow-100"
@@ -227,7 +227,7 @@
                                 <td class="px-6 py-4 whitespace-nowrap">
                                     <input
                                         type="number"
-                                        wire:model.blur="variations.{{ $index }}.stock_quantity"
+                                        wire:model="variations.{{ $index }}.stock_quantity"
                                         step="1"
                                         min="0"
                                         class="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 bg-yellow-100"
@@ -237,7 +237,7 @@
                                 <td class="px-6 py-4 whitespace-nowrap">
                                     <input
                                         type="text"
-                                        wire:model.blur="variations.{{ $index }}.description"
+                                        wire:model="variations.{{ $index }}.description"
                                         class="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 bg-yellow-100"
                                         placeholder="الوصف"
                                     >
@@ -246,29 +246,6 @@
                         @endforeach
                     </tbody>
                 </table>
-            </div>
-
-            <!-- زر حفظ التغييرات -->
-            <div class="mt-6 flex justify-center">
-                <button
-                    id="save-variations-button"
-                    type="button"
-                    wire:click="save"
-                    wire:loading.attr="disabled"
-                    wire:target="save"
-                    class="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                    <span wire:loading.remove wire:target="save">
-                        {{ __('حفظ التغييرات') }}
-                    </span>
-                    <span wire:loading wire:target="save">
-                        {{ __('جاري الحفظ...') }}
-                        <svg class="animate-spin h-5 w-5 text-white inline-block" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                    </span>
-                </button>
             </div>
         </div>
     @endif
@@ -322,27 +299,5 @@
 @if(!empty($errors))
     {{-- This section is removed to disable validation errors --}}
 @endif
-
-{{-- إضافة سكريبت للتأكد من حفظ البيانات --}}
-<script>
-    document.addEventListener('livewire:initialized', function () {
-        // تأكيد عند الضغط على زر الحفظ
-        document.getElementById('save-variations-button')?.addEventListener('click', function(e) {
-            // إظهار رسالة تأكيد للمستخدم
-            console.log('حفظ المتغيرات...');
-        });
-
-        // الاستماع لحدث showAlert من Livewire
-        @this.on('showAlert', function(data) {
-            if (data.type === 'success') {
-                // يمكن إضافة إشعار نجاح هنا إذا كنت تستخدم مكتبة إشعارات
-                console.log('تم الحفظ بنجاح:', data.message);
-            } else {
-                // يمكن إضافة إشعار خطأ هنا إذا كنت تستخدم مكتبة إشعارات
-                console.error('خطأ في الحفظ:', data.message);
-            }
-        });
-    });
-</script>
 
 

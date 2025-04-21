@@ -61,13 +61,6 @@ class VariationManager extends Component
         'variations.*.description.max' => 'الوصف يجب أن لا يتجاوز 500 حرف',
     ];
 
-    protected $validationAttributes = [
-        'variations.*.regular_price' => 'السعر',
-        'variations.*.sale_price' => 'سعر الخصم',
-        'variations.*.stock_quantity' => 'الكمية',
-        'variations.*.description' => 'الوصف',
-    ];
-
     public function mount($productId)
     {
         try {
@@ -255,12 +248,6 @@ class VariationManager extends Component
 
     public function updated($propertyName)
     {
-        // تسجيل عمليات التحديث لأغراض التشخيص
-        logger()->info('Updated property', [
-            'property' => $propertyName,
-            'value' => $this->{$propertyName} ?? 'null'
-        ]);
-
         // إذا تم تحديث الخصائص المحددة، قم بتوليد المتغيرات تلقائيًا
         if (strpos($propertyName, 'selectedAttributes') === 0) {
             $this->generateInitialVariations();
@@ -289,18 +276,6 @@ class VariationManager extends Component
             foreach ($this->variations as $index => $variation) {
                 $this->variations[$index]['stock_quantity'] = $this->allStockQuantity;
             }
-        }
-
-        // تحقق مما إذا تم تحديث قيمة متغير فردي
-        if (preg_match('/^variations\.(\d+)\.(regular_price|sale_price|stock_quantity|description)$/', $propertyName, $matches)) {
-            $index = $matches[1];
-            $field = $matches[2];
-
-            logger()->info('Updated variation field', [
-                'index' => $index,
-                'field' => $field,
-                'value' => $this->variations[$index][$field]
-            ]);
         }
     }
 
@@ -647,39 +622,13 @@ class VariationManager extends Component
     {
         try {
             if (empty($this->productId)) {
-                throw new \Exception("رقم المنتج مطلوب");
+                throw new \Exception("Product ID is required");
             }
 
-            logger()->info('بدء عملية حفظ المتغيرات للمنتج', [
+            logger()->info('Saving variations for product', [
                 'productId' => $this->productId,
                 'variationsCount' => count($this->variations)
             ]);
-
-            // تحقق من صحة البيانات
-            // هذا التحقق الإضافي يضمن صحة البيانات قبل الإرسال
-            $validationRules = [];
-            foreach ($this->variations as $index => $variation) {
-                $validationRules["variations.{$index}.regular_price"] = 'required|numeric|min:0';
-                $validationRules["variations.{$index}.sale_price"] = 'nullable|numeric|min:0';
-                $validationRules["variations.{$index}.stock_quantity"] = 'required|integer|min:0';
-                $validationRules["variations.{$index}.description"] = 'nullable|string|max:500';
-            }
-
-            $this->validate($validationRules);
-
-            // تحقق من قيم المتغيرات وتأكد من أن كل قيمة لها الشكل الصحيح
-            foreach ($this->variations as $index => $variation) {
-                // تحويل القيم إلى الأنواع المناسبة
-                $this->variations[$index]['regular_price'] = !empty($variation['regular_price']) ? (string)$variation['regular_price'] : '';
-                $this->variations[$index]['sale_price'] = !empty($variation['sale_price']) ? (string)$variation['sale_price'] : '';
-                $this->variations[$index]['stock_quantity'] = !empty($variation['stock_quantity']) ? (int)$variation['stock_quantity'] : 0;
-                $this->variations[$index]['description'] = $variation['description'] ?? '';
-
-                logger()->debug('معالجة بيانات المتغير', [
-                    'index' => $index,
-                    'data' => $this->variations[$index]
-                ]);
-            }
 
             // ١. تجهيز بيانات المتغيرات والخصائص
             $attributes = [];
@@ -740,17 +689,10 @@ class VariationManager extends Component
                 $variationsData[] = $variationData;
             }
 
-            logger()->info('تم تجهيز البيانات للحفظ', [
+            logger()->info('Prepared data for saving', [
                 'attributesCount' => count($attributes),
                 'variationsCount' => count($variationsData)
             ]);
-
-            // سجل أول 3 متغيرات كمثال لفحص البيانات
-            if (count($variationsData) > 0) {
-                logger()->debug('عينة من بيانات المتغيرات المرسلة', [
-                    'examples' => array_slice($variationsData, 0, min(3, count($variationsData)))
-                ]);
-            }
 
             // ٣. حفظ البيانات في WooCommerce
             $data = [
@@ -760,9 +702,8 @@ class VariationManager extends Component
 
             $response = $this->wooService->updateProductAttributes($this->productId, $data);
 
-            logger()->info('تم حفظ المتغيرات بنجاح', [
-                'success' => isset($response['success']) ? $response['success'] : 'unknown',
-                'message' => isset($response['message']) ? $response['message'] : 'No message'
+            logger()->info('Saved variations', [
+                'response' => $response
             ]);
 
             // ٤. تحديث واجهة المستخدم
@@ -771,13 +712,11 @@ class VariationManager extends Component
                 'message' => 'تم حفظ متغيرات المنتج بنجاح'
             ]);
 
-            session()->flash('success', 'تم حفظ متغيرات المنتج بنجاح');
-
             // ٥. إعادة تحميل البيانات من الخادم للتأكد من التحديث الصحيح
             $this->refreshData();
 
         } catch (\Exception $e) {
-            logger()->error('خطأ في حفظ المتغيرات', [
+            logger()->error('Error saving variations', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
@@ -786,8 +725,6 @@ class VariationManager extends Component
                 'type' => 'error',
                 'message' => 'حدث خطأ أثناء حفظ متغيرات المنتج: ' . $e->getMessage()
             ]);
-
-            session()->flash('error', 'حدث خطأ أثناء حفظ متغيرات المنتج: ' . $e->getMessage());
         }
     }
 

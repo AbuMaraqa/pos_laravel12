@@ -7,10 +7,12 @@ use Livewire\WithFileUploads;
 use Livewire\Attributes\On;
 use App\Services\WooCommerceService;
 use Illuminate\Support\Facades\Log;
+use Spatie\LivewireFilepond\WithFilePond;
 
 class Edit extends Component
 {
     use WithFileUploads;
+    use WithFilePond;
 
     public $productId;
     public $productName;
@@ -32,6 +34,16 @@ class Edit extends Component
     public $mrbpData = [];
     public $productAttributes = [];
     public $attributeTerms = [];
+
+    // خصائص لتتبع حالة الرفع
+    public $uploadingFeaturedImage = false;
+    public $uploadingGalleryImages = false;
+
+    // قواعد التحقق للملفات
+    protected $rules = [
+        'file' => 'nullable|image|max:2048', // 2MB كحد أقصى
+        'files.*' => 'nullable|image|max:2048',
+    ];
 
     protected WooCommerceService $wooService;
 
@@ -428,6 +440,331 @@ class Edit extends Component
     {
         unset($this->galleryImages[$index]);
         $this->galleryImages = array_values($this->galleryImages);
+    }
+
+    public function updatedFile()
+    {
+        if (!$this->file) {
+            Log::warning('updatedFile() تم استدعاؤها ولكن $this->file فارغ');
+            return;
+        }
+
+        // تفعيل مؤشر الرفع
+        $this->uploadingFeaturedImage = true;
+
+        try {
+            // التحقق من صلاحية الملف
+            $this->validate([
+                'file' => 'image|max:2048'
+            ]);
+
+            Log::info('بدء تحميل الصورة الرئيسية', [
+                'product_id' => $this->productId,
+                'file_type' => get_class($this->file),
+                'file_name' => $this->file->getClientOriginalName()
+            ]);
+
+            // التحقق من وجود username و password
+            if (!env('WORDPRESS_USERNAME') || !env('WORDPRESS_APPLICATION_PASSWORD')) {
+                Log::error('لم يتم تعيين بيانات اعتماد WordPress', [
+                    'username_set' => !empty(env('WORDPRESS_USERNAME')),
+                    'password_set' => !empty(env('WORDPRESS_APPLICATION_PASSWORD'))
+                ]);
+                session()->flash('error', 'لم يتم تعيين بيانات الاعتماد اللازمة لرفع الصور');
+                return;
+            }
+
+            // رفع الصورة إلى ووكومرس
+            try {
+                $result = $this->wooService->uploadImage($this->file);
+
+                Log::debug('نتيجة رفع الصورة', [
+                    'result' => $result
+                ]);
+            } catch (\Exception $e) {
+                Log::error('خطأ أثناء استدعاء uploadImage', [
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString()
+                ]);
+                session()->flash('error', 'فشل رفع الصورة: ' . $e->getMessage());
+                return;
+            }
+
+            if (!$result || !isset($result['id'])) {
+                session()->flash('error', 'فشل رفع الصورة الرئيسية');
+                Log::error('فشل رفع الصورة الرئيسية', ['result' => $result]);
+                return;
+            }
+
+            // جلب المنتج الحالي للحصول على الصور الموجودة
+            $product = $this->wooService->getProduct($this->productId);
+
+            if (!$product) {
+                session()->flash('error', 'فشل الحصول على معلومات المنتج');
+                return;
+            }
+
+            // تجهيز مصفوفة الصور - الصورة الجديدة ستكون الرئيسية
+            $allImages = [];
+            $allImages[] = [
+                'id' => $result['id'],
+                'src' => $result['src'],
+                'name' => $result['name'],
+                'alt' => $this->productName
+            ];
+
+            // إضافة صور المعرض الحالية إن وجدت
+            if (isset($product['images']) && count($product['images']) > 1) {
+                // تجاهل الصورة الأولى (الرئيسية) وأخذ بقية الصور
+                $galleryImages = array_slice($product['images'], 1);
+                foreach ($galleryImages as $image) {
+                    $allImages[] = [
+                        'id' => $image['id'],
+                        'src' => $image['src'],
+                        'name' => $image['name'] ?? '',
+                        'alt' => $image['alt'] ?? $this->productName
+                    ];
+                }
+            }
+
+            // تحديث المنتج بكل الصور
+            $productData = [
+                'images' => $allImages
+            ];
+
+            Log::info('تحديث المنتج بالصورة الرئيسية الجديدة', [
+                'product_id' => $this->productId,
+                'images' => count($allImages)
+            ]);
+
+            // تحديث المنتج
+            try {
+                $updated = $this->wooService->updateProduct($this->productId, $productData);
+
+                if ($updated) {
+                    $this->featuredImage = $result['src'];
+
+                    // تحديث معرض الصور أيضًا إذا لزم الأمر
+                    if (isset($product['images']) && count($product['images']) > 1) {
+                        $this->galleryImages = collect(array_slice($product['images'], 1))
+                            ->pluck('src')
+                            ->toArray();
+                    }
+
+                    // تفريغ متغير الملف
+                    $this->file = null;
+
+                    session()->flash('success', 'تم رفع وتحديث الصورة الرئيسية بنجاح');
+
+                    Log::info('تم تحديث صورة المنتج بنجاح', [
+                        'product_id' => $this->productId,
+                        'image_id' => $result['id']
+                    ]);
+                } else {
+                    session()->flash('error', 'تم رفع الصورة ولكن فشل تحديث المنتج');
+                    Log::error('فشل تحديث المنتج بالصورة الرئيسية', [
+                        'product_id' => $this->productId
+                    ]);
+                }
+            } catch (\Exception $e) {
+                Log::error('خطأ أثناء تحديث المنتج بالصورة الجديدة', [
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString()
+                ]);
+                session()->flash('error', 'تم رفع الصورة ولكن حدث خطأ أثناء تحديث المنتج: ' . $e->getMessage());
+            }
+        } catch (\Exception $e) {
+            session()->flash('error', 'حدث خطأ أثناء رفع الصورة: ' . $e->getMessage());
+            Log::error('خطأ في رفع الصورة الرئيسية', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+        } finally {
+            // إيقاف مؤشر الرفع بغض النظر عن النتيجة
+            $this->uploadingFeaturedImage = false;
+        }
+    }
+
+    public function updatedFiles()
+    {
+        if (empty($this->files)) {
+            Log::warning('updatedFiles() تم استدعاؤها ولكن $this->files فارغ');
+            return;
+        }
+
+        // تفعيل مؤشر الرفع
+        $this->uploadingGalleryImages = true;
+
+        try {
+            // التحقق من صلاحية الملفات
+            $this->validate([
+                'files.*' => 'image|max:2048'
+            ]);
+
+            Log::info('بدء تحميل صور معرض المنتج', [
+                'product_id' => $this->productId,
+                'files_count' => count($this->files)
+            ]);
+
+            // التحقق من وجود username و password
+            if (!env('WORDPRESS_USERNAME') || !env('WORDPRESS_APPLICATION_PASSWORD')) {
+                Log::error('لم يتم تعيين بيانات اعتماد WordPress', [
+                    'username_set' => !empty(env('WORDPRESS_USERNAME')),
+                    'password_set' => !empty(env('WORDPRESS_APPLICATION_PASSWORD'))
+                ]);
+                session()->flash('error', 'لم يتم تعيين بيانات الاعتماد اللازمة لرفع الصور');
+                return;
+            }
+
+            // جلب المنتج الحالي
+            try {
+                $product = $this->wooService->getProduct($this->productId);
+
+                if (!$product) {
+                    session()->flash('error', 'فشل الحصول على معلومات المنتج');
+                    return;
+                }
+            } catch (\Exception $e) {
+                Log::error('خطأ في جلب معلومات المنتج', [
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString()
+                ]);
+                session()->flash('error', 'فشل الحصول على معلومات المنتج: ' . $e->getMessage());
+                return;
+            }
+
+            // تجهيز مصفوفة الصور مع الاحتفاظ بالصورة الرئيسية
+            $allImages = [];
+
+            // إضافة الصورة الرئيسية الحالية (إن وجدت)
+            if (isset($product['images']) && !empty($product['images'])) {
+                $allImages[] = $product['images'][0];
+            }
+
+            // إضافة صور المعرض الحالية
+            $existingGalleryImages = [];
+            if (isset($product['images']) && count($product['images']) > 1) {
+                $existingGalleryImages = array_slice($product['images'], 1);
+                foreach ($existingGalleryImages as $image) {
+                    $allImages[] = $image;
+                }
+            }
+
+            // رفع الصور الجديدة واضافتها
+            $uploadedImages = [];
+            $errorFiles = [];
+
+            foreach ($this->files as $index => $file) {
+                try {
+                    Log::info('رفع صورة معرض', [
+                        'index' => $index,
+                        'file_name' => $file->getClientOriginalName()
+                    ]);
+
+                    $result = $this->wooService->uploadImage($file);
+
+                    if ($result && isset($result['id'])) {
+                        $uploadedImages[] = $result;
+                        $allImages[] = [
+                            'id' => $result['id'],
+                            'src' => $result['src'],
+                            'name' => $result['name'],
+                            'alt' => $this->productName
+                        ];
+
+                        Log::info('تم رفع صورة معرض بنجاح', [
+                            'image_id' => $result['id'],
+                            'index' => $index
+                        ]);
+                    } else {
+                        $errorFiles[] = $file->getClientOriginalName();
+                        Log::error('فشل رفع صورة معرض', [
+                            'result' => $result,
+                            'index' => $index
+                        ]);
+                    }
+                } catch (\Exception $e) {
+                    $errorFiles[] = $file->getClientOriginalName();
+                    Log::error('خطأ في رفع صورة معرض', [
+                        'error' => $e->getMessage(),
+                        'file_name' => $file->getClientOriginalName(),
+                        'index' => $index
+                    ]);
+                }
+            }
+
+            if (empty($uploadedImages)) {
+                session()->flash('error', 'فشل رفع جميع صور المعرض');
+                return;
+            }
+
+            // تحديث المنتج بكل الصور
+            $productData = [
+                'images' => $allImages
+            ];
+
+            Log::info('تحديث المنتج بصور المعرض الجديدة', [
+                'product_id' => $this->productId,
+                'total_images' => count($allImages),
+                'new_images' => count($uploadedImages)
+            ]);
+
+            // تحديث المنتج
+            try {
+                $updated = $this->wooService->updateProduct($this->productId, $productData);
+
+                if ($updated) {
+                    // تحديث المتغيرات المحلية
+                    if (isset($product['images']) && !empty($product['images'])) {
+                        $this->featuredImage = $product['images'][0]['src'];
+                    }
+
+                    // دمج الصور القديمة مع الجديدة
+                    $newGalleryImages = array_merge(
+                        collect($existingGalleryImages)->pluck('src')->toArray(),
+                        collect($uploadedImages)->pluck('src')->toArray()
+                    );
+
+                    $this->galleryImages = $newGalleryImages;
+                    $this->files = []; // تفريغ المصفوفة
+
+                    $successMessage = 'تم رفع وتحديث ' . count($uploadedImages) . ' صورة للمعرض بنجاح';
+
+                    if (!empty($errorFiles)) {
+                        $successMessage .= '. فشل رفع ' . count($errorFiles) . ' صورة';
+                    }
+
+                    session()->flash('success', $successMessage);
+
+                    Log::info('تم تحديث صور معرض المنتج بنجاح', [
+                        'product_id' => $this->productId,
+                        'total_images' => count($allImages),
+                        'uploaded_images' => count($uploadedImages),
+                        'failed_images' => count($errorFiles)
+                    ]);
+                } else {
+                    session()->flash('error', 'تم رفع الصور ولكن فشل تحديث المنتج');
+                    Log::error('فشل تحديث المنتج بصور المعرض', [
+                        'product_id' => $this->productId
+                    ]);
+                }
+            } catch (\Exception $e) {
+                Log::error('خطأ أثناء تحديث المنتج بصور المعرض', [
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString()
+                ]);
+                session()->flash('error', 'تم رفع الصور ولكن حدث خطأ أثناء تحديث المنتج: ' . $e->getMessage());
+            }
+        } catch (\Exception $e) {
+            session()->flash('error', 'حدث خطأ أثناء رفع صور المعرض: ' . $e->getMessage());
+            Log::error('خطأ في رفع صور المعرض', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+        } finally {
+            // إيقاف مؤشر الرفع بغض النظر عن النتيجة
+            $this->uploadingGalleryImages = false;
+        }
     }
 
     public function updatedProductType($value)

@@ -145,7 +145,7 @@
                         <flux:heading size="xl">{{ __('Featured Image') }}</flux:heading>
                     </div>
                     <div class="mb-4">
-                        @if($featuredImage)
+                        {{-- @if($featuredImage)
                             <div class="relative">
                                 <img src="{{ $featuredImage }}" alt="Featured Image" class="w-full h-48 object-cover rounded-lg mb-2">
                                 <button wire:click="removeFeaturedImage" type="button" class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1">
@@ -154,7 +154,7 @@
                                     </svg>
                                 </button>
                             </div>
-                        @endif
+                        @endif --}}
                         <x-filepond::upload wire:model="file" />
                     </div>
                 </div>
@@ -163,7 +163,7 @@
                         <flux:heading size="xl">{{ __('Gallery Images') }}</flux:heading>
                     </div>
                     <div class="mb-4">
-                        @if(!empty($galleryImages))
+                        {{-- @if(!empty($galleryImages))
                             <div class="grid grid-cols-3 gap-2 mb-2">
                                 @foreach($galleryImages as $index => $image)
                                     <div class="relative">
@@ -176,7 +176,7 @@
                                     </div>
                                 @endforeach
                             </div>
-                        @endif
+                        @endif --}}
                         <x-filepond::upload multiple wire:model="files" />
                     </div>
                 </div>
