@@ -463,7 +463,7 @@ class Add extends Component
 
                                 $attribute = $attributeMap[$optIndex] ?? null;
 
-                                if ($attribute && isset($attribute['id'])) {
+                                 if ($attribute && isset($attribute['id'])) {
                                     $attributes[] = [
                                         'id' => $attribute['id'],
                                         'option' => $value,

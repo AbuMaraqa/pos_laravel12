@@ -611,6 +611,18 @@ public function syncVariations($productId, array $variations): array
             $existingVariationsMap[$variation['id']] = $variation;
         }
 
+        // نجلب تفاصيل المنتج للحصول على الخصائص المعرفة
+        $product = $this->getProduct($productId);
+        $productAttributes = $product['attributes'] ?? [];
+
+        // تجهيز خريطة بين اسم الخاصية ومعرفها
+        $attributeNameToIdMap = [];
+        foreach ($productAttributes as $attr) {
+            if (isset($attr['name']) && isset($attr['id'])) {
+                $attributeNameToIdMap[$attr['name']] = $attr['id'];
+            }
+        }
+
         $results = [
             'created' => 0,
             'updated' => 0,
@@ -623,23 +635,71 @@ public function syncVariations($productId, array $variations): array
             try {
                 // تجهيز بيانات المتغيّر
                 $variationData = [
-                    'regular_price' => $variation['regular_price'] ?? '',
-                    'sale_price' => $variation['sale_price'] ?? '',
-                    'stock_quantity' => $variation['stock_quantity'] ?? 0,
+                    'regular_price' => (string)($variation['regular_price'] ?? ''),
                     'description' => $variation['description'] ?? ''
                 ];
+
+                // إضافة سعر الخصم فقط إذا كان موجود وليس فارغًا
+                if (isset($variation['sale_price']) && $variation['sale_price'] !== '' && $variation['sale_price'] !== null) {
+                    $variationData['sale_price'] = (string)$variation['sale_price'];
+                }
+
+                // إضافة كمية المخزون فقط إذا كانت موجودة
+                if (isset($variation['stock_quantity']) && $variation['stock_quantity'] !== '' && $variation['stock_quantity'] !== null) {
+                    $variationData['stock_quantity'] = (int)$variation['stock_quantity'];
+                    // تأكد من إضافة manage_stock إذا تم تحديد كمية
+                    $variationData['manage_stock'] = true;
+                }
+
+                if (isset($variation['sku']) && !empty($variation['sku'])) {
+                    $variationData['sku'] = $variation['sku'];
+                }
 
                 // إضافة الخصائص للمتغيّر
                 if (isset($variation['options']) && !empty($variation['options'])) {
                     $attributes = [];
-                    foreach ($variation['options'] as $index => $option) {
-                        if (isset($variation['attributes'][$index]) && isset($variation['attributes'][$index]['id'])) {
-                            $attributes[] = [
-                                'id' => $variation['attributes'][$index]['id'],
-                                'option' => $option
-                            ];
+
+                    // إذا كانت هناك attributeMap، نستخدمها لتحديد الخصائص
+                    if (isset($variation['attributeMap']) && is_array($variation['attributeMap'])) {
+                        foreach ($variation['options'] as $index => $option) {
+                            if (isset($variation['attributeMap'][$index]) && isset($variation['attributeMap'][$index]['id'])) {
+                                $attributes[] = [
+                                    'id' => $variation['attributeMap'][$index]['id'],
+                                    'option' => $option
+                                ];
+                            }
+                        }
+                    } else {
+                        // إذا كان هناك attributeMap في المستوى الأعلى، نستخدمها
+                        if (isset($GLOBALS['attributeMap']) && is_array($GLOBALS['attributeMap'])) {
+                            foreach ($variation['options'] as $index => $option) {
+                                if (isset($GLOBALS['attributeMap'][$index]) && isset($GLOBALS['attributeMap'][$index]['id'])) {
+                                    $attributes[] = [
+                                        'id' => $GLOBALS['attributeMap'][$index]['id'],
+                                        'option' => $option
+                                    ];
+                                }
+                            }
+                        } else {
+                            // نحاول استخدام خريطة الاسم إلى المعرف التي بنيناها
+                            $optionIndex = 0;
+                            foreach ($productAttributes as $attr) {
+                                if (isset($variation['options'][$optionIndex])) {
+                                    $attributes[] = [
+                                        'id' => $attr['id'],
+                                        'option' => $variation['options'][$optionIndex]
+                                    ];
+                                    $optionIndex++;
+                                }
+                            }
                         }
                     }
+
+                    logger()->info('تجهيز خصائص المتغير', [
+                        'original_options' => $variation['options'],
+                        'prepared_attributes' => $attributes
+                    ]);
+
                     if (!empty($attributes)) {
                         $variationData['attributes'] = $attributes;
                     }
@@ -654,10 +714,27 @@ public function syncVariations($productId, array $variations): array
                     }
                 }
 
+                logger()->info('بيانات المتغير المجهزة للإرسال', [
+                    'variation_id' => $variation['id'] ?? 'جديد',
+                    'regular_price' => $variationData['regular_price'],
+                    'sale_price' => $variationData['sale_price'] ?? 'غير محدد',
+                    'stock_quantity' => $variationData['stock_quantity'] ?? 'غير محدد',
+                    'manage_stock' => $variationData['manage_stock'] ?? false,
+                    'has_attributes' => !empty($variationData['attributes']),
+                    'attributes_count' => count($variationData['attributes'] ?? [])
+                ]);
+
                 // تحديث أو إنشاء
                 if (isset($variation['id']) && !empty($variation['id'])) {
                     // Update existing variation
-                    $this->put("products/{$productId}/variations/{$variation['id']}", $variationData);
+                    $result = $this->put("products/{$productId}/variations/{$variation['id']}", $variationData);
+                    logger()->info('تم تحديث المتغير', [
+                        'variation_id' => $variation['id'],
+                        'status' => 'success',
+                        'regular_price' => $result['regular_price'] ?? 'unknown',
+                        'sale_price' => $result['sale_price'] ?? 'unknown',
+                        'stock_quantity' => $result['stock_quantity'] ?? 'unknown'
+                    ]);
                     $results['updated']++;
 
                     // Remove from map to track which variations need to be deleted
@@ -666,7 +743,14 @@ public function syncVariations($productId, array $variations): array
                     }
                 } else {
                     // Create new variation
-                    $this->post("products/{$productId}/variations", $variationData);
+                    $result = $this->post("products/{$productId}/variations", $variationData);
+                    logger()->info('تم إنشاء متغير جديد', [
+                        'variation_id' => $result['id'] ?? 'unknown',
+                        'status' => 'success',
+                        'regular_price' => $result['regular_price'] ?? 'unknown',
+                        'sale_price' => $result['sale_price'] ?? 'unknown',
+                        'stock_quantity' => $result['stock_quantity'] ?? 'unknown'
+                    ]);
                     $results['created']++;
                 }
             } catch (\Exception $e) {

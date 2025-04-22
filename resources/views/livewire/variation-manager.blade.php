@@ -207,7 +207,7 @@
                                 <td class="px-6 py-4 whitespace-nowrap">
                                     <input
                                         type="number"
-                                        wire:model="variations.{{ $index }}.regular_price"
+                                        wire:model.live="variations.{{ $index }}.regular_price"
                                         step="0.01"
                                         min="0"
                                         class="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 bg-yellow-100"
@@ -217,7 +217,7 @@
                                 <td class="px-6 py-4 whitespace-nowrap">
                                     <input
                                         type="number"
-                                        wire:model="variations.{{ $index }}.sale_price"
+                                        wire:model.live="variations.{{ $index }}.sale_price"
                                         step="0.01"
                                         min="0"
                                         class="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 bg-yellow-100"
@@ -227,7 +227,7 @@
                                 <td class="px-6 py-4 whitespace-nowrap">
                                     <input
                                         type="number"
-                                        wire:model="variations.{{ $index }}.stock_quantity"
+                                        wire:model.live="variations.{{ $index }}.stock_quantity"
                                         step="1"
                                         min="0"
                                         class="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 bg-yellow-100"
@@ -237,7 +237,7 @@
                                 <td class="px-6 py-4 whitespace-nowrap">
                                     <input
                                         type="text"
-                                        wire:model="variations.{{ $index }}.description"
+                                        wire:model.live="variations.{{ $index }}.description"
                                         class="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 bg-yellow-100"
                                         placeholder="الوصف"
                                     >

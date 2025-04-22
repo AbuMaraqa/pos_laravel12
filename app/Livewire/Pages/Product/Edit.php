@@ -556,9 +556,21 @@ class Edit extends Component
     {
         try {
             if ($this->productType === 'variable') {
-                $this->dispatch('requestLatestVariations')->to('variation-manager');
-                session()->flash('info', 'طلب تحديث المتغيرات...');
-                // لا نقوم بإستدعاء save() هنا، لأن handleVariationsUpdate ستقوم بذلك
+                // التحقق مما إذا كانت بيانات المتغيرات محدثة بالفعل
+                if (!empty($this->variations)) {
+                    \Illuminate\Support\Facades\Log::info('بيانات المتغيرات محدثة بالفعل، سيتم الحفظ مباشرة', [
+                        'variations_count' => count($this->variations)
+                    ]);
+
+                    // لدينا المتغيرات محدثة من التغييرات المباشرة، نحفظ مباشرة
+                    $this->save();
+                } else {
+                    // إذا لم تكن المتغيرات محدثة، نطلبها من مكون المتغيرات
+                    \Illuminate\Support\Facades\Log::info('طلب أحدث بيانات المتغيرات من مكون المتغيرات');
+                    $this->dispatch('requestLatestVariations')->to('variation-manager');
+                    session()->flash('info', 'طلب تحديث المتغيرات...');
+                    // لا نقوم بإستدعاء save() هنا، لأن handleVariationsUpdate ستقوم بذلك
+                }
             } else {
                 $this->save();
             }
@@ -642,7 +654,8 @@ class Edit extends Component
         try {
             Log::info('بدء حفظ المنتج', [
                 'product_id' => $this->productId,
-                'product_type' => $this->productType
+                'product_type' => $this->productType,
+                'variations_count' => count($this->variations)
             ]);
 
             // تجهيز بيانات المنتج الأساسية
@@ -754,17 +767,25 @@ class Edit extends Component
             // تحديث المتغيرات في حال كان المنتج متغير
             if ($this->productType === 'variable' && !empty($this->variations)) {
                 try {
+                    // تسجيل المتغيرات قبل المزامنة
+                    Log::info('المتغيرات التي سيتم مزامنتها', [
+                        'variations_count' => count($this->variations),
+                        'variations' => $this->variations
+                    ]);
+
                     $syncResult = $this->wooService->syncVariations($this->productId, $this->variations);
 
                     Log::info('تم مزامنة المتغيرات بنجاح', [
                         'product_id' => $this->productId,
                         'created' => $syncResult['created'] ?? 0,
-                        'updated' => $syncResult['updated'] ?? 0
+                        'updated' => $syncResult['updated'] ?? 0,
+                        'sync_result' => $syncResult
                     ]);
                 } catch (\Exception $e) {
                     Log::error('خطأ في مزامنة المتغيرات', [
                         'error' => $e->getMessage(),
-                        'trace' => $e->getTraceAsString()
+                        'trace' => $e->getTraceAsString(),
+                        'variations' => $this->variations
                     ]);
 
                     // إظهار الخطأ ولكن نكمل عملية الحفظ
@@ -1220,6 +1241,28 @@ class Edit extends Component
         };
 
         return $buildTree();
+    }
+
+    #[On('variationsUpdated')]
+    public function handleRealTimeVariationsUpdate($data)
+    {
+        try {
+            \Illuminate\Support\Facades\Log::info('Received real-time variations update', [
+                'variations_count' => count($data['variations'] ?? [])
+            ]);
+
+            $this->variations = $data['variations'] ?? $this->variations;
+            $this->attributeMap = $data['attributeMap'] ?? $this->attributeMap;
+            $this->selectedAttributes = $data['selectedAttributes'] ?? $this->selectedAttributes;
+
+            // لا نقوم بالحفظ التلقائي هنا لتجنب الطلبات المتكررة،
+            // بدلاً من ذلك نسمح للمستخدم بالحفظ عندما ينتهي من التعديلات
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Error in handleRealTimeVariationsUpdate', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+        }
     }
 
     public function render()
