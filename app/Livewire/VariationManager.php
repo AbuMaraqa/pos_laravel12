@@ -61,108 +61,150 @@ class VariationManager extends Component
         'variations.*.description.max' => 'الوصف يجب أن لا يتجاوز 500 حرف',
     ];
 
-    public function mount($productId)
+    public function mount($productId = null)
     {
         try {
+            // تهيئة المتغيرات
             $this->productId = $productId;
+            $this->variations = [];
+            $this->variationImages = [];
 
-            // Get product data and existing variations
-            $product = $this->wooService->getProduct($this->productId);
-            $existingVariations = $this->wooService->getVariationsByProductId($this->productId);
-
-            // Debug log for variations
-            logger()->info('Existing Variations', [
-                'count' => count($existingVariations),
-                'variations' => $existingVariations
+            logger()->info('بدء تحميل مدير المتغيرات', [
+                'productId' => $this->productId
             ]);
 
-            // Get all available attributes with their terms
+            // إذا كان هناك معرف منتج، نجلب بيانات المنتج والمتغيرات
+            if ($this->productId) {
+                // جلب بيانات المنتج والمتغيرات الموجودة
+                $product = $this->wooService->getProduct($this->productId);
+                $existingVariations = $this->wooService->getVariationsByProductId($this->productId);
+
+                if (!$product) {
+                    throw new \Exception("المنتج غير موجود");
+                }
+
+                // تسجيل عدد المتغيرات
+                logger()->info('المتغيرات الموجودة', [
+                    'count' => count($existingVariations)
+                ]);
+
+                // الحصول على الخصائص التي تستخدم للمتغيرات فقط
+                $variationAttributes = [];
+                if (isset($product['attributes']) && is_array($product['attributes'])) {
+                    foreach ($product['attributes'] as $attribute) {
+                        // نريد فقط خصائص المتغيرات (variation attributes)
+                        if (isset($attribute['variation']) && $attribute['variation']) {
+                            $variationAttributes[] = $attribute;
+                        }
+                    }
+                }
+
+                logger()->info('خصائص المتغيرات المستخدمة', [
+                    'count' => count($variationAttributes),
+                    'attributes' => $variationAttributes
+                ]);
+            }
+
+            // جلب جميع الخصائص المتاحة في النظام
             $allAttributes = $this->wooService->getAttributesWithTerms();
 
-            // Initialize attributes and terms
+            // تهيئة البيانات الضرورية
+            $this->loadedAttributes = [];
+            $this->attributeTerms = [];
+            $this->selectedAttributes = [];
+            $this->attributeMap = [];
+
+            // تسجيل الخصائص المحملة
+            logger()->info('تم تحميل الخصائص', [
+                'count' => count($allAttributes)
+            ]);
+
+            // تحميل جميع الخصائص وقيمها
             foreach ($allAttributes as $attribute) {
-                if (isset($attribute['id']) && isset($attribute['terms'])) {
+                if (!isset($attribute['id']) || !isset($attribute['terms'])) {
+                    continue;
+                }
+
+                // في حالة المنتج الجديد، نحمل جميع الخصائص المتاحة
+                $isVariationAttribute = true;
+                if ($this->productId) {
+                    // في حالة التعديل، نتحقق مما إذا كانت الخاصية مستخدمة للمتغيرات
+                    $isVariationAttribute = false;
+                    foreach ($variationAttributes as $varAttr) {
+                        if ($varAttr['id'] == $attribute['id']) {
+                            $isVariationAttribute = true;
+                            break;
+                        }
+                    }
+                }
+
+                // إذا كانت الخاصية مستخدمة للمتغيرات، أو كان هذا منتج جديد، حفظها
+                if ($isVariationAttribute) {
                     $this->loadedAttributes[] = $attribute;
                     $this->attributeTerms[$attribute['id']] = $attribute['terms'];
                     $this->selectedAttributes[$attribute['id']] = [];
+
+                    // إضافة إلى خريطة الخصائص
+                    $this->attributeMap[] = [
+                        'id' => $attribute['id'],
+                        'name' => $attribute['name']
+                    ];
+
+                    // تهيئة نظام البحث عن الخصائص والقيم
+                    $this->attributeLookup[$attribute['id']] = $attribute;
+                    $this->termLookup[$attribute['id']] = [];
+
+                    foreach ($attribute['terms'] as $term) {
+                        if (isset($term['id'])) {
+                            $this->termLookup[$attribute['id']][$term['id']] = $term;
+                        }
+                    }
                 }
             }
 
-            // Debug log to see the product attributes
-            logger()->info('Product Attributes', [
-                'attributes' => $product['attributes'] ?? [],
-                'variations' => count($existingVariations ?? []),
-            ]);
-
-            // Process product attributes to mark which ones are used
-            if (isset($product['attributes']) && is_array($product['attributes'])) {
-                foreach ($product['attributes'] as $productAttr) {
-                    if (!isset($productAttr['id'])) {
-                        logger()->warning('Attribute missing ID', ['attribute' => $productAttr]);
+            if ($this->productId) {
+                // معالجة خصائص المتغيرات المحددة
+                foreach ($variationAttributes as $varAttr) {
+                    if (!isset($varAttr['id']) || !isset($varAttr['options'])) {
                         continue;
                     }
 
-                    $attributeId = $productAttr['id'];
+                    $attributeId = $varAttr['id'];
+                    if (!isset($this->attributeTerms[$attributeId])) {
+                        continue;
+                    }
 
-                    // إذا كانت الخيارات موجودة
-                    if (isset($productAttr['options']) && is_array($productAttr['options'])) {
-                        logger()->info('Processing attribute options', [
-                            'attribute_id' => $attributeId,
-                            'options' => $productAttr['options']
-                        ]);
-
-                        // للخصائص التي لها معرف، نتعامل معها بطريقة مختلفة
-                        if (isset($this->attributeTerms[$attributeId])) {
-                            foreach ($productAttr['options'] as $option) {
-                                foreach ($this->attributeTerms[$attributeId] as $term) {
-                                    if ($term['name'] === $option) {
-                                        $this->selectedAttributes[$attributeId][$term['id']] = true;
-                                        logger()->info('Matched option with term', [
-                                            'option' => $option,
-                                            'term_id' => $term['id'],
-                                            'term_name' => $term['name']
-                                        ]);
-                                    }
-                                }
+                    // تحديد الخيارات المحددة
+                    foreach ($varAttr['options'] as $option) {
+                        foreach ($this->attributeTerms[$attributeId] as $term) {
+                            if ($term['name'] === $option) {
+                                $this->selectedAttributes[$attributeId][$term['id']] = true;
                             }
-                        }
-                        // للخصائص المخصصة التي ليس لها معرف، نخزن القيم مباشرة
-                        else {
-                            $this->selectedAttributes[$attributeId] = $productAttr['options'];
                         }
                     }
                 }
 
-                // تحديث attributeMap لتعكس الخصائص المستخدمة في المنتج
-                $this->attributeMap = array_map(function($attr) {
-                    return [
-                        'id' => $attr['id'],
-                        'name' => $attr['name']
-                    ];
-                }, array_filter($this->loadedAttributes, function($attr) {
-                    return !empty($this->selectedAttributes[$attr['id']]);
-                }));
-            }
-
-            // Load existing variation images
-            foreach ($existingVariations as $index => $variation) {
-                // تحقق من وجود الصور للمتغير
-                if (isset($variation['image']) && !empty($variation['image']['src'])) {
-                    $variationId = $variation['id'];
-                    $this->variationImages[$variationId] = $variation['image']['src'];
-
-                    logger()->info('Loaded variation image', [
-                        'variation_id' => $variationId,
-                        'image_src' => $variation['image']['src']
-                    ]);
+                // تحميل صور المتغيرات
+                foreach ($existingVariations as $variation) {
+                    if (isset($variation['id']) && isset($variation['image']) && !empty($variation['image']['src'])) {
+                        $this->variationImages[$variation['id']] = $variation['image']['src'];
+                    }
                 }
-            }
 
-            // Generate initial variations
-            $this->generateInitialVariations($existingVariations);
+                // توليد المتغيرات
+                $this->generateInitialVariations($existingVariations);
+
+                logger()->info('اكتمل التحميل، تم توليد المتغيرات', [
+                    'variationsCount' => count($this->variations)
+                ]);
+            } else {
+                logger()->info('تم تحميل الخصائص للمنتج الجديد، انتظار اختيار المستخدم', [
+                    'loadedAttributesCount' => count($this->loadedAttributes)
+                ]);
+            }
 
         } catch (\Exception $e) {
-            logger()->error('Error in VariationManager mount:', [
+            logger()->error('خطأ في تحميل مدير المتغيرات:', [
                 'message' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
@@ -227,15 +269,55 @@ class VariationManager extends Component
     public function generateVariations()
     {
         try {
-            $this->generateInitialVariations();
+            // Clear any existing variations first
+            $this->variations = [];
+
+            logger()->info('Generating variations from selected attributes', [
+                'selectedAttributes' => $this->selectedAttributes,
+                'attributeMap' => $this->attributeMap,
+                'loadedAttributes' => $this->loadedAttributes,
+                'productId' => $this->productId
+            ]);
+
+            // تحقق من وجود خصائص محددة
+            $hasSelectedTerms = false;
+            foreach ($this->selectedAttributes as $attrId => $terms) {
+                if (is_array($terms)) {
+                    foreach ($terms as $termId => $selected) {
+                        if ($selected) {
+                            $hasSelectedTerms = true;
+                            break 2;
+                        }
+                    }
+                }
+            }
+
+            if (!$hasSelectedTerms) {
+                logger()->warning('لا توجد خصائص محددة للمتغيرات. الرجاء اختيار خصائص أولاً.');
+                session()->flash('error', 'لم يتم اختيار أي خصائص للمتغيرات. الرجاء اختيار خصائص أولاً.');
+                return;
+            }
+
+            // Get existing variations
+            $existingVariations = $this->wooService->getVariationsByProductId($this->productId);
+            logger()->info('Existing variations retrieved', [
+                'count' => count($existingVariations)
+            ]);
+
+            // Generate new variations
+            $this->generateInitialVariations($existingVariations);
 
             logger()->info('Variations generated', [
                 'count' => count($this->variations),
                 'variations' => $this->variations
             ]);
 
-            session()->flash('success', sprintf('تم توليد %d متغير بنجاح', count($this->variations)));
-            $this->dispatch('variationsGenerated', ['count' => count($this->variations)]);
+            if (count($this->variations) > 0) {
+                session()->flash('success', sprintf('تم توليد %d متغير بنجاح', count($this->variations)));
+                $this->dispatch('variationsGenerated', ['count' => count($this->variations)]);
+            } else {
+                session()->flash('error', 'لم يتم اختيار أي خصائص للمتغيرات. الرجاء اختيار خصائص أولاً.');
+            }
 
         } catch (\Exception $e) {
             logger()->error('Error generating variations', [
@@ -248,18 +330,30 @@ class VariationManager extends Component
 
     public function updated($propertyName)
     {
-        // إذا تم تحديث الخصائص المحددة، قم بتوليد المتغيرات تلقائيًا
-        if (strpos($propertyName, 'selectedAttributes') === 0) {
-            $this->generateInitialVariations();
+        logger()->info('Property updated', [
+            'property' => $propertyName
+        ]);
 
-            // إرسال حدث attributesSelected إلى مكون تعديل المنتج
+        // If selected attributes are updated, regenerate variations
+        if (strpos($propertyName, 'selectedAttributes') === 0) {
+            // Get existing variations
+            $existingVariations = $this->wooService->getVariationsByProductId($this->productId);
+
+            // Generate new variations with the new selections
+            $this->generateInitialVariations($existingVariations);
+
+            logger()->info('Regenerated variations after attribute selection', [
+                'count' => count($this->variations)
+            ]);
+
+            // Send attributesSelected event to parent component
             $this->dispatch('attributesSelected', [
                 'selectedAttributes' => $this->selectedAttributes,
                 'attributeMap' => $this->attributeMap
             ])->to('pages.product.edit');
         }
 
-        // تحديث قيم المتغيرات عند تغيير القيم العامة
+        // Update variation values when bulk values change
         if ($propertyName === 'allRegularPrice' && $this->allRegularPrice !== '') {
             foreach ($this->variations as $index => $variation) {
                 $this->variations[$index]['regular_price'] = $this->allRegularPrice;
@@ -376,178 +470,155 @@ class VariationManager extends Component
     protected function generateInitialVariations($existingVariations = [])
     {
         try {
-            logger()->info('Starting generateInitialVariations', [
-                'selectedAttributes' => $this->selectedAttributes
+            logger()->info('بدء توليد المتغيرات', [
+                'عدد الخصائص المحددة' => count($this->attributeMap)
             ]);
 
-            // Get all selected attributes and their values
-            $selectedAttributeValues = [];
-            foreach ($this->selectedAttributes as $attrId => $values) {
-                // هناك طريقتان للعمل مع selectedAttributes
-                // 1. كمصفوفة ترابطية (checkbox style: termId => true/false)
-                // 2. كمصفوفة من الخيارات المحددة مسبقاً (من WooCommerce)
-                logger()->info('Processing attribute values', [
-                    'attribute_id' => $attrId,
-                    'values' => $values
-                ]);
-
-                // إذا كانت مصفوفة ترابطية
-                if (is_array($values) && !isset($values[0])) {
-                    $selectedValues = array_keys(array_filter($values));
-                    if (!empty($selectedValues)) {
-                        $selectedAttributeValues[$attrId] = $selectedValues;
-                    }
-                }
-                // إذا كانت مصفوفة من الخيارات
-                else if (is_array($values) && !empty($values)) {
-                    // نحتاج إلى تحويل أسماء الخيارات إلى معرفات الخيارات
-                    $termIds = [];
-                    foreach ($values as $optionName) {
-                        foreach ($this->attributeTerms[$attrId] ?? [] as $term) {
-                            if ($term['name'] === $optionName) {
-                                $termIds[] = $term['id'];
-                                break;
-                            }
-                        }
-                    }
-                    if (!empty($termIds)) {
-                        $selectedAttributeValues[$attrId] = $termIds;
-                    }
-                }
-            }
-
-            logger()->info('Selected attribute values after processing', [
-                'selectedAttributeValues' => $selectedAttributeValues
-            ]);
-
-            if (empty($selectedAttributeValues)) {
-                logger()->warning('No selected attribute values found');
+            // التحقق من وجود خصائص محددة
+            if (empty($this->attributeMap)) {
+                logger()->warning('لا توجد خصائص محددة للمتغيرات');
+                $this->variations = [];
                 return;
             }
 
-            // تحديث attributeMap لتتضمن فقط الخصائص المحددة
-            $attributeMap = [];
-            foreach ($selectedAttributeValues as $attrId => $termIds) {
-                foreach ($this->loadedAttributes as $attribute) {
-                    if ($attribute['id'] == $attrId) {
-                        $attributeMap[] = [
-                            'id' => $attrId,
-                            'name' => $attribute['name']
-                        ];
-                        break;
+            // جمع قيم الخصائص المحددة لكل خاصية
+            $attributeValues = [];
+            foreach ($this->attributeMap as $attribute) {
+                $attrId = $attribute['id'];
+                $values = [];
+
+                // تجميع القيم المحددة للخاصية
+                if (isset($this->selectedAttributes[$attrId])) {
+                    $selectedTerms = $this->selectedAttributes[$attrId];
+                    foreach ($selectedTerms as $termId => $selected) {
+                        if ($selected) {
+                            foreach ($this->attributeTerms[$attrId] as $term) {
+                                if ($term['id'] == $termId) {
+                                    $values[] = $term['name'];
+                                    break;
+                                }
+                            }
+                        }
                     }
                 }
-            }
-            $this->attributeMap = $attributeMap;
 
-            logger()->info('Updated attributeMap', [
-                'attributeMap' => $this->attributeMap
+                if (!empty($values)) {
+                    $attributeValues[] = $values;
+                }
+            }
+
+            logger()->info('قيم الخصائص للتوليفات', [
+                'attributeValues' => $attributeValues
             ]);
 
-            // Create a lookup for existing variations
-            $existingVariationsLookup = [];
-            foreach ($existingVariations as $variation) {
-                $key = [];
-                $variationId = $variation['id'] ?? null;
-
-                foreach ($variation['attributes'] as $attr) {
-                    $key[] = $attr['option'];
-                }
-
-                $keyString = implode('_', $key);
-                $existingVariationsLookup[$keyString] = $variation;
-
-                // Store the mapping between key and variation ID for image lookup
-                if ($variationId && isset($this->variationImages[$variationId])) {
-                    $existingVariationsLookup[$keyString]['image'] = $this->variationImages[$variationId];
-                }
+            if (empty($attributeValues)) {
+                logger()->warning('لا توجد قيم محددة للخصائص');
+                $this->variations = [];
+                return;
             }
 
-            // Generate combinations based on attribute values
-            $attributeValuesArray = [];
-            foreach ($this->attributeMap as $index => $attribute) {
-                $attrId = $attribute['id'];
-                $termNames = [];
+            // توليد جميع التوليفات الممكنة
+            $combinations = $this->generateCombinations($attributeValues);
+            logger()->info('تم توليد التوليفات', [
+                'عدد التوليفات' => count($combinations)
+            ]);
 
-                // اذا كانت الخاصية موجودة في قائمة الخصائص المحددة
-                if (isset($selectedAttributeValues[$attrId])) {
-                    $termIds = $selectedAttributeValues[$attrId];
+            // بناء خريطة للمتغيرات الموجودة
+            $existingVariationsMap = [];
+            foreach ($existingVariations as $variation) {
+                if (!isset($variation['attributes']) || empty($variation['attributes'])) {
+                    continue;
+                }
 
-                    foreach ($termIds as $termId) {
-                        foreach ($this->attributeTerms[$attrId] ?? [] as $term) {
-                            if ($term['id'] == $termId) {
-                                $termNames[] = $term['name'];
+                // استخراج قيم الخصائص من المتغير
+                $attributes = [];
+                foreach ($variation['attributes'] as $attr) {
+                    if (isset($attr['name']) && isset($attr['option'])) {
+                        $attributes[$attr['name']] = $attr['option'];
+                    } elseif (isset($attr['id']) && isset($attr['option'])) {
+                        // البحث عن اسم الخاصية
+                        foreach ($this->attributeMap as $mapAttr) {
+                            if ($mapAttr['id'] == $attr['id']) {
+                                $attributes[$mapAttr['name']] = $attr['option'];
                                 break;
                             }
                         }
                     }
                 }
 
-                if (!empty($termNames)) {
-                    $attributeValuesArray[] = $termNames;
+                // إنشاء مفتاح فريد للمتغير
+                $key = [];
+                foreach ($this->attributeMap as $attr) {
+                    if (isset($attributes[$attr['name']])) {
+                        $key[] = $attributes[$attr['name']];
+                    }
+                }
+
+                if (!empty($key)) {
+                    $keyString = implode('_', $key);
+                    $existingVariationsMap[$keyString] = $variation;
                 }
             }
 
-            logger()->info('Attribute values for combinations', [
-                'attributeValuesArray' => $attributeValuesArray
-            ]);
-
-            $combinations = $this->generateCombinations($attributeValuesArray);
-            logger()->info('Generated combinations', [
-                'combinations' => $combinations
-            ]);
-
+            // إنشاء المتغيرات النهائية
             $newVariations = [];
-
             foreach ($combinations as $combination) {
-                $options = $combination;
-                $key = implode('_', $options);
+                $key = implode('_', $combination);
 
-                if (isset($existingVariationsLookup[$key])) {
-                    // Use existing variation data
-                    $existingVar = $existingVariationsLookup[$key];
+                // التحقق مما إذا كان هذا المتغير موجودًا بالفعل
+                if (isset($existingVariationsMap[$key])) {
+                    $existingVar = $existingVariationsMap[$key];
                     $newVar = [
                         'id' => $existingVar['id'] ?? null,
                         'regular_price' => $existingVar['regular_price'] ?? '',
                         'sale_price' => $existingVar['sale_price'] ?? '',
-                        'stock_quantity' => $existingVar['stock_quantity'] ?? '',
+                        'stock_quantity' => (string)($existingVar['stock_quantity'] ?? ''),
                         'description' => $existingVar['description'] ?? '',
-                        'options' => $options,
+                        'options' => $combination
                     ];
 
+                    // تسجيل بيانات المتغير الموجود
+                    logger()->info('تم العثور على متغير موجود', [
+                        'id' => $existingVar['id'] ?? null,
+                        'regular_price' => $existingVar['regular_price'] ?? '',
+                        'sale_price' => $existingVar['sale_price'] ?? '',
+                        'stock_quantity' => $existingVar['stock_quantity'] ?? ''
+                    ]);
+
                     // إضافة الصورة إذا كانت موجودة
-                    if (isset($existingVar['image'])) {
-                        $newVar['image'] = $existingVar['image'];
-                    } elseif (isset($existingVar['id']) && isset($this->variationImages[$existingVar['id']])) {
+                    if (isset($existingVar['id']) && isset($this->variationImages[$existingVar['id']])) {
                         $newVar['image'] = $this->variationImages[$existingVar['id']];
+                    } elseif (isset($existingVar['image']) && isset($existingVar['image']['src'])) {
+                        $newVar['image'] = $existingVar['image']['src'];
                     }
 
                     $newVariations[] = $newVar;
                 } else {
-                    // Create new variation
+                    // إنشاء متغير جديد
                     $newVariations[] = [
                         'regular_price' => '',
                         'sale_price' => '',
                         'stock_quantity' => '',
                         'description' => '',
-                        'options' => $options,
+                        'options' => $combination,
                         'image' => null
                     ];
                 }
             }
 
-            logger()->info('Created variations', [
-                'count' => count($newVariations)
-            ]);
-
-            // Update variations
+            // تحديث المتغيرات
             $this->variations = $newVariations;
 
+            logger()->info('تم إنشاء المتغيرات', [
+                'عدد المتغيرات' => count($this->variations)
+            ]);
+
         } catch (\Exception $e) {
-            logger()->error('Error generating initial variations', [
+            logger()->error('خطأ في توليد المتغيرات الأولية', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
+            $this->variations = [];
         }
     }
 
@@ -622,61 +693,97 @@ class VariationManager extends Component
     {
         try {
             if (empty($this->productId)) {
-                throw new \Exception("Product ID is required");
+                throw new \Exception("معرف المنتج مطلوب");
             }
 
-            logger()->info('Saving variations for product', [
+            logger()->info('بدء حفظ المتغيرات للمنتج', [
                 'productId' => $this->productId,
                 'variationsCount' => count($this->variations)
             ]);
 
-            // ١. تجهيز بيانات المتغيرات والخصائص
+            // التحقق من وجود متغيرات
+            if (empty($this->variations)) {
+                $this->dispatch('showAlert', [
+                    'type' => 'error',
+                    'message' => 'لا توجد متغيرات للحفظ. الرجاء توليد المتغيرات أولاً.'
+                ]);
+                return;
+            }
+
+            // التحقق من صحة بيانات المتغيرات المطلوبة
+            foreach ($this->variations as $index => $variation) {
+                if (empty($variation['regular_price'])) {
+                    $this->dispatch('showAlert', [
+                        'type' => 'error',
+                        'message' => 'يجب تحديد السعر العادي لجميع المتغيرات'
+                    ]);
+                    return;
+                }
+
+                if (!isset($variation['stock_quantity']) || $variation['stock_quantity'] === '') {
+                    $this->dispatch('showAlert', [
+                        'type' => 'error',
+                        'message' => 'يجب تحديد الكمية لجميع المتغيرات'
+                    ]);
+                    return;
+                }
+            }
+
+            // 1. تجهيز بيانات الخصائص
             $attributes = [];
             foreach ($this->attributeMap as $attribute) {
+                $attrId = $attribute['id'];
                 $termNames = [];
 
+                // جمع جميع القيم المستخدمة في المتغيرات لهذه الخاصية
                 foreach ($this->variations as $variation) {
-                    $index = array_search($attribute['name'], array_column($this->attributeMap, 'name'));
-                    if ($index !== false && isset($variation['options'][$index])) {
-                        $termNames[] = $variation['options'][$index];
+                    $optionIndex = array_search($attribute['name'], array_column($this->attributeMap, 'name'));
+                    if ($optionIndex !== false && isset($variation['options'][$optionIndex])) {
+                        $termNames[] = $variation['options'][$optionIndex];
                     }
                 }
 
-                // نزيل التكرار
+                // إزالة التكرار
                 $termNames = array_unique($termNames);
 
                 $attributes[] = [
-                    'id' => $attribute['id'],
+                    'id' => $attrId,
                     'variation' => true,
                     'options' => $termNames
                 ];
             }
 
-            // ٢. تجهيز بيانات المتغيرات
+            // 2. تجهيز بيانات المتغيرات
             $variationsData = [];
             foreach ($this->variations as $variation) {
                 $variationData = [
-                    'regular_price' => $variation['regular_price'],
-                    'sale_price' => $variation['sale_price'],
-                    'stock_quantity' => $variation['stock_quantity'],
-                    'description' => $variation['description'],
+                    'regular_price' => (string)$variation['regular_price'],
+                    'stock_quantity' => (int)$variation['stock_quantity'],
                     'attributes' => []
                 ];
 
-                // إضافة البيانات إذا كان لدينا معرف للمتغيّر
-                if (isset($variation['id']) && $variation['id']) {
+                // إضافة البيانات الاختيارية إذا كانت موجودة
+                if (!empty($variation['sale_price'])) {
+                    $variationData['sale_price'] = (string)$variation['sale_price'];
+                }
+
+                if (!empty($variation['description'])) {
+                    $variationData['description'] = $variation['description'];
+                }
+
+                // إضافة المعرف إذا كان هذا متغير موجود
+                if (isset($variation['id']) && !empty($variation['id'])) {
                     $variationData['id'] = $variation['id'];
                 }
 
-                // إضافة الصورة إذا وجدت
-                $variationId = $variation['id'] ?? null;
-                if ($variationId && isset($this->variationImages[$variationId])) {
-                    $variationData['image'] = ['src' => $this->variationImages[$variationId]];
-                } elseif (isset($variation['image']) && $variation['image']) {
+                // إضافة الصورة إذا كانت موجودة
+                if (isset($variation['image']) && !empty($variation['image'])) {
                     $variationData['image'] = ['src' => $variation['image']];
+                } elseif (isset($variation['id']) && isset($this->variationImages[$variation['id']])) {
+                    $variationData['image'] = ['src' => $this->variationImages[$variation['id']]];
                 }
 
-                // إضافة الخصائص للمتغيّر
+                // إضافة خصائص هذا المتغير
                 foreach ($this->attributeMap as $index => $attribute) {
                     if (isset($variation['options'][$index])) {
                         $variationData['attributes'][] = [
@@ -689,12 +796,12 @@ class VariationManager extends Component
                 $variationsData[] = $variationData;
             }
 
-            logger()->info('Prepared data for saving', [
+            logger()->info('تم تجهيز البيانات للحفظ', [
                 'attributesCount' => count($attributes),
                 'variationsCount' => count($variationsData)
             ]);
 
-            // ٣. حفظ البيانات في WooCommerce
+            // 3. حفظ البيانات في ووكومرس
             $data = [
                 'attributes' => $attributes,
                 'variations' => $variationsData
@@ -702,21 +809,21 @@ class VariationManager extends Component
 
             $response = $this->wooService->updateProductAttributes($this->productId, $data);
 
-            logger()->info('Saved variations', [
+            logger()->info('تم حفظ المتغيرات', [
                 'response' => $response
             ]);
 
-            // ٤. تحديث واجهة المستخدم
+            // 4. تحديث واجهة المستخدم
             $this->dispatch('showAlert', [
                 'type' => 'success',
                 'message' => 'تم حفظ متغيرات المنتج بنجاح'
             ]);
 
-            // ٥. إعادة تحميل البيانات من الخادم للتأكد من التحديث الصحيح
+            // 5. تحديث البيانات من الخادم للتأكد من التحديث الصحيح
             $this->refreshData();
 
         } catch (\Exception $e) {
-            logger()->error('Error saving variations', [
+            logger()->error('خطأ في حفظ المتغيرات', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
@@ -731,22 +838,42 @@ class VariationManager extends Component
     protected function refreshData()
     {
         try {
-            // إعادة تحميل بيانات المتغيرات من الخادم
-            $variations = $this->wooService->getVariationsByProductId($this->productId);
-            $product = $this->wooService->getProduct($this->productId);
+            logger()->info('بدء تحديث بيانات المتغيرات');
 
-            logger()->info('Refreshed product data', [
-                'product' => $product,
-                'variationsCount' => count($variations)
+            // إعادة تحميل المتغيرات من الخادم
+            $existingVariations = $this->wooService->getVariationsByProductId($this->productId);
+
+            logger()->info('تم الحصول على المتغيرات من الخادم', [
+                'variationsCount' => count($existingVariations)
             ]);
 
-            // إعادة توليد المتغيرات
-            $this->mount($this->productId);
+            // مسح المتغيرات الحالية
+            $this->variations = [];
+
+            // تحديث صور المتغيرات من البيانات المحدثة
+            $this->variationImages = [];
+            foreach ($existingVariations as $variation) {
+                if (isset($variation['id']) && isset($variation['image']) && !empty($variation['image']['src'])) {
+                    $this->variationImages[$variation['id']] = $variation['image']['src'];
+                }
+            }
+
+            // إعادة توليد المتغيرات مع البيانات الجديدة
+            $this->generateInitialVariations($existingVariations);
+
+            logger()->info('تم تحديث البيانات وإعادة توليد المتغيرات', [
+                'count' => count($this->variations)
+            ]);
 
         } catch (\Exception $e) {
-            logger()->error('Error refreshing data', [
+            logger()->error('خطأ في تحديث البيانات', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
+            ]);
+
+            $this->dispatch('showAlert', [
+                'type' => 'error',
+                'message' => 'حدث خطأ أثناء تحديث البيانات: ' . $e->getMessage()
             ]);
         }
     }

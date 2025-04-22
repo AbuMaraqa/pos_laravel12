@@ -7,6 +7,7 @@ use Livewire\WithFileUploads;
 use Livewire\Attributes\On;
 use App\Services\WooCommerceService;
 use Illuminate\Support\Facades\Log;
+use Masmerise\Toaster\Toaster;
 use Spatie\LivewireFilepond\WithFilePond;
 
 class Edit extends Component
@@ -35,6 +36,9 @@ class Edit extends Component
     public $mrbpData = [];
     public $productAttributes = [];
     public $attributeTerms = [];
+    public bool $isStockManagementEnabled;
+    public $lowStockThreshold;
+    public $allowBackorders;
 
     // خصائص لتتبع حالة الرفع
     public $uploadingFeaturedImage = false;
@@ -67,10 +71,27 @@ class Edit extends Component
 
     public function fetchProductAttributes()
     {
+        // جلب كل الخصائص المتاحة
         $this->productAttributes = $this->wooService->getAttributes();
 
+        // تسجيل للتشخيص
+        \Illuminate\Support\Facades\Log::info('Fetched all product attributes', [
+            'count' => count($this->productAttributes),
+            'attributes' => $this->productAttributes
+        ]);
+
+        // جلب جميع قيم الخصائص (terms)
         foreach ($this->productAttributes as $attr) {
-            $this->attributeTerms[$attr['id']] = $this->wooService->getTermsForAttribute($attr['id']);
+            $attributeId = $attr['id'];
+            $terms = $this->wooService->getTermsForAttribute($attributeId);
+            $this->attributeTerms[$attributeId] = $terms;
+
+            \Illuminate\Support\Facades\Log::info('Fetched terms for attribute', [
+                'attribute_id' => $attributeId,
+                'attribute_name' => $attr['name'],
+                'terms_count' => count($terms),
+                'terms' => $terms
+            ]);
         }
     }
 
@@ -284,7 +305,6 @@ class Edit extends Component
             return redirect()->route('products.index');
         }
 
-        // تسجيل بيانات المنتج للتشخيص
         \Illuminate\Support\Facades\Log::info('Product data loaded', [
             'product_id' => $this->productId,
             'product_type' => $product['type'],
@@ -293,61 +313,135 @@ class Edit extends Component
             'attributes' => $product['attributes'] ?? []
         ]);
 
-        // Load basic product data
+        // بيانات المنتج الأساسية
         $this->productName = $product['name'];
         $this->productDescription = $product['description'];
         $this->productType = $product['type'];
         $this->regularPrice = $product['regular_price'];
         $this->salePrice = $product['sale_price'];
         $this->sku = $product['sku'];
-        $this->stockQuantity = $product['stock_quantity'];
-        $this->stockStatus = $product['stock_status'];
 
-        // Load categories
+        // إدارة المخزون
+        $this->isStockManagementEnabled = $product['manage_stock'] ?? false;
+        $this->stockQuantity = $product['stock_quantity'] ?? null;
+        $this->stockStatus = $product['stock_status'] ?? null;
+        $this->soldIndividually = $product['sold_individually'] ?? false;
+        $this->allowBackorders = $product['backorders'] ?? 'no';
+        $this->lowStockThreshold = $product['low_stock_amount'] ?? null;
+
+        // التصنيفات
         $this->selectedCategories = collect($product['categories'])->pluck('id')->toArray();
 
-        // Load images
+        // الصور
         if (!empty($product['images'])) {
             $this->featuredImage = $product['images'][0]['src'] ?? null;
-            $this->galleryImages = collect($product['images'])
-                ->slice(1)
-                ->pluck('src')
-                ->toArray();
+            $this->galleryImages = collect($product['images'])->slice(1)->pluck('src')->toArray();
         }
 
-        // Load variations if it's a variable product
+        // لو المنتج متغير
         if ($this->productType === 'variable') {
+            $this->attributeMap = [];
+            $this->selectedAttributes = [];
+
+            // جلب خصائص المنتج الحالية
+            $productAttributes = [];
             if (!empty($product['attributes'])) {
-                // تجهيز الخصائص للتعديل
                 foreach ($product['attributes'] as $attribute) {
-                    if (isset($attribute['id']) && !empty($attribute['options'])) {
-                        $attributeId = $attribute['id'];
-                        // تحويل خيارات الخاصية إلى مصفوفة ترابطية (id => true)
-                        $this->selectedAttributes[$attributeId] = $attribute['options'];
-
-                        // تأكد من تحميل شروط الخاصية إذا لم تكن محملة بعد
-                        if (empty($this->attributeTerms[$attributeId])) {
-                            $this->attributeTerms[$attributeId] = $this->wooService->getTermsForAttribute($attributeId);
-                        }
-
-                        // إضافة الخاصية إلى خريطة الخصائص
-                        $this->attributeMap[] = [
-                            'id' => $attributeId,
-                            'name' => $attribute['name']
-                        ];
+                    if (isset($attribute['id'])) {
+                        $productAttributes[$attribute['id']] = $attribute;
                     }
                 }
-
-                \Illuminate\Support\Facades\Log::info('Processed attributes', [
-                    'selected_attributes' => $this->selectedAttributes,
-                    'attribute_map' => $this->attributeMap
-                ]);
             }
+
+            // جلب جميع الخصائص المتاحة في النظام
+            $allAttributes = $this->wooService->getAttributes();
+
+            \Illuminate\Support\Facades\Log::info('Processing all available attributes', [
+                'total_available' => count($allAttributes),
+                'product_has' => count($productAttributes)
+            ]);
+
+            // معالجة جميع الخصائص المتاحة (وليس فقط المرتبطة بالمنتج)
+            foreach ($allAttributes as $attr) {
+                $attributeId = $attr['id'];
+
+                // التأكد من جلب قيم الخاصية (terms)
+                if (!isset($this->attributeTerms[$attributeId])) {
+                    $this->attributeTerms[$attributeId] = $this->wooService->getTermsForAttribute($attributeId);
+                }
+
+                // إضافة الخاصية إلى خريطة الخصائص
+                $this->attributeMap[] = [
+                    'id' => $attributeId,
+                    'name' => $attr['name']
+                ];
+
+                // تهيئة مصفوفة القيم المحددة
+                $this->selectedAttributes[$attributeId] = [];
+
+                // إذا كانت الخاصية مستخدمة في المنتج، حدد القيم المناسبة
+                if (isset($productAttributes[$attributeId]) && !empty($productAttributes[$attributeId]['options'])) {
+                    $options = $productAttributes[$attributeId]['options'];
+                    foreach ($this->attributeTerms[$attributeId] as $term) {
+                        if (in_array($term['name'], $options)) {
+                            $this->selectedAttributes[$attributeId][$term['id']] = true;
+                        }
+                    }
+                }
+            }
+
+            \Illuminate\Support\Facades\Log::info('Attribute map prepared', [
+                'attribute_map' => $this->attributeMap,
+                'selected_attributes' => $this->selectedAttributes
+            ]);
+
+            // ✅ تحميل المتغيرات
+            $existingVariations = $this->wooService->getVariationsByProductId($this->productId);
+            $this->variations = [];
+
+            foreach ($existingVariations as $variation) {
+                $options = [];
+
+                // ترتيب القيم حسب attributeMap
+                foreach ($this->attributeMap as $attr) {
+                    $value = null;
+
+                    foreach ($variation['attributes'] as $vAttr) {
+                        if (
+                            (isset($vAttr['id']) && $vAttr['id'] == $attr['id']) ||
+                            (isset($vAttr['name']) && $vAttr['name'] === $attr['name'])
+                        ) {
+                            $value = $vAttr['option'] ?? null;
+                            break;
+                        }
+                    }
+
+                    $options[] = $value ?? '';
+                }
+
+                $this->variations[] = [
+                    'id' => $variation['id'] ?? null,
+                    'options' => $options,
+                    'regular_price' => $variation['regular_price'] ?? '',
+                    'sale_price' => $variation['sale_price'] ?? '',
+                    'stock_quantity' => $variation['stock_quantity'] ?? '',
+                    'description' => $variation['description'] ?? '',
+                    'sku' => $variation['sku'] ?? '',
+                    'image' => $variation['image']['src'] ?? null,
+                ];
+            }
+
+            // تسجيل بيانات المتغيرات للتشخيص
+            \Illuminate\Support\Facades\Log::info('Loaded product variations', [
+                'variations_count' => count($this->variations),
+                'variations' => $this->variations
+            ]);
         }
 
-        // Load MRBP data if exists
+        // تحميل بيانات MRBP
         $this->loadMrbpData();
     }
+
 
     protected function loadMrbpData()
     {
@@ -361,12 +455,26 @@ class Edit extends Component
     #[On('updateMultipleFieldsFromTabs')]
     public function handleFieldsUpdate($data)
     {
+        // تحديث الحقول الأساسية
         $this->regularPrice = $data['regularPrice'] ?? $this->regularPrice;
         $this->salePrice = $data['salePrice'] ?? $this->salePrice;
         $this->sku = $data['sku'] ?? $this->sku;
+
+        // تحديث حقول إدارة المخزون
+        $this->isStockManagementEnabled = $data['isStockManagementEnabled'] ?? false;
         $this->stockQuantity = $data['stockQuantity'] ?? $this->stockQuantity;
         $this->stockStatus = $data['stockStatus'] ?? $this->stockStatus;
         $this->soldIndividually = $data['soldIndividually'] ?? $this->soldIndividually;
+        $this->allowBackorders = $data['allowBackorders'] ?? $this->allowBackorders;
+        $this->lowStockThreshold = $data['lowStockThreshold'] ?? $this->lowStockThreshold;
+
+        // تسجيل البيانات المستلمة للتشخيص
+        \Illuminate\Support\Facades\Log::debug('تم استلام بيانات من TabsComponent', [
+            'data' => $data,
+            'stockStatus' => $this->stockStatus,
+            'allowBackorders' => $this->allowBackorders,
+            'lowStockThreshold' => $this->lowStockThreshold
+        ]);
     }
 
     #[On('updateMrbpPrice')]
@@ -400,20 +508,48 @@ class Edit extends Component
     #[On('attributesSelected')]
     public function handleAttributesSelected($data)
     {
+        \Illuminate\Support\Facades\Log::info('Received attribute selection', [
+            'data' => $data
+        ]);
+
         if (isset($data['selectedAttributes']) && is_array($data['selectedAttributes'])) {
             $this->selectedAttributes = $data['selectedAttributes'];
 
             // تأكد من أن attributeTerms موجودة للخصائص المحددة
             foreach (array_keys($this->selectedAttributes) as $attributeId) {
-                if (!isset($this->attributeTerms[$attributeId])) {
+                if (!isset($this->attributeTerms[$attributeId]) || empty($this->attributeTerms[$attributeId])) {
                     $this->attributeTerms[$attributeId] = $this->wooService->getTermsForAttribute($attributeId);
+
+                    \Illuminate\Support\Facades\Log::info('Loaded missing terms for attribute', [
+                        'attribute_id' => $attributeId,
+                        'terms_count' => count($this->attributeTerms[$attributeId])
+                    ]);
                 }
             }
         }
 
         if (isset($data['attributeMap']) && is_array($data['attributeMap'])) {
             $this->attributeMap = $data['attributeMap'];
+
+            \Illuminate\Support\Facades\Log::info('Updated attribute map', [
+                'attribute_map' => $this->attributeMap
+            ]);
         }
+    }
+
+    #[On('getProductStockSettings')]
+    public function sendStockSettings()
+    {
+        $data = [
+            'isStockManagementEnabled' => $this->isStockManagementEnabled,
+            'stockQuantity' => $this->stockQuantity,
+            'stockStatus' => $this->stockStatus,
+            'soldIndividually' => $this->soldIndividually,
+            'allowBackorders' => $this->allowBackorders,
+            'lowStockThreshold' => $this->lowStockThreshold,
+        ];
+
+        $this->dispatch('updateStockSettings', $data)->to('tabs-component');
     }
 
     public function syncBeforeSave()
@@ -438,51 +574,65 @@ class Edit extends Component
 
     public function prepareAttributes()
     {
-        if (empty($this->attributeMap) || empty($this->selectedAttributes)) {
-            return [];
-        }
-
         $attributes = [];
 
-        foreach ($this->attributeMap as $index => $attribute) {
-            if (isset($attribute['id'])) {
-                $attributeId = $attribute['id'];
+        \Illuminate\Support\Facades\Log::info('Preparing attributes for save', [
+            'selected_attributes' => $this->selectedAttributes,
+            'attribute_map' => $this->attributeMap,
+            'attribute_terms' => array_keys($this->attributeTerms)
+        ]);
 
-                // تحويل المفاتيح التي تم تحديدها إلى قائمة من القيم
-                $options = [];
-                if (isset($this->selectedAttributes[$attributeId])) {
-                    // في حالة selectedAttributes[$attributeId] هي مصفوفة ترابطية (checkbox style: id => true)
-                    if (is_array($this->selectedAttributes[$attributeId])) {
-                        foreach ($this->selectedAttributes[$attributeId] as $termId => $isChecked) {
-                            if ($isChecked) {
-                                // ابحث عن اسم الخاصية من معرفها
-                                foreach ($this->attributeTerms[$attributeId] ?? [] as $term) {
-                                    if ($term['id'] == $termId) {
-                                        $options[] = $term['name'];
-                                        break;
-                                    }
-                                }
-                            }
+        if (empty($this->selectedAttributes) || empty($this->attributeMap)) {
+            return $attributes;
+        }
+
+        foreach ($this->attributeMap as $index => $attribute) {
+            $attributeId = $attribute['id'];
+            $options = [];
+
+            if (isset($this->selectedAttributes[$attributeId])) {
+                $selectedTermIds = array_keys(array_filter($this->selectedAttributes[$attributeId]));
+
+                if (!empty($selectedTermIds)) {
+                    // تأكد من وجود شروط الخاصية
+                    if (!isset($this->attributeTerms[$attributeId]) || empty($this->attributeTerms[$attributeId])) {
+                        $this->attributeTerms[$attributeId] = $this->wooService->getTermsForAttribute($attributeId);
+                    }
+
+                    $terms = $this->attributeTerms[$attributeId];
+
+                    foreach ($selectedTermIds as $termId) {
+                        $term = collect($terms)->firstWhere('id', $termId);
+                        if ($term) {
+                            $options[] = $term['name'];
                         }
                     }
-                    // في حالة selectedAttributes[$attributeId] هي قائمة من القيم المحددة مباشرة
-                    else {
-                        $options = $this->selectedAttributes[$attributeId];
-                    }
-                }
 
-                if (!empty($options)) {
-                    $attributes[] = [
-                        'id' => $attributeId,
-                        'name' => $attribute['name'],
-                        'position' => $index,
-                        'visible' => true,
-                        'variation' => true,
-                        'options' => $options
-                    ];
+                    \Illuminate\Support\Facades\Log::info('Processing attribute terms', [
+                        'attribute_id' => $attributeId,
+                        'attribute_name' => $attribute['name'],
+                        'selected_term_ids' => $selectedTermIds,
+                        'options_found' => $options
+                    ]);
                 }
             }
+
+            if (!empty($options)) {
+                $attributes[] = [
+                    'id' => $attributeId,
+                    'name' => $attribute['name'],
+                    'position' => $index,
+                    'visible' => true,
+                    'variation' => true,
+                    'options' => $options
+                ];
+            }
         }
+
+        \Illuminate\Support\Facades\Log::info('Final prepared attributes', [
+            'count' => count($attributes),
+            'attributes' => $attributes
+        ]);
 
         return $attributes;
     }
@@ -542,15 +692,32 @@ class Edit extends Component
             }
 
             else {
-                $productData['attributes'] = [];
+                // تحديث هنا لمعالجة قيمة false بشكل صحيح
+                $productData['manage_stock'] = (bool)$this->isStockManagementEnabled;
+
+                // تخزين كمية المخزون بغض النظر عن قيمتها
                 $productData['stock_quantity'] = $this->stockQuantity;
-                $productData['stock_status '] = $this->stockStatus;
-                $productData['sold_individually '] = $this->soldIndividually;
+
+                // تخزين حالة المخزون بغض النظر عن قيمتها
+                $productData['stock_status'] = $this->stockStatus;
+
+                // تخزين القيم الأخرى
+                $productData['sold_individually'] = (bool)$this->soldIndividually;
+
+                // تخزين حد المخزون المنخفض
+                $productData['low_stock_amount'] = $this->lowStockThreshold;
+
+                // تخزين حالة الطلبات المؤجلة
+                $productData['backorders'] = $this->allowBackorders;
+
+                // تسجيل البيانات قبل الإرسال للتشخيص
+                \Illuminate\Support\Facades\Log::debug('بيانات المخزون قبل الحفظ', [
+                    'manage_stock' => $productData['manage_stock'],
+                    'stock_status' => $productData['stock_status'],
+                    'backorders' => $productData['backorders'],
+                    'low_stock_amount' => $productData['low_stock_amount']
+                ]);
             }
-
-            dd($productData);
-
-
 
             Log::info('بيانات المنتج قبل التحديث', [
                 'product_id' => $this->productId,
@@ -559,6 +726,7 @@ class Edit extends Component
 
             // تحديث المنتج
             $updatedProduct = $this->wooService->updateProduct($this->productId, $productData);
+
 
             if (!$updatedProduct) {
                 throw new \Exception('فشل تحديث المنتج الأساسي');
@@ -604,11 +772,10 @@ class Edit extends Component
                 }
             }
 
-            Log::info('تم تعديل المنتج بنجاح', [
-                'product_id' => $this->productId,
-                'product_type' => $this->productType
-            ]);
+            Toaster::success('تم تحديث المنتج بنجاح');
 
+
+            // Toaster::success('تم تعديل المنتج بنجاح');
             session()->flash('success', 'تم تعديل المنتج بنجاح');
             return redirect()->route('products.index');
 

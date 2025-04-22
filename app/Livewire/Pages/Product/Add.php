@@ -64,7 +64,7 @@ class Add extends Component
 
     public function mount()
     {
-//        $this->fetchProductAttributes();
+        $this->fetchProductAttributes();
     }
 
     public function updated($field, $value)
@@ -262,6 +262,14 @@ class Add extends Component
         try {
             $woo = $this->wooService;
 
+            // تسجيل قيم المتغيرات ومعلوماتها للتشخيص
+            logger()->info('بيانات المتغيرات قبل الحفظ', [
+                'variations_count' => count($this->variations),
+                'attributeMap_count' => count($this->attributeMap),
+                'first_variation' => $this->variations[0] ?? 'لا يوجد',
+                'attributeMap' => $this->attributeMap
+            ]);
+
             // تجهيز بيانات المنتج الأساسية
             $data = [
                 'name' => $this->productName,
@@ -290,25 +298,56 @@ class Add extends Component
                 $attributeMap = array_values($this->attributeMap);
 
                 foreach ($attributeMap as $index => $attribute) {
-                    $options = collect($this->variations)->pluck("options.$index")->unique()->values()->toArray();
+                    // استخدام try-catch لمنع الأخطاء في حالة وجود مشكلة في الوصول إلى البيانات
+                    try {
+                        $options = collect($this->variations)->pluck("options.$index")->unique()->values()->filter()->toArray();
 
-                    if (!empty($options)) {
-                        $productAttributes[] = [
-                            'id' => $attribute['id'],
-                            'variation' => true,
-                            'visible' => true,
-                            'options' => $options,
-                        ];
+                        // إضافة الخاصية فقط إذا كانت تحتوي على خيارات
+                        if (!empty($options)) {
+                            $productAttributes[] = [
+                                'id' => $attribute['id'],
+                                'variation' => true,
+                                'visible' => true,
+                                'options' => $options,
+                            ];
 
-                        $defaultAttributes[] = [
-                            'id' => $attribute['id'],
-                            'option' => $options[0],
-                        ];
+                            // إضافة الخيار الافتراضي فقط إذا كانت هناك خيارات
+                            if (count($options) > 0) {
+                                $defaultAttributes[] = [
+                                    'id' => $attribute['id'],
+                                    'option' => $options[0],
+                                ];
+                            }
+                        } else {
+                            logger()->warning('تم تجاهل الخاصية لأنها لا تحتوي على خيارات', [
+                                'attribute_id' => $attribute['id'],
+                                'attribute_name' => $attribute['name'] ?? 'غير معروف'
+                            ]);
+                        }
+                    } catch (\Exception $e) {
+                        logger()->error('خطأ في معالجة الخصائص', [
+                            'error' => $e->getMessage(),
+                            'attribute' => $attribute,
+                            'index' => $index
+                        ]);
+                        continue;
                     }
                 }
 
-                $data['attributes'] = $productAttributes;
-                $data['default_attributes'] = $defaultAttributes;
+                // إضافة الخصائص فقط إذا كان هناك خصائص صالحة
+                if (!empty($productAttributes)) {
+                    $data['attributes'] = $productAttributes;
+
+                    // إضافة الخصائص الافتراضية فقط إذا كان هناك قيم
+                    if (!empty($defaultAttributes)) {
+                        $data['default_attributes'] = $defaultAttributes;
+                    }
+                } else {
+                    // إذا لم تكن هناك خصائص صالحة، نغير نوع المنتج إلى بسيط
+                    logger()->warning('لا توجد خصائص صالحة للمنتج المتغير. تم تغيير نوع المنتج إلى بسيط.');
+                    $data['type'] = 'simple';
+                    $this->productType = 'simple';
+                }
             }
 
             // إضافة الصور إذا وجدت
@@ -374,36 +413,115 @@ class Add extends Component
             $this->productId = $product['id'];
 
             // إنشاء المتغيرات للمنتجات المتغيرة
-            if ($this->productType === 'variable') {
-                foreach ($this->variations as $variation) {
-                    $attributes = [];
+            if ($this->productType === 'variable' && !empty($this->variations) && !empty($this->attributeMap)) {
+                logger()->info('بدء إنشاء المتغيرات', [
+                    'variations_count' => count($this->variations)
+                ]);
 
-                    foreach ($variation['options'] as $index => $value) {
-                        $attribute = $attributeMap[$index] ?? null;
+                // إذا تم تغيير نوع المنتج إلى بسيط (بسبب عدم وجود خصائص صالحة)، نتخطى إنشاء المتغيرات
+                if ($data['type'] === 'simple') {
+                    logger()->info('تم تخطي إنشاء المتغيرات لأن نوع المنتج تغير إلى بسيط');
+                } else {
+                    foreach ($this->variations as $index => $variation) {
+                        try {
+                            $attributes = [];
+                            $attributeMap = array_values($this->attributeMap);
 
-                        if ($attribute) {
-                            $attributes[] = [
-                                'id' => $attribute['id'],
-                                'option' => $value,
+                            // التحقق من وجود خيارات
+                            if (!isset($variation['options']) || !is_array($variation['options']) || empty($variation['options'])) {
+                                logger()->warning('خيارات المتغير غير موجودة أو فارغة', [
+                                    'variation_index' => $index
+                                ]);
+                                continue;
+                            }
+
+                            // التحقق من أن جميع الخيارات لها قيم
+                            $hasEmptyOptions = false;
+                            foreach ($variation['options'] as $optValue) {
+                                if (empty($optValue)) {
+                                    $hasEmptyOptions = true;
+                                    break;
+                                }
+                            }
+
+                            if ($hasEmptyOptions) {
+                                logger()->warning('المتغير يحتوي على خيارات فارغة', [
+                                    'variation_index' => $index,
+                                    'options' => $variation['options']
+                                ]);
+                                continue;
+                            }
+
+                            foreach ($variation['options'] as $optIndex => $value) {
+                                if ($optIndex >= count($attributeMap)) {
+                                    logger()->warning('مؤشر الخيار تجاوز حجم خريطة الخصائص', [
+                                        'option_index' => $optIndex,
+                                        'attributeMap_size' => count($attributeMap)
+                                    ]);
+                                    continue;
+                                }
+
+                                $attribute = $attributeMap[$optIndex] ?? null;
+
+                                if ($attribute && isset($attribute['id'])) {
+                                    $attributes[] = [
+                                        'id' => $attribute['id'],
+                                        'option' => $value,
+                                    ];
+                                } else {
+                                    logger()->warning('بيانات الخاصية غير كاملة', [
+                                        'attribute' => $attribute,
+                                        'option_index' => $optIndex
+                                    ]);
+                                }
+                            }
+
+                            // تجاهل المتغيرات التي ليس لها خصائص
+                            if (empty($attributes)) {
+                                logger()->warning('تم تجاهل المتغير لأنه لا يحتوي على خصائص', [
+                                    'variation_index' => $index
+                                ]);
+                                continue;
+                            }
+
+                            // التحقق من القيم الرقمية وتعيين قيم افتراضية إذا لزم الأمر
+                            $variationData = [
+                                'regular_price' => !empty($variation['regular_price']) ? (string)$variation['regular_price'] : '0',
+                                'sale_price' => !empty($variation['sale_price']) ? (string)$variation['sale_price'] : '',
+                                'stock_quantity' => isset($variation['stock_quantity']) ? (int)$variation['stock_quantity'] : 0,
+                                'manage_stock' => true,
+                                'status' => 'publish',
+                                'attributes' => $attributes,
                             ];
+
+                            // إضافة SKU إذا كان موجوداً
+                            if (!empty($variation['sku'])) {
+                                $variationData['sku'] = $variation['sku'];
+                            }
+
+                            // إضافة الوصف إذا كان موجوداً
+                            if (!empty($variation['description'])) {
+                                $variationData['description'] = $variation['description'];
+                            }
+
+                            logger()->info('إنشاء متغير جديد', [
+                                'variation_index' => $index,
+                                'attributes_count' => count($attributes)
+                            ]);
+
+                            $response = $woo->post("products/{$product['id']}/variations", $variationData);
+
+                            logger()->info('تم إنشاء المتغير بنجاح', [
+                                'variation_id' => $response['id'] ?? 'غير معروف'
+                            ]);
+                        } catch (\Exception $e) {
+                            logger()->error('فشل إنشاء المتغير', [
+                                'variation_index' => $index,
+                                'error' => $e->getMessage()
+                            ]);
+                            // نستمر في الحلقة لمحاولة إنشاء المتغيرات الأخرى
                         }
                     }
-
-                    $variationData = [
-                        'sku' => $variation['sku'],
-                        'regular_price' => $variation['regular_price'] ?: '0',
-                        'sale_price' => $variation['sale_price'] ?: '',
-                        'stock_quantity' => $variation['stock_quantity'] ?: 0,
-                        'manage_stock' => true,
-                        'status' => 'publish',
-                        'attributes' => $attributes,
-                    ];
-
-                    if (!empty($variation['description'])) {
-                        $variationData['description'] = $variation['description'];
-                    }
-
-                    $woo->post("products/{$product['id']}/variations", $variationData);
                 }
             }
 

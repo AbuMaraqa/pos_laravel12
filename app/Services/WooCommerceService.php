@@ -103,17 +103,113 @@ class WooCommerceService
 
     public function post(string $endpoint, array $data = []): array
     {
-        array_walk_recursive($data, function (&$value) {
-            if (is_string($value)) {
-                $value = mb_convert_encoding($value, 'UTF-8', 'UTF-8');
+        try {
+            // تنظيف البيانات للتأكد من صلاحيتها
+            $cleanData = $this->sanitizeData($data);
+
+            logger()->info('Sending POST request to WooCommerce API', [
+                'endpoint' => $endpoint,
+                'data_size' => strlen(json_encode($cleanData))
+            ]);
+
+            $response = $this->client->post($endpoint, [
+                'json' => $cleanData,
+                'timeout' => 30.0, // زيادة مهلة الانتظار
+                'headers' => [
+                    'Accept' => 'application/json',
+                    'Content-Type' => 'application/json'
+                ]
+            ]);
+
+            $result = json_decode($response->getBody()->getContents(), true);
+
+            logger()->info('Successful response from WooCommerce API', [
+                'endpoint' => $endpoint,
+                'status_code' => $response->getStatusCode()
+            ]);
+
+            return $result;
+        } catch (\GuzzleHttp\Exception\RequestException $e) {
+            $errorMessage = $e->getMessage();
+            $statusCode = $e->getResponse() ? $e->getResponse()->getStatusCode() : 'unknown';
+            $responseBody = $e->getResponse() ? $e->getResponse()->getBody()->getContents() : '';
+
+            logger()->error('WooCommerce API POST Error', [
+                'endpoint' => $endpoint,
+                'status_code' => $statusCode,
+                'error' => $errorMessage,
+                'response' => $responseBody
+            ]);
+
+            // رمي خطأ أكثر وضوحا
+            throw new \Exception('خطأ في حفظ المنتج: ' . $this->formatApiError($responseBody, $statusCode));
+        }
+    }
+
+    /**
+     * تنظيف البيانات قبل إرسالها إلى واجهة برمجة التطبيقات
+     */
+    private function sanitizeData(array $data): array
+    {
+        $cleanData = [];
+
+        // تنظيف البيانات بشكل متكرر
+        foreach ($data as $key => $value) {
+            // إذا كانت قيمة فارغة، نتخطاها
+            if ($value === null || $value === '') {
+                continue;
             }
-        });
 
-        $response = $this->client->post($endpoint, [
-            'json' => $data
-        ]);
+            // إذا كانت مصفوفة، نطبق التنظيف بشكل متكرر
+            if (is_array($value)) {
+                // إذا كانت مصفوفة فارغة، نتخطاها
+                if (empty($value)) {
+                    continue;
+                }
 
-        return json_decode($response->getBody()->getContents(), true);
+                $cleanData[$key] = $this->sanitizeData($value);
+
+                // إذا أصبحت المصفوفة فارغة بعد التنظيف، نتخطاها
+                if (empty($cleanData[$key])) {
+                    unset($cleanData[$key]);
+                }
+            } else if (is_string($value)) {
+                // تنظيف النص وتحويله إلى UTF-8
+                $cleanValue = mb_convert_encoding(trim($value), 'UTF-8', 'UTF-8');
+
+                // إذا كانت سلسلة فارغة بعد التنظيف، نتخطاها
+                if ($cleanValue !== '') {
+                    $cleanData[$key] = $cleanValue;
+                }
+            } else {
+                // قيم أخرى (رقمية، بولينية، إلخ)
+                $cleanData[$key] = $value;
+            }
+        }
+
+        return $cleanData;
+    }
+
+    /**
+     * تنسيق خطأ واجهة برمجة التطبيقات بشكل مقروء
+     */
+    private function formatApiError(string $responseBody, $statusCode): string
+    {
+        try {
+            $error = json_decode($responseBody, true);
+
+            if (isset($error['message'])) {
+                return "({$statusCode}) " . $error['message'];
+            }
+
+            if (isset($error['code']) && isset($error['data']['status'])) {
+                return "({$error['data']['status']}) {$error['message']}";
+            }
+
+            return "خطأ غير معروف (كود: {$statusCode})";
+        } catch (\Exception $e) {
+            return "خطأ في الاتصال مع الخادم (كود: {$statusCode})";
+        }
     }
 
     public function getProducts(array $query = []): array

@@ -251,10 +251,24 @@
     @endif
 
     {{-- Debug information --}}
-    {{-- <div class="mt-4 p-4 bg-gray-100 rounded">
-        <h4 class="font-semibold mb-2">معلومات التصحيح:</h4>
-        <pre class="text-xs">{{ json_encode($selectedAttributes, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) }}</pre>
-    </div> --}}
+    <div class="mt-4 p-4 bg-gray-100 rounded">
+        <h4 class="font-semibold mb-2">معلومات التشخيص:</h4>
+        <div class="text-xs">
+            <p>عدد الخصائص المحملة: {{ count($loadedAttributes) }}</p>
+            <p>عدد الخصائص المحددة: {{ count($selectedAttributes) }}</p>
+            <p>عدد المتغيرات: {{ count($variations) }}</p>
+            <p>خريطة الخصائص: {{ json_encode($attributeMap, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) }}</p>
+            <p>الخصائص المحددة: {{ json_encode($selectedAttributes, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) }}</p>
+        </div>
+        <div class="mt-2">
+            <button
+                wire:click="generateVariations"
+                class="px-3 py-1 bg-blue-500 text-white rounded text-sm"
+            >
+                تشخيص وتوليد المتغيرات
+            </button>
+        </div>
+    </div>
 
 {{--    <div class="mb-4">
         <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">الخصائص</label>

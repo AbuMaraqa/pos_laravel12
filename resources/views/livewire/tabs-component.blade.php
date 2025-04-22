@@ -14,7 +14,7 @@
         return this.isStockManagementEnabled;
     },
     showStockStatus() {
-        return this.isStockManagementEnabled && this.productType === 'simple';
+        return this.productType === 'simple';
     }
 }">
 
@@ -40,8 +40,9 @@
 
         <!-- تبويب الصفات (يظهر فقط للمنتج المتعدد) -->
         <button x-show="showAttributesTab" @click="openTab = 4" :class="{ 'border-b-2 border-blue-500': openTab === 4 }"
-            class="py-2 px-4 text-sm font-semibold focus:outline-none">
+            class="py-2 px-4 text-sm font-semibold focus:outline-none relative">
             {{ __('Attributes') }}
+            <span x-show="showAttributesTab && openTab !== 4" class="absolute top-0 right-0 -mt-1 -mr-1 px-2 py-1 text-xs font-bold text-white bg-red-500 rounded-full">!</span>
         </button>
 
         <button @click="openTab = 5" :class="{ 'border-b-2 border-blue-500': openTab === 5 }"
@@ -78,7 +79,10 @@
         <!-- محتوى التبويب الثاني -->
         <div x-show="openTab === 2" x-transition>
             <div class="mb-3">
-                <flux:checkbox x-model="isStockManagementEnabled" wire:model.live="isStockManagementEnabled" value="Stock management"
+                <flux:checkbox
+                    x-model="isStockManagementEnabled"
+                    wire:model.live="isStockManagementEnabled"
+                    value="Stock management"
                     label="{{ __('Stock management') }}"
                     description="{{ __('Track stock quantity for this product.') }}" />
             </div>
@@ -91,22 +95,28 @@
                 <div class="mb-3">
                     <flux:radio.group wire:model.live="allowBackorders" variant="segmented"
                         label="{{ __('Allow Backorders?') }}">
-                        <flux:radio value="0" label="{{ __('Do not allow') }}" />
-                        <flux:radio value="1" label="{{ __('Allow, but notify customer') }}" />
-                        <flux:radio value="2" label="{{ __('Allow') }}" />
+                        <flux:radio value="no" label="{{ __('Do not allow') }}" />
+                        <flux:radio value="notify" label="{{ __('Allow, but notify customer') }}" />
+                        <flux:radio value="yes" label="{{ __('Allow') }}" />
                     </flux:radio.group>
+                    <!-- Debug value -->
+                    <p class="text-xs text-gray-500 mt-1">Current value: {{ $allowBackorders }}</p>
                 </div>
                 <div class="mb-3">
-                    <flux:input wire:model.live="lowStockThreshold" label="{{ __('Low Stock Threshold') }}" />
+                    <flux:input wire:model.live="lowStockThreshold" type="number" label="عدد المنتجات المتبقية لوضع حالة مخزون المنتج كـ منخفض المخزون" />
+                    <!-- Debug value -->
+                    <p class="text-xs text-gray-500 mt-1">Current value: {{ $lowStockThreshold }}</p>
                 </div>
             </div>
 
             <div x-show="showStockStatus" class="mb-3">
-                <flux:radio.group variant="segmented" label="{{ __('Stock Status') }}">
-                    <flux:radio value="in_stock" label="{{ __('In stock') }}" checked />
-                    <flux:radio value="out_of_stock" label="{{ __('Out of stock') }}" />
-                    <flux:radio value="on_backorder" label="{{ __('On backorder') }}" />
+                <flux:radio.group wire:model.live="stockStatus" variant="segmented" label="{{ __('Stock Status') }}">
+                    <flux:radio value="instock" label="{{ __('In stock') }}" />
+                    <flux:radio value="outofstock" label="{{ __('Out of stock') }}" />
+                    <flux:radio value="onbackorder" label="{{ __('On backorder') }}" />
                 </flux:radio.group>
+                <!-- Debug value -->
+                <p class="text-xs text-gray-500 mt-1">Current value: {{ $stockStatus }}</p>
             </div>
 
             <div class="mb-3">
@@ -115,7 +125,7 @@
 
             <!-- التفاعل مع الخيارات المدفوعة -->
             <div class="mb-3">
-                <flux:checkbox wire:model="soldIndividually" label="{{ __('Sold individually') }}" />
+                <flux:checkbox wire:model.live="soldIndividually" label="{{ __('Sold individually') }}" />
             </div>
         </div>
 
@@ -127,6 +137,15 @@
 
         <!-- محتوى تبويب الصفات (يظهر فقط للمنتج المتعدد) -->
         <div x-show="openTab === 4 && showAttributesTab" x-transition>
+            <div class="p-4 mb-4 text-sm text-blue-800 rounded-lg bg-blue-50 dark:bg-gray-800 dark:text-blue-400" role="alert">
+              <span class="font-medium">تعليمات الاستخدام:</span>
+              <ol class="list-decimal list-inside mt-1">
+                <li>حدد الخصائص (مثل اللون، المقاس) من القائمة أدناه</li>
+                <li>اختر القيم المتاحة لكل خاصية (مثل: أحمر، أسود، 40، 42، الخ)</li>
+                <li>انقر على زر "توليد المتغيرات" لإنشاء جميع المتغيرات المحتملة</li>
+                <li>أدخل سعر وكمية لكل متغير في الجدول الذي سيظهر</li>
+              </ol>
+            </div>
             <livewire:variation-manager
                 :productId="$productId"
                 :key="'variation-manager-'.$productId"
