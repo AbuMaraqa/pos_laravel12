@@ -330,94 +330,47 @@ class VariationManager extends Component
 
     public function updated($propertyName)
     {
-        // تسجيل التغييرات للتشخيص
-        \Illuminate\Support\Facades\Log::info('تم تحديث خاصية في مدير المتغيرات', [
-            'propertyName' => $propertyName,
-            'value' => $this->{$propertyName} ?? 'null'
+        logger()->info('Property updated', [
+            'property' => $propertyName
         ]);
 
-        // إذا تم تغيير أحد المدخلات الجماعية، نطبقها على جميع المتغيرات
-        if ($propertyName === 'allRegularPrice' && !empty($this->allRegularPrice)) {
-            $this->applyBulkRegularPrice();
-        } else if ($propertyName === 'allSalePrice' && !empty($this->allSalePrice)) {
-            $this->applyBulkSalePrice();
-        } else if ($propertyName === 'allStockQuantity' && !empty($this->allStockQuantity)) {
-            $this->applyBulkStockQuantity();
-        }
+        // If selected attributes are updated, regenerate variations
+        if (strpos($propertyName, 'selectedAttributes') === 0) {
+            // Get existing variations
+            $existingVariations = $this->wooService->getVariationsByProductId($this->productId);
 
-        // إذا تم تغيير أحد قيم المتغيرات مباشرة، قم بإعلام الواجهة
-        if (str_contains($propertyName, 'variations.') && strpos($propertyName, '.regular_price') !== false) {
-            $this->sendRealTimeUpdateToParent();
-        } elseif (str_contains($propertyName, 'variations.') && strpos($propertyName, '.sale_price') !== false) {
-            $this->sendRealTimeUpdateToParent();
-        } elseif (str_contains($propertyName, 'variations.') && strpos($propertyName, '.stock_quantity') !== false) {
-            $this->sendRealTimeUpdateToParent();
-        } elseif (str_contains($propertyName, 'variations.') && strpos($propertyName, '.description') !== false) {
-            $this->sendRealTimeUpdateToParent();
-        } elseif (str_contains($propertyName, 'variations.') && strpos($propertyName, '.sku') !== false) {
-            $this->sendRealTimeUpdateToParent();
-        }
+            // Generate new variations with the new selections
+            $this->generateInitialVariations($existingVariations);
 
-        // إذا تم تحديث الخصائص المحددة، أرسل الحدث للأب
-        if (str_starts_with($propertyName, 'selectedAttributes.')) {
+            logger()->info('Regenerated variations after attribute selection', [
+                'count' => count($this->variations)
+            ]);
+
+            // Send attributesSelected event to parent component
             $this->dispatch('attributesSelected', [
                 'selectedAttributes' => $this->selectedAttributes,
                 'attributeMap' => $this->attributeMap
-            ]);
+            ])->to('pages.product.edit');
         }
-    }
 
-    // أضف طريقة جديدة لإرسال التحديثات في الوقت الفعلي
-    public function sendRealTimeUpdateToParent()
-    {
-        try {
-            // تجهيز البيانات بشكل صحيح مع إضافة معلومات attributeMap إلى كل متغير
-            $preparedVariations = [];
+        // Update variation values when bulk values change
+        if ($propertyName === 'allRegularPrice' && $this->allRegularPrice !== '') {
             foreach ($this->variations as $index => $variation) {
-                $prepVariation = $variation;
-                $prepVariation['attributeMap'] = $this->attributeMap;
-                $preparedVariations[] = $prepVariation;
+                $this->variations[$index]['regular_price'] = $this->allRegularPrice;
             }
-
-            \Illuminate\Support\Facades\Log::info('إرسال تحديث مباشر للمتغيرات', [
-                'variations_count' => count($preparedVariations)
-            ]);
-
-            $this->dispatch('variationsUpdated', [
-                'variations' => $preparedVariations,
-                'attributeMap' => $this->attributeMap,
-                'selectedAttributes' => $this->selectedAttributes
-            ]);
-        } catch (\Exception $e) {
-            \Illuminate\Support\Facades\Log::error('خطأ في إرسال تحديث المتغيرات', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
         }
-    }
 
-    public function applyBulkRegularPrice()
-    {
-        foreach ($this->variations as $index => $variation) {
-            $this->variations[$index]['regular_price'] = $this->allRegularPrice;
+        if ($propertyName === 'allSalePrice' && $this->allSalePrice !== '') {
+            foreach ($this->variations as $index => $variation) {
+                $this->variations[$index]['sale_price'] = $this->allSalePrice;
+            }
         }
-        $this->sendRealTimeUpdateToParent();
-    }
 
-    public function applyBulkSalePrice()
-    {
-        foreach ($this->variations as $index => $variation) {
-            $this->variations[$index]['sale_price'] = $this->allSalePrice;
+        if ($propertyName === 'allStockQuantity' && $this->allStockQuantity !== '') {
+            foreach ($this->variations as $index => $variation) {
+                $this->variations[$index]['stock_quantity'] = $this->allStockQuantity;
+            }
         }
-        $this->sendRealTimeUpdateToParent();
-    }
-
-    public function applyBulkStockQuantity()
-    {
-        foreach ($this->variations as $index => $variation) {
-            $this->variations[$index]['stock_quantity'] = $this->allStockQuantity;
-        }
-        $this->sendRealTimeUpdateToParent();
     }
 
     public function validateVariations()
@@ -429,38 +382,18 @@ class VariationManager extends Component
     #[On('requestLatestVariations')]
     public function sendLatestToParent()
     {
-        try {
-            // تجهيز البيانات بشكل صحيح مع إضافة معلومات attributeMap إلى كل متغير
-            $preparedVariations = [];
-            foreach ($this->variations as $index => $variation) {
-                $prepVariation = $variation;
-                $prepVariation['attributeMap'] = $this->attributeMap;
-                $preparedVariations[] = $prepVariation;
-            }
+        // Always send data without validation
+        $eventData = [
+            'variations' => array_map(fn($v) => (array) $v, $this->variations),
+            'attributeMap' => array_map(fn($m) => (array) $m, $this->attributeMap),
+            'selectedAttributes' => $this->selectedAttributes,
+        ];
 
-            // تسجيل البيانات المرسلة للمكون الأب
-            \Illuminate\Support\Facades\Log::info('إرسال المتغيرات إلى مكون الأب', [
-                'variations_count' => count($preparedVariations),
-                'attribute_map_count' => count($this->attributeMap)
-            ]);
+        // إرسال البيانات إلى مكون إضافة المنتج
+        $this->dispatch('latestVariationsSent', $eventData)->to('pages.product.add');
 
-            $eventData = [
-                'variations' => $preparedVariations,
-                'attributeMap' => array_map(fn($m) => (array) $m, $this->attributeMap),
-                'selectedAttributes' => $this->selectedAttributes,
-            ];
-
-            // إرسال البيانات إلى مكون إضافة المنتج
-            $this->dispatch('latestVariationsSent', $eventData)->to('pages.product.add');
-
-            // إرسال البيانات أيضاً إلى مكون تعديل المنتج
-            $this->dispatch('latestVariationsSent', $eventData)->to('pages.product.edit');
-        } catch (\Exception $e) {
-            \Illuminate\Support\Facades\Log::error('خطأ في إرسال المتغيرات إلى المكون الأب', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
-        }
+        // إرسال البيانات أيضاً إلى مكون تعديل المنتج
+        $this->dispatch('latestVariationsSent', $eventData)->to('pages.product.edit');
     }
 
     protected function getAttributeById($id)

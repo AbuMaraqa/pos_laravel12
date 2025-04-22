@@ -137,7 +137,7 @@
 
         <!-- محتوى تبويب الصفات (يظهر فقط للمنتج المتعدد) -->
         <div x-show="openTab === 4 && showAttributesTab" x-transition>
-            <div class="p-4 mb-4 text-sm text-blue-800 rounded-lg bg-blue-50 dark:bg-gray-800 dark:text-blue-400" role="alert">
+            {{-- <div class="p-4 mb-4 text-sm text-blue-800 rounded-lg bg-blue-50 dark:bg-gray-800 dark:text-blue-400" role="alert">
               <span class="font-medium">تعليمات الاستخدام:</span>
               <ol class="list-decimal list-inside mt-1">
                 <li>حدد الخصائص (مثل اللون، المقاس) من القائمة أدناه</li>
@@ -145,7 +145,7 @@
                 <li>انقر على زر "توليد المتغيرات" لإنشاء جميع المتغيرات المحتملة</li>
                 <li>أدخل سعر وكمية لكل متغير في الجدول الذي سيظهر</li>
               </ol>
-            </div>
+            </div> --}}
             <livewire:variation-manager
                 :productId="$productId"
                 :key="'variation-manager-'.$productId"

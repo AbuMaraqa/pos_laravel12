@@ -83,6 +83,7 @@ class Add extends Component
     #[On('updateMultipleFieldsFromTabs')]
     public function updateFieldsFromTabs($data)
     {
+        dd($data);
         $this->regularPrice = $data['regularPrice'] ?? null;
         $this->salePrice = $data['salePrice'] ?? null;
         $this->sku = $data['sku'] ?? null;
@@ -206,6 +207,7 @@ class Add extends Component
                 'selectedCategories.required' => 'يجب اختيار تصنيف واحد على الأقل',
                 'selectedCategories.min' => 'يجب اختيار تصنيف واحد على الأقل',
             ]);
+            dd('ASD');
 
             // التحقق حسب نوع المنتج
             switch ($this->productType) {

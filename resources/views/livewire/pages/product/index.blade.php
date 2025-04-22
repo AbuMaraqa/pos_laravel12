@@ -122,7 +122,11 @@
                             {{ $product['sale_price'] }}
                         </td>
                         <td>
-                            {{ $product['featured'] }}
+                            @if($product['featured'])
+                                <flux:icon.star variant="solid" color="orange"/>
+                            @else
+                                <flux:icon.star />
+                            @endif
                         </td>
                         <td>
                             {{ $product['status'] }}
