@@ -6,6 +6,7 @@ use App\Services\WooCommerceService;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Livewire\Component;
 use Livewire\Attributes\Url;
+use Masmerise\Toaster\Toaster;
 
 class Index extends Component
 {
@@ -109,7 +110,11 @@ class Index extends Component
         $this->wooService->deleteProductById($productId);
     }
 
-
+    public function updateProductFeatured($productId, $featured)
+    {
+        $this->wooService->updateProductFeatured($productId, $featured);
+        Toaster::success('تم تحديث المنتج بنجاح');
+    }
 
     public function render()
     {
@@ -140,5 +145,4 @@ class Index extends Component
             'categories' => $this->categories,
         ]);
     }
-
 }

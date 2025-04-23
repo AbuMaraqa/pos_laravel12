@@ -87,6 +87,7 @@ class TabsComponent extends Component
             'terms' => $this->terms ?? '',
         ];
 
+        $this->dispatch('updateMultipleFieldsFromTabs', $data)->to('pages.product.add');
         $this->dispatch('updateMultipleFieldsFromTabs', $data)->to('pages.product.edit');
     }
 

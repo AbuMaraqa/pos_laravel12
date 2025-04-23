@@ -437,7 +437,7 @@ class Edit extends Component
                 'variations' => $this->variations
             ]);
         }
-
+        // dd($product);
         // تحميل بيانات MRBP
         $this->loadMrbpData();
     }

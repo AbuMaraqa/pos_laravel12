@@ -123,9 +123,9 @@
                         </td>
                         <td>
                             @if($product['featured'])
-                                <flux:icon.star variant="solid" color="orange"/>
+                                <flux:icon.star wire:click="updateProductFeatured({{ $product['id'] }}, false)" variant="solid" color="orange"/>
                             @else
-                                <flux:icon.star />
+                                <flux:icon.star wire:click="updateProductFeatured({{ $product['id'] }}, true)" />
                             @endif
                         </td>
                         <td>

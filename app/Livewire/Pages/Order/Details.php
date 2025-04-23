@@ -3,6 +3,7 @@
 namespace App\Livewire\Pages\Order;
 
 use App\Services\WooCommerceService;
+use Livewire\Attributes\Computed;
 use Livewire\Component;
 use Masmerise\Toaster\Toaster;
 
@@ -14,7 +15,11 @@ class Details extends Component
     public $quantities = [];
     public $orderId;
 
+    public $shippingZoneMethod;
+
     public $totalAmount = 0;
+
+    public $totalAmountAfterDiscount = 0;
 
     protected WooCommerceService $wooService;
 
@@ -25,7 +30,7 @@ class Details extends Component
 
     public function mount($order): void
     {
-        $this>$this->orderId = $order;
+        $this->orderId = $order;
 
         $this->loadOrderDetails($order);
 
@@ -50,7 +55,7 @@ class Details extends Component
             'quantity' => 1
         ];
 
-         $response = $this->wooService->put('orders/' . $this->orderId, [
+        $response = $this->wooService->put('orders/' . $this->orderId, [
             'line_items' => $lineItems
         ]);
 
@@ -117,6 +122,8 @@ class Details extends Component
             ->sum(function ($item) {
                 return $item['total'];
             });
+
+        $this->totalAmountAfterDiscount = ( $this->totalAmount - $this->order['discount_total'] ) + $this->order['shipping_total'];
     }
 
     public function updatedSearch(): void
@@ -129,6 +136,66 @@ class Details extends Component
         $this->wooService->updateOrderStatus($orderId, $status);
         Toaster::success('Order status updated successfully');
     }
+
+    #[Computed()]
+    public function shippingMethods()
+    {
+        return $this->wooService->shippingMethods();
+    }
+
+    #[Computed()]
+    public function shippingZones()
+    {
+        return $this->wooService->shippingZones();
+    }
+
+    #[Computed()]
+    public function shippingZoneMethods($zoneId)
+    {
+        return $this->wooService->shippingZoneMethods($zoneId);
+    }
+
+    public function updateOrder($methodId, $zoneId)
+{
+    // 1. تحميل بيانات الطلب
+    $order = $this->wooService->getOrdersById($this->orderId);
+
+    if (empty($order['shipping_lines'][0])) {
+        Toaster::error('No shipping line found in this order');
+        return;
+    }
+
+    $shippingLine = $order['shipping_lines'][0];
+
+    // 2. جلب وسيلة الشحن من منطقة الشحن
+    $methods = $this->wooService->shippingZoneMethods($zoneId);
+    $method = collect($methods)->firstWhere('id', $methodId);
+
+    if (!$method) {
+        Toaster::error('Shipping method not found');
+        return;
+    }
+
+    // 3. إرسال الطلب بالتعديل
+    $payload = [
+        'shipping_lines' => [
+            [
+                'id' => $shippingLine['id'],
+                'method_id' => $method['id'],
+                'method_title' => $method['title'],
+                'total' => $method['settings']['cost']['value'] ?? '0.00',
+            ]
+        ]
+    ];
+
+    $response = $this->wooService->updateOrder($this->orderId, $payload);
+
+    $this->loadOrderDetails($this->orderId);
+
+    Toaster::success('Shipping method updated successfully');
+
+    return $response;
+}
 
     public function render()
     {

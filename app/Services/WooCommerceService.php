@@ -261,9 +261,14 @@ class WooCommerceService
         return $this->get('orders', $query);
     }
 
-    public function getOrdersById($id): array
+    public function getOrdersById($id , $query = []): array
     {
-        return $this->get('orders/' . $id);
+        return $this->get('orders/' . $id, $query);
+    }
+
+    public function updateOrder($id , $query = []): array
+    {
+        return $this->put('orders/' . $id, $query);
     }
 
     public function getAttributes(array $query = []): array
@@ -721,4 +726,39 @@ public function syncVariations($productId, array $variations): array
         ];
     }
 }
+
+    public function updateProductFeatured($productId, $featured)
+    {
+        return $this->put("products/{$productId}", [
+            'featured' => $featured
+        ]);
+    }
+
+    public function shippingMethods(){
+        return $this->get('shipping_methods');
+    }
+
+    public function updateShippingMethod($methodId, $settings){
+        return $this->put("shipping/methods/{$methodId}", [
+            'settings' => $settings
+        ]);
+    }
+
+    public function shippingZones(){
+        return $this->get('shipping/zones');
+    }
+
+    public function shippingZoneById($zoneId){
+        return $this->get("shipping/zones/{$zoneId}");
+    }
+
+    public function shippingZoneMethods($zoneId){
+        return $this->get("shipping/zones/{$zoneId}/methods");
+    }
+
+    public function updateShippingZoneMethod($zoneId, $methodId, $settings){
+        return $this->put("shipping/zones/{$zoneId}/methods/{$methodId}", [
+            'settings' => $settings
+        ]);
+    }
 }

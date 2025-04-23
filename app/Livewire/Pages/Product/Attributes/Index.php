@@ -40,7 +40,7 @@ class Index extends Component
         $attributes = $this->wooService->getAttributes($query);
 
         foreach ($attributes as &$attribute) {
-            $attribute['terms'] = $this->wooService->getTermsForAttribute($attribute['id']);
+            $attribute['terms'] = $this->wooService->getTermsForAttribute($attribute['id'], ['per_page' => 100]);
         }
 
         $this->attribute = $attributes;
@@ -64,7 +64,7 @@ class Index extends Component
             return [];
         }
 
-        return $this->wooService->getTermsByAttributeId($attributeId);
+        return $this->wooService->getTermsByAttributeId($attributeId , ['per_page' => 100]);
     }
 
     public function editTerm($attributeId)
@@ -179,8 +179,6 @@ class Index extends Component
             session()->flash('error', 'حدث خطأ أثناء حذف التيرم: ' . $e->getMessage());
         }
     }
-
-
 
     public function render()
     {
