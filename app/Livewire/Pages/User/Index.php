@@ -37,12 +37,21 @@ class Index extends Component
         }
     }
 
-    public function updateCustomerRole($customerId)
-    {
-        $roles = $this->roles[$customerId] ?? [];
+    // public function updateCustomerRole($customerId)
+    // {
+    //     $roles = $this->roles[$customerId] ?? [];
 
+    //     $response = $this->wooService->updateUser($customerId, [
+    //         'roles' => $roles,
+    //     ]);
+
+    //     Toaster::success(__('تم تحديث الأدوار بنجاح'));
+    // }
+
+    public function updateCustomerRole($customerId, $role)
+    {
         $response = $this->wooService->updateUser($customerId, [
-            'roles' => $roles,
+            'roles' => [0][$role],
         ]);
 
         Toaster::success(__('تم تحديث الأدوار بنجاح'));
