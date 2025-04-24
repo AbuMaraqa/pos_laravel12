@@ -926,4 +926,128 @@ class WooCommerceService
             return [];
         }
     }
+
+    /**
+     * تحديث سعر الدور للمنتج الأساسي
+     */
+    public function updateProductMrbpRole($productId, $roleId, $value)
+    {
+        try {
+            // الحصول على بيانات المنتج الحالية
+            $product = $this->getProduct($productId);
+
+            // تحضير بيانات meta_data
+            $metaData = $product['meta_data'] ?? [];
+
+            // التحقق مما إذا كانت القيمة فارغة أو صفر - في هذه الحالة سنقوم بحذف الدور
+            $shouldRemoveRole = empty($value) || $value == '0' || $value === 0;
+
+            // إذا كنا بحاجة إلى حذف الدور ولا توجد بيانات meta، نعود
+            if ($shouldRemoveRole && empty($metaData)) {
+                logger()->info('No meta data to remove role from', [
+                    'productId' => $productId,
+                    'roleId' => $roleId
+                ]);
+                return ['success' => true, 'message' => 'No role to remove'];
+            }
+
+            // البحث عن mrbp_role في meta_data
+            $mrbpRoleFound = false;
+            $roleRemoved = false;
+
+            foreach ($metaData as $index => &$meta) {
+                if ($meta['key'] === 'mrbp_role') {
+                    $mrbpRoleFound = true;
+
+                    // إذا كان يجب إزالة الدور
+                    if ($shouldRemoveRole) {
+                        // إذا كانت القيمة مصفوفة مباشرة من الأدوار
+                        if (isset($meta['value']) && is_array($meta['value'])) {
+                            $newRoleValues = [];
+                            foreach ($meta['value'] as $roleEntry) {
+                                // تخطي الدور الذي نريد إزالته
+                                if (!isset($roleEntry[$roleId])) {
+                                    $newRoleValues[] = $roleEntry;
+                                } else {
+                                    $roleRemoved = true;
+                                }
+                            }
+
+                            // تحديث الأدوار المصفاة أو إزالتها تمامًا إذا كانت فارغة
+                            if (!empty($newRoleValues)) {
+                                $meta['value'] = $newRoleValues;
+                            } else {
+                                // إزالة mrbp_role بالكامل إذا لم تكن هناك أدوار أخرى
+                                unset($metaData[$index]);
+                                $metaData = array_values($metaData); // إعادة فهرسة المصفوفة
+                            }
+                        }
+                    } else {
+                        // عدم الإزالة - منطق التحديث العادي
+                        // التحويل إلى التنسيق المناسب إذا لم تكن مصفوفة بالفعل
+                        if (!is_array($meta['value'])) {
+                            $meta['value'] = [];
+                        }
+
+                        // أولاً نزيل أي إدخال موجود لهذا الدور
+                        $newRoleValues = [];
+                        foreach ($meta['value'] as $roleEntry) {
+                            if (!isset($roleEntry[$roleId])) {
+                                $newRoleValues[] = $roleEntry;
+                            }
+                        }
+
+                        // إضافة تسعير الدور المحدث
+                        $newRoleValues[] = [
+                            $roleId => [
+                                'mrbp_regular_price' => $value,
+                                'mrbp_sale_price' => $value
+                            ]
+                        ];
+
+                        $meta['value'] = $newRoleValues;
+                    }
+                    break;
+                }
+            }
+
+            // إذا كان mrbp_role غير موجود ولسنا نحاول إزالته، نضيفه
+            if (!$mrbpRoleFound && !$shouldRemoveRole) {
+                $metaData[] = [
+                    'key' => 'mrbp_role',
+                    'value' => [
+                        [
+                            $roleId => [
+                                'mrbp_regular_price' => $value,
+                                'mrbp_sale_price' => $value
+                            ]
+                        ]
+                    ]
+                ];
+            }
+
+            // تسجيل التحديث للتصحيح
+            logger()->info('Updating product meta_data', [
+                'productId' => $productId,
+                'shouldRemoveRole' => $shouldRemoveRole,
+                'roleRemoved' => $roleRemoved,
+                'metaData' => $metaData
+            ]);
+
+            // تحديث المنتج
+            $result = $this->put("products/{$productId}", [
+                'meta_data' => $metaData
+            ]);
+
+            return $result;
+        } catch (\Exception $e) {
+            logger()->error('Error updating product price role', [
+                'productId' => $productId,
+                'roleId' => $roleId,
+                'value' => $value,
+                'error' => $e->getMessage()
+            ]);
+            throw $e;
+        }
+    }
 }

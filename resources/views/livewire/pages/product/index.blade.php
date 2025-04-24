@@ -61,6 +61,23 @@
                     @endforeach
                 </thead>
                 <tbody class="bg-white dark:bg-gray-800">
+                    {{-- صف المنتج الأساسي --}}
+                    <tr class="bg-gray-100">
+                        <td class="px-6 py-3 font-bold">{{ $productData['name'] ?? 'المنتج الأساسي' }}</td>
+                        @foreach ($this->getRoles as $roleIndex => $role)
+                            <td class="px-6 py-3">
+                                <flux:input type="text"
+                                    @if(isset($productData['id']))
+                                    wire:change="updateProductMrbpRole({{ $productData['id'] }}, '{{ $role['role'] }}', $event.target.value)"
+                                    @endif
+                                    wire:model.defer="parentRoleValues.{{ $role['role'] }}"
+                                    class="bg-gray-50"
+                                />
+                            </td>
+                        @endforeach
+                    </tr>
+
+                    {{-- صفوف المتغيرات --}}
                     @foreach ($productVariations as $variationIndex => $variation)
                         <tr>
                             <td class="px-6 py-3">{{ $variation['name'] }}</td>
@@ -69,7 +86,7 @@
                                     <flux:input type="text"
                                         wire:change="updateVariationMrbpRole({{ $variation['id'] }}, '{{ $role['role'] }}', $event.target.value)"
                                         wire:model.defer="variationValues.{{ $variationIndex }}.{{ $role['role'] }}"
-                                        />
+                                    />
                                 </td>
                             @endforeach
                         </tr>
@@ -177,8 +194,8 @@
                                         @foreach ($meta['value'] as $area)
                                             <flux:badge color="lime">
                                                 <span>{{ array_key_first($area) }} :&nbsp;</span>
-                                                <span>{{ $area['mrbp_regular_price'] }} &nbsp;</span>
-                                                <span>{{ $area['mrbp_sale_price'] }}</span>
+                                                <span>{{ $area['mrbp_regular_price'] ?? '' }} &nbsp;</span>
+                                                <span>{{ $area['mrbp_sale_price'] ?? '' }}</span>
                                             </flux:badge>
                                         @endforeach
                                     @endif

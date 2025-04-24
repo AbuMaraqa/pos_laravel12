@@ -30,6 +30,8 @@ class Index extends Component
     public $productVariations = [];
     public $roles = [];
     public $variationValues = [];
+    public $productData = [];
+    public $parentRoleValues = [];
 
     protected WooCommerceService $wooService;
 
@@ -123,16 +125,56 @@ class Index extends Component
 
     public function openListVariationsModal($productId)
     {
-        $variations = $this->wooService->getProductVariationsWithRoles($productId);
-        $this->productVariations = $variations;
+        try {
+            // جلب بيانات المنتج الأساسي
+            $product = $this->wooService->getProduct($productId);
 
-        $this->variationValues = [];
+            // التأكد من أن المنتج موجود وله معرف
+            if (!isset($product['id'])) {
+                logger()->error('Product data missing id', ['productId' => $productId, 'product' => $product]);
+                $this->productData = ['name' => 'المنتج الأساسي', 'id' => $productId];
+            } else {
+                $this->productData = $product;
+            }
 
-        foreach ($variations as $variationIndex => $variation) {
-            $this->variationValues[$variationIndex] = $variation['role_values'] ?? [];
+            // تهيئة قيم أدوار المنتج الأساسي
+            $this->parentRoleValues = [];
+
+            // استخراج قيم الأدوار من meta_data الخاصة بالمنتج الأساسي
+            if (isset($product['meta_data']) && is_array($product['meta_data'])) {
+                foreach ($product['meta_data'] as $meta) {
+                    if ($meta['key'] === 'mrbp_role' && is_array($meta['value'])) {
+                        foreach ($meta['value'] as $roleEntry) {
+                            $roleKey = array_key_first($roleEntry);
+                            if ($roleKey) {
+                                $this->parentRoleValues[$roleKey] = $roleEntry[$roleKey]['mrbp_regular_price'] ?? '';
+                            }
+                        }
+                    }
+                }
+            }
+
+            // استخدام الدالة المحسّنة لجلب جميع المتغيرات مع قيمها مرة واحدة
+            $variations = $this->wooService->getProductVariationsWithRoles($productId);
+            $this->productVariations = $variations;
+
+            // تهيئة مصفوفة لتخزين قيم كل متغير
+            $this->variationValues = [];
+
+            // استخراج قيم roles مباشرة من المتغيرات
+            foreach ($variations as $variationIndex => $variation) {
+                $this->variationValues[$variationIndex] = $variation['role_values'] ?? [];
+            }
+
+            // عرض النافذة المنبثقة
+            $this->modal('list-variations')->show();
+        } catch (\Exception $e) {
+            logger()->error('Error opening variations modal', [
+                'productId' => $productId,
+                'error' => $e->getMessage()
+            ]);
+            Toaster::error('حدث خطأ أثناء جلب البيانات: ' . $e->getMessage());
         }
-
-        $this->modal('list-variations')->show();
     }
 
     #[Computed()]
@@ -145,9 +187,21 @@ class Index extends Component
 
     public function updateVariationMrbpRole($variationId, $roleKey, $value)
     {
-        // dd($variationId, $roleKey, $value);
         $this->wooService->updateVariationMrbpRole($variationId, $roleKey, $value);
         Toaster::success('تم تحديث المنتج بنجاح');
+    }
+
+    /**
+     * تحديث سعر الدور للمنتج الأساسي
+     */
+    public function updateProductMrbpRole($productId, $roleKey, $value)
+    {
+        try {
+            $this->wooService->updateProductMrbpRole($productId, $roleKey, $value);
+            Toaster::success('تم تحديث سعر المنتج بنجاح');
+        } catch (\Exception $e) {
+            Toaster::error('حدث خطأ: ' . $e->getMessage());
+        }
     }
 
     public function render()
