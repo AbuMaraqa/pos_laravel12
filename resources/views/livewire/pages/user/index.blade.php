@@ -26,7 +26,7 @@
                         <td scope="row" class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white">
                             {{ $customer['id'] }}
                         </td>
-                        <td class="px-6 py-4">{{ $customer['name'] }}</td>
+                        <td class="px-6 py-4">{{ $customer['first_name'] }} {{ $customer['last_name'] }}</td>
                         <td class="px-6 py-4">{{ $customer['email'] ?? '—' }}</td>
                         <td class="px-6 py-4">
                             <select wire:change="updateCustomerRole({{ $customer['id'] }}, $event.target.value)"

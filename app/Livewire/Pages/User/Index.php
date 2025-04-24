@@ -27,7 +27,7 @@ class Index extends Component
     #[Computed()]
     public function getRoles()
     {
-        return $this->wooService->getRoles(); // ['role' => 'customer', 'name' => 'Customer']
+        return $this->wooService->getRoles();
     }
 
     public function booted()
