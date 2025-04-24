@@ -32,7 +32,17 @@ class Index extends Component
 
     public function booted()
     {
-        foreach ($this->customers as $customer) {
+        foreach ($this->customers as $index => $customer) {
+            if (!is_array($customer)) {
+                logger("Customer at index $index is not an array: " . print_r($customer, true));
+                continue;
+            }
+
+            if (!isset($customer['id'])) {
+                logger("Customer at index $index has no ID: " . print_r($customer, true));
+                continue;
+            }
+
             $this->roles[$customer['id']] = $customer['roles'] ?? [];
         }
     }

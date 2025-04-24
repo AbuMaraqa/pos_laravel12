@@ -261,12 +261,12 @@ class WooCommerceService
         return $this->get('orders', $query);
     }
 
-    public function getOrdersById($id , $query = []): array
+    public function getOrdersById($id, $query = []): array
     {
         return $this->get('orders/' . $id, $query);
     }
 
-    public function updateOrder($id , $query = []): array
+    public function updateOrder($id, $query = []): array
     {
         return $this->put('orders/' . $id, $query);
     }
@@ -278,7 +278,28 @@ class WooCommerceService
 
     public function getVariationById($id): array
     {
-        return $this->get('products/variations/' . $id);
+        // For variations, we need to find the parent product first by searching all products for this variation
+        try {
+            // Search for parent product containing this variation
+            $products = $this->getProducts(['per_page' => 50]);
+
+            foreach ($products as $product) {
+                if (isset($product['variations']) && is_array($product['variations']) && in_array($id, $product['variations'])) {
+                    // Found the parent product
+                    $productId = $product['id'];
+                    // Now get the variation details
+                    return $this->get("products/{$productId}/variations/{$id}");
+                }
+            }
+
+            throw new \Exception("Parent product not found for variation ID: {$id}");
+        } catch (\Exception $e) {
+            logger()->error('Failed to get variation', [
+                'variationId' => $id,
+                'error' => $e->getMessage()
+            ]);
+            throw $e;
+        }
     }
 
     public function getTerms(int $attributeId): array
@@ -338,7 +359,6 @@ class WooCommerceService
             ]);
 
             return $this->put("products/{$productId}", $data);
-
         } catch (\Exception $e) {
             logger()->error('Failed to update product', [
                 'productId' => $productId,
@@ -470,7 +490,6 @@ class WooCommerceService
                 'src' => $responseData['source_url'] ?? '',
                 'name' => $fileName
             ];
-
         } catch (\Exception $e) {
             logger()->error('Upload Error: ' . $e->getMessage());
             throw new \Exception('فشل في رفع الصورة: ' . $e->getMessage());
@@ -482,7 +501,8 @@ class WooCommerceService
         return $this->uploadImage($file); // نستخدم نفس دالة uploadImage لأنها تقوم بنفس المهمة
     }
 
-    public function getRoles(){
+    public function getRoles()
+    {
         try {
             $response = $this->wpClient->get('roles');
             return json_decode($response->getBody()->getContents(), true);
@@ -492,10 +512,11 @@ class WooCommerceService
         }
     }
 
-    public function getMrbpRoleById($id){
+    public function getMrbpRoleById($id)
+    {
         $product = $this->getProductsById($id);
         return ($product);
-        if($product['meta_data']['key'] == 'mrbp_role'){
+        if ($product['meta_data']['key'] == 'mrbp_role') {
             return $product['meta_data']['key'];
         }
         return null;
@@ -511,221 +532,220 @@ class WooCommerceService
     }
 
     public function getUsers()
-{
-    $response = $this->wpClient->get('users');
-    return json_decode($response->getBody()->getContents(), true);
-}
-
-public function getUserById($id)
-{
-    $response = $this->wpClient->get('users/' . $id);
-    return json_decode($response->getBody()->getContents(), true);
-}
-
-public function updateUser($id , $query = [])
-{
-    try {
-        $response = $this->wpClient->put("users/{$id}", [
-            'json' => $query,
-        ]);
-
-        $result = json_decode($response->getBody()->getContents(), true);
-        logger()->info('Update user success', $result);
-        return $result;
-    } catch (\Exception $e) {
-        logger()->error('Update user failed', [
-            'message' => $e->getMessage(),
-            'trace' => $e->getTraceAsString(),
-        ]);
-        throw $e;
+    {
+        $response = $this->wpClient->get('users');
+        return json_decode($response->getBody()->getContents(), true);
     }
-}
 
-public function updateOrderStatus($id, $status)
-{
-    return $this->put("orders/{$id}", [
-        'status' => $status
-    ]);
-}
+    public function getUserById($id)
+    {
+        $response = $this->wpClient->get('users/' . $id);
+        return json_decode($response->getBody()->getContents(), true);
+    }
 
-public function getProduct($id): array
-{
-    return $this->get('products/' . $id);
-}
+    public function updateUser($id, $query = [])
+    {
+        try {
+            $response = $this->wpClient->put("users/{$id}", [
+                'json' => $query,
+            ]);
 
-public function getMrbpData($productId): ?array
-{
-    $product = $this->getProduct($productId);
+            $result = json_decode($response->getBody()->getContents(), true);
+            logger()->info('Update user success', $result);
+            return $result;
+        } catch (\Exception $e) {
+            logger()->error('Update user failed', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            throw $e;
+        }
+    }
 
-    if (!$product || empty($product['meta_data'])) {
+    public function updateOrderStatus($id, $status)
+    {
+        return $this->put("orders/{$id}", [
+            'status' => $status
+        ]);
+    }
+
+    public function getProduct($id): array
+    {
+        return $this->get('products/' . $id);
+    }
+
+    public function getMrbpData($productId): ?array
+    {
+        $product = $this->getProduct($productId);
+
+        if (!$product || empty($product['meta_data'])) {
+            return null;
+        }
+
+        foreach ($product['meta_data'] as $meta) {
+            if ($meta['key'] === 'mrbp_role') {
+                $mrbpData = [];
+                foreach ($meta['value'] as $roleData) {
+                    $role = array_key_first($roleData);
+                    $mrbpData[$role] = [
+                        'regularPrice' => $roleData['mrbp_regular_price'] ?? '',
+                        'salePrice' => $roleData['mrbp_sale_price'] ?? ''
+                    ];
+                }
+                return $mrbpData;
+            }
+        }
+
         return null;
     }
 
-    foreach ($product['meta_data'] as $meta) {
-        if ($meta['key'] === 'mrbp_role') {
-            $mrbpData = [];
-            foreach ($meta['value'] as $roleData) {
-                $role = array_key_first($roleData);
-                $mrbpData[$role] = [
-                    'regularPrice' => $roleData['mrbp_regular_price'] ?? '',
-                    'salePrice' => $roleData['mrbp_sale_price'] ?? ''
-                ];
-            }
-            return $mrbpData;
+    public function updateMrbpData($productId, array $mrbpData): array
+    {
+        $formattedData = [];
+        foreach ($mrbpData as $role => $prices) {
+            $formattedData[] = [
+                $role => [
+                    'mrbp_regular_price' => $prices['regularPrice'] ?? '',
+                    'mrbp_sale_price' => $prices['salePrice'] ?? ''
+                ]
+            ];
         }
-    }
 
-    return null;
-}
-
-public function updateMrbpData($productId, array $mrbpData): array
-{
-    $formattedData = [];
-    foreach ($mrbpData as $role => $prices) {
-        $formattedData[] = [
-            $role => [
-                'mrbp_regular_price' => $prices['regularPrice'] ?? '',
-                'mrbp_sale_price' => $prices['salePrice'] ?? ''
+        return $this->put("products/{$productId}", [
+            'meta_data' => [
+                [
+                    'key' => 'mrbp_role',
+                    'value' => $formattedData
+                ]
             ]
-        ];
-    }
-
-    return $this->put("products/{$productId}", [
-        'meta_data' => [
-            [
-                'key' => 'mrbp_role',
-                'value' => $formattedData
-            ]
-        ]
-    ]);
-}
-
-public function syncVariations($productId, array $variations): array
-{
-    try {
-        logger()->info('Syncing variations for product', [
-            'productId' => $productId,
-            'variationsCount' => count($variations)
         ]);
+    }
 
-        // 1. Get existing variations to compare
-        $existingVariations = $this->getVariationsByProductId($productId);
-        $existingVariationsMap = [];
+    public function syncVariations($productId, array $variations): array
+    {
+        try {
+            logger()->info('Syncing variations for product', [
+                'productId' => $productId,
+                'variationsCount' => count($variations)
+            ]);
 
-        foreach ($existingVariations as $variation) {
-            $existingVariationsMap[$variation['id']] = $variation;
-        }
+            // 1. Get existing variations to compare
+            $existingVariations = $this->getVariationsByProductId($productId);
+            $existingVariationsMap = [];
 
-        $results = [
-            'created' => 0,
-            'updated' => 0,
-            'deleted' => 0,
-            'errors' => []
-        ];
+            foreach ($existingVariations as $variation) {
+                $existingVariationsMap[$variation['id']] = $variation;
+            }
 
-        // 2. Process each variation
-        foreach ($variations as $variation) {
-            try {
-                // تجهيز بيانات المتغيّر
-                $variationData = [
-                    'regular_price' => $variation['regular_price'] ?? '',
-                    'sale_price' => $variation['sale_price'] ?? '',
-                    'stock_quantity' => $variation['stock_quantity'] ?? 0,
-                    'description' => $variation['description'] ?? ''
-                ];
+            $results = [
+                'created' => 0,
+                'updated' => 0,
+                'deleted' => 0,
+                'errors' => []
+            ];
 
-                // إضافة الخصائص للمتغيّر
-                if (isset($variation['options']) && !empty($variation['options'])) {
-                    $attributes = [];
-                    foreach ($variation['options'] as $index => $option) {
-                        if (isset($variation['attributes'][$index]) && isset($variation['attributes'][$index]['id'])) {
-                            $attributes[] = [
-                                'id' => $variation['attributes'][$index]['id'],
-                                'option' => $option
-                            ];
+            // 2. Process each variation
+            foreach ($variations as $variation) {
+                try {
+                    // تجهيز بيانات المتغيّر
+                    $variationData = [
+                        'regular_price' => $variation['regular_price'] ?? '',
+                        'sale_price' => $variation['sale_price'] ?? '',
+                        'stock_quantity' => $variation['stock_quantity'] ?? 0,
+                        'description' => $variation['description'] ?? ''
+                    ];
+
+                    // إضافة الخصائص للمتغيّر
+                    if (isset($variation['options']) && !empty($variation['options'])) {
+                        $attributes = [];
+                        foreach ($variation['options'] as $index => $option) {
+                            if (isset($variation['attributes'][$index]) && isset($variation['attributes'][$index]['id'])) {
+                                $attributes[] = [
+                                    'id' => $variation['attributes'][$index]['id'],
+                                    'option' => $option
+                                ];
+                            }
+                        }
+                        if (!empty($attributes)) {
+                            $variationData['attributes'] = $attributes;
                         }
                     }
-                    if (!empty($attributes)) {
-                        $variationData['attributes'] = $attributes;
+
+                    // إضافة صورة إذا وجدت
+                    if (isset($variation['image']) && !empty($variation['image'])) {
+                        if (is_string($variation['image'])) {
+                            $variationData['image'] = ['src' => $variation['image']];
+                        } else if (isset($variation['image']['src'])) {
+                            $variationData['image'] = ['src' => $variation['image']['src']];
+                        }
                     }
-                }
 
-                // إضافة صورة إذا وجدت
-                if (isset($variation['image']) && !empty($variation['image'])) {
-                    if (is_string($variation['image'])) {
-                        $variationData['image'] = ['src' => $variation['image']];
-                    } else if (isset($variation['image']['src'])) {
-                        $variationData['image'] = ['src' => $variation['image']['src']];
+                    // تحديث أو إنشاء
+                    if (isset($variation['id']) && !empty($variation['id'])) {
+                        // Update existing variation
+                        $this->put("products/{$productId}/variations/{$variation['id']}", $variationData);
+                        $results['updated']++;
+
+                        // Remove from map to track which variations need to be deleted
+                        if (isset($existingVariationsMap[$variation['id']])) {
+                            unset($existingVariationsMap[$variation['id']]);
+                        }
+                    } else {
+                        // Create new variation
+                        $this->post("products/{$productId}/variations", $variationData);
+                        $results['created']++;
                     }
+                } catch (\Exception $e) {
+                    $results['errors'][] = [
+                        'message' => $e->getMessage(),
+                        'variation' => $variation
+                    ];
+
+                    logger()->error('Error processing variation', [
+                        'error' => $e->getMessage(),
+                        'variation' => $variation
+                    ]);
                 }
-
-                // تحديث أو إنشاء
-                if (isset($variation['id']) && !empty($variation['id'])) {
-                    // Update existing variation
-                    $this->put("products/{$productId}/variations/{$variation['id']}", $variationData);
-                    $results['updated']++;
-
-                    // Remove from map to track which variations need to be deleted
-                    if (isset($existingVariationsMap[$variation['id']])) {
-                        unset($existingVariationsMap[$variation['id']]);
-                    }
-                } else {
-                    // Create new variation
-                    $this->post("products/{$productId}/variations", $variationData);
-                    $results['created']++;
-                }
-            } catch (\Exception $e) {
-                $results['errors'][] = [
-                    'message' => $e->getMessage(),
-                    'variation' => $variation
-                ];
-
-                logger()->error('Error processing variation', [
-                    'error' => $e->getMessage(),
-                    'variation' => $variation
-                ]);
             }
-        }
 
-        // 3. Delete variations that no longer exist
-        foreach ($existingVariationsMap as $variationId => $variation) {
-            try {
-                // Only delete if the client requested management of all variations
-                $this->delete("products/{$productId}/variations/{$variationId}");
-                $results['deleted']++;
-            } catch (\Exception $e) {
-                $results['errors'][] = [
-                    'message' => $e->getMessage(),
-                    'variation_id' => $variationId
-                ];
+            // 3. Delete variations that no longer exist
+            foreach ($existingVariationsMap as $variationId => $variation) {
+                try {
+                    // Only delete if the client requested management of all variations
+                    $this->delete("products/{$productId}/variations/{$variationId}");
+                    $results['deleted']++;
+                } catch (\Exception $e) {
+                    $results['errors'][] = [
+                        'message' => $e->getMessage(),
+                        'variation_id' => $variationId
+                    ];
 
-                logger()->error('Error deleting variation', [
-                    'error' => $e->getMessage(),
-                    'variation_id' => $variationId
-                ]);
+                    logger()->error('Error deleting variation', [
+                        'error' => $e->getMessage(),
+                        'variation_id' => $variationId
+                    ]);
+                }
             }
+
+            logger()->info('Variations sync completed', $results);
+
+            return [
+                'success' => true,
+                'results' => $results
+            ];
+        } catch (\Exception $e) {
+            logger()->error('Failed to sync variations', [
+                'productId' => $productId,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return [
+                'success' => false,
+                'message' => $e->getMessage()
+            ];
         }
-
-        logger()->info('Variations sync completed', $results);
-
-        return [
-            'success' => true,
-            'results' => $results
-        ];
-
-    } catch (\Exception $e) {
-        logger()->error('Failed to sync variations', [
-            'productId' => $productId,
-            'error' => $e->getMessage(),
-            'trace' => $e->getTraceAsString()
-        ]);
-
-        return [
-            'success' => false,
-            'message' => $e->getMessage()
-        ];
     }
-}
 
     public function updateProductFeatured($productId, $featured)
     {
@@ -734,31 +754,176 @@ public function syncVariations($productId, array $variations): array
         ]);
     }
 
-    public function shippingMethods(){
+    public function shippingMethods()
+    {
         return $this->get('shipping_methods');
     }
 
-    public function updateShippingMethod($methodId, $settings){
+    public function updateShippingMethod($methodId, $settings)
+    {
         return $this->put("shipping/methods/{$methodId}", [
             'settings' => $settings
         ]);
     }
 
-    public function shippingZones(){
+    public function shippingZones()
+    {
         return $this->get('shipping/zones');
     }
 
-    public function shippingZoneById($zoneId){
+    public function shippingZoneById($zoneId)
+    {
         return $this->get("shipping/zones/{$zoneId}");
     }
 
-    public function shippingZoneMethods($zoneId){
+    public function shippingZoneMethods($zoneId)
+    {
         return $this->get("shipping/zones/{$zoneId}/methods");
     }
 
-    public function updateShippingZoneMethod($zoneId, $methodId, $settings){
+    public function updateShippingZoneMethod($zoneId, $methodId, $settings)
+    {
         return $this->put("shipping/zones/{$zoneId}/methods/{$methodId}", [
             'settings' => $settings
         ]);
+    }
+
+    public function getProductVariations($productId)
+    {
+        return $this->get("products/{$productId}/variations");
+    }
+
+    public function updateVariationMrbpRole($variationId, $roleId, $value)
+    {
+        // For variations, we need to update directly on the target product/variation
+        try {
+            // Get all products (limited to 50 for performance)
+            $products = $this->getProducts(['per_page' => 50]);
+
+            // Find the parent product containing this variation
+            $parentProductId = null;
+            foreach ($products as $product) {
+                if (isset($product['variations']) && is_array($product['variations']) && in_array($variationId, $product['variations'])) {
+                    $parentProductId = $product['id'];
+                    break;
+                }
+            }
+
+            if (!$parentProductId) {
+                throw new \Exception("Parent product not found for variation ID: {$variationId}");
+            }
+
+            // Get the current variation data
+            $variation = $this->get("products/{$parentProductId}/variations/{$variationId}");
+
+            // Prepare meta data update
+            $metaData = $variation['meta_data'] ?? [];
+
+            // Check if mrbp_role exists in meta_data
+            $mrbpRoleFound = false;
+            foreach ($metaData as &$meta) {
+                if ($meta['key'] === 'mrbp_role') {
+                    $mrbpRoleFound = true;
+
+                    // Convert to proper format if not already an array
+                    if (!is_array($meta['value'])) {
+                        $meta['value'] = [];
+                    }
+
+                    // Add/update role pricing
+                    $meta['value'][] = [
+                        $roleId => [
+                            'mrbp_regular_price' => $value,
+                            'mrbp_sale_price' => $value
+                        ]
+                    ];
+                    break;
+                }
+            }
+
+            // If mrbp_role doesn't exist, add it
+            if (!$mrbpRoleFound) {
+                $metaData[] = [
+                    'key' => 'mrbp_role',
+                    'value' => [
+                        [
+                            $roleId => [
+                                'mrbp_regular_price' => $value,
+                                'mrbp_sale_price' => $value
+                            ]
+                        ]
+                    ]
+                ];
+            }
+
+            // Log the update for debugging
+            logger()->info('Updating variation meta_data', [
+                'variationId' => $variationId,
+                'parentProductId' => $parentProductId,
+                'metaData' => $metaData
+            ]);
+
+            // Update the variation
+            $result = $this->put("products/{$parentProductId}/variations/{$variationId}", [
+                'meta_data' => $metaData
+            ]);
+
+            return $result;
+        } catch (\Exception $e) {
+            logger()->error('Error updating variation price role', [
+                'variationId' => $variationId,
+                'roleId' => $roleId,
+                'value' => $value,
+                'error' => $e->getMessage()
+            ]);
+            throw $e;
+        }
+    }
+
+    /**
+     * الحصول على متغيرات المنتج مع قيم الـ roles
+     */
+    public function getProductVariationsWithRoles($productId)
+    {
+        try {
+            // جلب جميع متغيرات المنتج مرة واحدة
+            $variations = $this->get("products/{$productId}/variations", [
+                'per_page' => 100 // الحد الأقصى للمتغيرات
+            ]);
+
+            // إضافة قيم roles لكل متغير
+            foreach ($variations as &$variation) {
+                // تهيئة قيم roles
+                $variation['role_values'] = [];
+
+                // البحث عن meta_data للـ mrbp_role
+                if (isset($variation['meta_data']) && is_array($variation['meta_data'])) {
+                    foreach ($variation['meta_data'] as $meta) {
+                        if ($meta['key'] === 'mrbp_role' && is_array($meta['value'])) {
+                            // استخراج قيم الـ roles
+                            foreach ($meta['value'] as $roleEntry) {
+                                $roleKey = array_key_first($roleEntry);
+                                if ($roleKey) {
+                                    $variation['role_values'][$roleKey] = $roleEntry[$roleKey]['mrbp_regular_price'] ?? '';
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            logger()->info('Retrieved variations with roles', [
+                'productId' => $productId,
+                'count' => count($variations)
+            ]);
+
+            return $variations;
+        } catch (\Exception $e) {
+            logger()->error('Error getting variations with roles', [
+                'productId' => $productId,
+                'error' => $e->getMessage()
+            ]);
+            return [];
+        }
     }
 }

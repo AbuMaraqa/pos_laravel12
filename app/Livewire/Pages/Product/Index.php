@@ -4,6 +4,7 @@ namespace App\Livewire\Pages\Product;
 
 use App\Services\WooCommerceService;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Livewire\Attributes\Computed;
 use Livewire\Component;
 use Livewire\Attributes\Url;
 use Masmerise\Toaster\Toaster;
@@ -25,6 +26,10 @@ class Index extends Component
     public $product = [];
     public $variations = [];
     public $quantities = [];
+
+    public $productVariations = [];
+    public $roles = [];
+    public $variationValues = [];
 
     protected WooCommerceService $wooService;
 
@@ -113,6 +118,35 @@ class Index extends Component
     public function updateProductFeatured($productId, $featured)
     {
         $this->wooService->updateProductFeatured($productId, $featured);
+        Toaster::success('تم تحديث المنتج بنجاح');
+    }
+
+    public function openListVariationsModal($productId)
+    {
+        $variations = $this->wooService->getProductVariationsWithRoles($productId);
+        $this->productVariations = $variations;
+
+        $this->variationValues = [];
+
+        foreach ($variations as $variationIndex => $variation) {
+            $this->variationValues[$variationIndex] = $variation['role_values'] ?? [];
+        }
+
+        $this->modal('list-variations')->show();
+    }
+
+    #[Computed()]
+    public function getRoles()
+    {
+        $roles = $this->wooService->getRoles();
+        $this->roles = $roles;
+        return $roles;
+    }
+
+    public function updateVariationMrbpRole($variationId, $roleKey, $value)
+    {
+        // dd($variationId, $roleKey, $value);
+        $this->wooService->updateVariationMrbpRole($variationId, $roleKey, $value);
         Toaster::success('تم تحديث المنتج بنجاح');
     }
 

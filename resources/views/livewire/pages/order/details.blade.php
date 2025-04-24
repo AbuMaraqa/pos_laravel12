@@ -139,11 +139,14 @@
 
                                     @foreach ($this->shippingZones as $zone)
                                         @foreach ($this->shippingZoneMethods($zone['id']) as $method)
-                                            <label wire:click="updateOrder({{ $method['id'] }}, {{ $zone['id'] }})"
-                                                class="block cursor-pointer">
-                                                {{ $method['title'] }} - {{ $method['settings']['cost']['value'] }}
-                                                شيكل
-                                            </label>
+                                            <div class="flex items-center space-x-2">
+                                                <input {{ $order['shipping_lines'][0]['method_id'] == $method['id'] ? 'checked' : '' }} id="{{ $method['id'] }}" type="radio" wire:click="updateOrder({{ $method['id'] }}, {{ $zone['id'] }})" value="{{ $method['id'] }}">
+                                                <label for="{{ $method['id'] }}"
+                                                    class="block cursor-pointer">
+                                                    {{ $method['title'] }} - {{ $method['settings']['cost']['value'] }}
+                                                    شيكل
+                                                </label>
+                                            </div>
                                         @endforeach
                                     @endforeach
                                 </div>
