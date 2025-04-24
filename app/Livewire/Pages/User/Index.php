@@ -51,7 +51,7 @@ class Index extends Component
     public function updateCustomerRole($customerId, $role)
     {
         $response = $this->wooService->updateUser($customerId, [
-            'roles' => [0][$role],
+            'roles' => [$role],
         ]);
 
         Toaster::success(__('تم تحديث الأدوار بنجاح'));
