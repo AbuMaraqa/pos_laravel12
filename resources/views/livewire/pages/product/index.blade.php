@@ -43,7 +43,7 @@
         </div>
     </flux:modal>
 
-    <flux:modal name="list-variations" class="w-[90%] max-w-[90%]">
+    <flux:modal name="list-variations" class="w-[90vw] max-w-[90vw] md:w-[90vw] md:max-w-[90vw]">
         <div class="space-y-6">
             <div>
                 <flux:heading size="lg">{{ __('List of variations') }}</flux:heading>
