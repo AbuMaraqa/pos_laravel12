@@ -34,6 +34,9 @@ class Index extends Component
     public $productData = [];
     public $parentRoleValues = [];
 
+    public $price = 0;
+    public $sale_price = 0;
+
     protected WooCommerceService $wooService;
 
     public function boot(WooCommerceService $wooService): void
@@ -95,23 +98,11 @@ class Index extends Component
         }, 'barcode.pdf');
     }
 
-    // #[Computed]
-    // public function getMrbpRole($productId){
-    //     $result = $this->wooService->getMrbpRoleById($productId);
-
-    //     // التحقق من نوع البيانات المرجعة وتحويلها إلى نص إذا كانت مصفوفة
-    //     if (is_array($result)) {
-    //         return isset($result['error']) ? 'خطأ: ' . $result['error'] : 'مصفوفة غير محددة';
-    //     }
-
-    //     // إذا كانت القيمة فارغة
-    //     if (is_null($result)) {
-    //         return 'غير محدد';
-    //     }
-
-    //     return (string) $result;
-    // }
-
+    #[Computed]
+    public function getMrbpRole($productId) {
+        $result = $this->wooService->getMrbpRoleById($productId);
+        return $result;
+    }
 
     public function deleteProduct($productId)
     {
@@ -129,6 +120,9 @@ class Index extends Component
         try {
             // جلب بيانات المنتج الأساسي
             $product = $this->wooService->getProduct($productId);
+
+            $this->price = $product['regular_price'];
+            $this->sale_price = $product['sale_price'];
 
             // تسجيل البيانات المستلمة من API للتصحيح
             logger()->info('Product data from API', [

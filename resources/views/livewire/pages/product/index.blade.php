@@ -49,6 +49,39 @@
                 <flux:heading size="lg">{{ __('List of variations') }}</flux:heading>
             </div>
 
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-200 p-4">
+
+                <div>
+                    <div class="grid grid-cols-4">
+                        <div class="col-span-1">
+                            <img style="width: 100px" src="{{ $productData['images'][0]['src'] ?? '' }}" alt="">
+                        </div>
+                        <div class="col-span-3">
+                            <h1 class="text-2xl font-bold">{{ $productData['name'] ?? '' }}</h1>
+                            <flux:separator class="my-2" />
+                            <p>
+                                يمكن من خلال هذه الصفحة تحديد السعر الرئيسي للمنتج و الأسعار بناءا على المناطق او الفئات من خلال الجدول ادناه
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+
+                    <div
+                        class="grid grid-cols-2 gap-4 max-w-full p-6 bg-white border border-gray-200 rounded-lg shadow-sm dark:bg-gray-800 dark:border-gray-700">
+
+                        <div>
+                            <flux:input type="number" wire:model.defer="price" label="{{ __('Price') }}" />
+                        </div>
+                        <div>
+                            <flux:input type="number" wire:model.defer="sale_price" label="{{ __('Sale Price') }}" />
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
             <table class="w-full text-sm text-left rtl:text-right text-gray-500 dark:text-gray-400">
                 <thead class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
                     <th scope="col" class="px-6 py-3">
@@ -58,19 +91,12 @@
                         <th scope="col" class="px-6 py-3">
                             <div class="mb-1">{{ $role['name'] }}</div>
                             <div class="flex items-center gap-1">
-                                <input
-                                    type="number"
-                                    id="column-price-{{ $role['role'] }}"
+                                <input type="number" id="column-price-{{ $role['role'] }}"
                                     placeholder="Set all for {{ $role['name'] }}"
-                                    class="w-full text-xs p-1 border border-gray-300 rounded"
-                                    min="0"
-                                    step="0.01"
-                                >
-                                <button
-                                    type="button"
-                                    onclick="applyColumnPrice('{{ $role['role'] }}')"
-                                    class="bg-blue-500 hover:bg-blue-600 text-white px-2 py-1 rounded text-xs"
-                                >
+                                    class="w-full text-xs p-1 border border-gray-300 rounded" min="0"
+                                    step="0.01">
+                                <button type="button" onclick="applyColumnPrice('{{ $role['role'] }}')"
+                                    class="bg-blue-500 hover:bg-blue-600 text-white px-2 py-1 rounded text-xs">
                                     Apply
                                 </button>
                             </div>
@@ -85,9 +111,7 @@
                             <td class="px-6 py-3">
                                 <flux:input type="text"
                                     wire:change="updateProductMrbpRole('{{ $role['role'] }}', $event.target.value)"
-                                    wire:model.defer="parentRoleValues.{{ $role['role'] }}"
-                                    class="bg-gray-50"
-                                />
+                                    wire:model.defer="parentRoleValues.{{ $role['role'] }}" class="bg-gray-50" />
                             </td>
                         @endforeach
                     </tr>
@@ -100,8 +124,7 @@
                                 <td class="px-6 py-3">
                                     <flux:input type="text"
                                         wire:change="updateVariationMrbpRole({{ $variation['id'] }}, '{{ $role['role'] }}', $event.target.value)"
-                                        wire:model.defer="variationValues.{{ $variationIndex }}.{{ $role['role'] }}"
-                                    />
+                                        wire:model.defer="variationValues.{{ $variationIndex }}.{{ $role['role'] }}" />
                                 </td>
                             @endforeach
                         </tr>
@@ -118,7 +141,7 @@
                     const columnPrice = columnInput.value;
 
                     if (!columnPrice) {
-                        alert('{{ __("Please enter a price value for this column") }}');
+                        alert('{{ __('Please enter a price value for this column') }}');
                         return;
                     }
 
@@ -127,7 +150,7 @@
                     const columnIndex = headings.findIndex(th => th.querySelector(`#column-price-${roleId}`));
 
                     if (columnIndex === -1) {
-                        alert('{{ __("Column not found") }}');
+                        alert('{{ __('Column not found') }}');
                         return;
                     }
 
@@ -149,7 +172,9 @@
                                 input.value = columnPrice;
 
                                 // Disparar evento de cambio
-                                const event = new Event('change', { 'bubbles': true });
+                                const event = new Event('change', {
+                                    'bubbles': true
+                                });
                                 input.dispatchEvent(event);
 
                                 // Actualizar el modelo Livewire
@@ -183,7 +208,7 @@
                     });
 
                     // Mostrar mensaje de confirmación
-                    alert(`{{ __("Price applied to all rows for") }} ${roleId}`);
+                    alert(`{{ __('Price applied to all rows for') }} ${roleId}`);
                 }
             </script>
         </div>
@@ -281,6 +306,9 @@
                         </td>
                         <td>
                             <div class="flex items-center space-x-2">
+                                <div wire:loading wire:target="openListVariationsModal({{ $product['id'] }})">
+                                    <flux:icon.loading />
+                                </div>
                                 <flux:icon.cog-8-tooth wire:click="openListVariationsModal({{ $product['id'] }})" />
                                 @foreach ($product['meta_data'] as $meta)
                                     @if ($meta['key'] == 'mrbp_role')
@@ -289,22 +317,22 @@
                                                 @php
                                                     $roleKey = array_key_first($area);
 
-                                                    // التنسيق القديم - قيم داخل قوسين إضافيين
-                                                    if (isset($area[$roleKey]) && is_array($area[$roleKey])) {
-                                                        $roleName = $roleKey;
-                                                        $regularPrice = $area[$roleKey]['mrbp_regular_price'] ?? '';
-                                                        $salePrice = $area[$roleKey]['mrbp_sale_price'] ?? '';
-                                                    }
-                                                    // التنسيق الجديد - القيم مباشرة
-                                                    else {
-                                                        $roleName = $area[$roleKey] ?? $roleKey;
-                                                        $regularPrice = $area['mrbp_regular_price'] ?? '';
-                                                        $salePrice = $area['mrbp_sale_price'] ?? '';
-                                                    }
+                                                    // Usamos siempre el formato directo
+                                                    $roleName = $area[$roleKey] ?? $roleKey;
+                                                    // Asegurarnos de que roleName sea string
+                                                    $roleName = is_array($roleName)
+                                                        ? json_encode($roleName)
+                                                        : $roleName;
+                                                    $regularPrice = $area['mrbp_regular_price'] ?? '';
+                                                    $regularPrice = is_array($regularPrice)
+                                                        ? json_encode($regularPrice)
+                                                        : $regularPrice;
+                                                    $salePrice = $area['mrbp_sale_price'] ?? '';
+                                                    $salePrice = is_array($salePrice)
+                                                        ? json_encode($salePrice)
+                                                        : $salePrice;
                                                 @endphp
-                                                <span>{{ $roleName }} :&nbsp;</span>
-                                                <span>{{ $regularPrice }} &nbsp;</span>
-                                                {{-- <span>{{ $salePrice }}</span> --}}
+                                                <span>{{ $roleName }}: {{ $regularPrice }}</span>
                                             </flux:badge>
                                         @endforeach
                                     @endif
@@ -324,7 +352,8 @@
                                 <flux:menu>
                                     <flux:menu.item wire:click="openPrintBarcodeModal({{ $product['id'] }})"
                                         icon="eye">{{ __('Barcode Product') }}</flux:menu.item>
-                                    <flux:menu.item target="_black" href="{{ $product['permalink'] }}" icon="eye">
+                                    <flux:menu.item target="_black" href="{{ $product['permalink'] }}"
+                                        icon="eye">
                                         {{ __('View in website') }}</flux:menu.item>
                                     <flux:menu.item wire:navigate href="{{ route('products.edit', $product['id']) }}"
                                         icon="pencil-square">{{ __('Edit product') }}</flux:menu.item>
