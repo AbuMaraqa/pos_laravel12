@@ -43,7 +43,7 @@
         </div>
     </flux:modal>
 
-    <flux:modal name="list-variations" class="max-w-1000">
+    <flux:modal name="list-variations" class="w-[90%] max-w-[90%]">
         <div class="space-y-6">
             <div>
                 <flux:heading size="lg">{{ __('List of variations') }}</flux:heading>
@@ -167,10 +167,10 @@
                                 </flux:badge>
                             @endforeach
                         </th>
-                        <td>
+                        <td class="text-center">
                             {{ $product['regular_price'] }}
                         </td>
-                        <td>
+                        <td class="text-center">
                             {{ $product['sale_price'] }}
                         </td>
                         <td>
@@ -216,7 +216,7 @@
                                 @endforeach
                             </div>
                         </td>
-                        <td>
+                        <td class="text-center">
                             {{ $product['stock_quantity'] }}
                         </td>
                         {{-- <td>
