@@ -43,7 +43,7 @@
         </div>
     </flux:modal>
 
-    <flux:modal name="list-variations" class="w-[90vw] max-w-[90vw] md:w-[90vw] md:max-w-[90vw]">
+    <flux:modal name="list-variations" class="" style="min-width: 90vw; max-width: 90vw;">
         <div class="space-y-6">
             <div>
                 <flux:heading size="lg">{{ __('List of variations') }}</flux:heading>
@@ -72,7 +72,7 @@
                         class="grid grid-cols-2 gap-4 max-w-full p-6 bg-white border border-gray-200 rounded-lg shadow-sm dark:bg-gray-800 dark:border-gray-700">
 
                         <div>
-                            <flux:input type="number" wire:model.defer="price" label="{{ __('Price') }}" />
+                            <flux:input type="number" wire:model.defer="main_price" label="{{ __('Price') }}" />
                         </div>
                         <div>
                             <flux:input type="number" wire:model.defer="sale_price" label="{{ __('Sale Price') }}" />
@@ -87,6 +87,7 @@
                     <th scope="col" class="px-6 py-3">
                         Variation Name
                     </th>
+                    <th>{{ __('Price') }}</th>
                     @foreach ($this->getRoles as $role)
                         <th scope="col" class="px-6 py-3">
                             <div class="mb-1">{{ $role['name'] }}</div>
@@ -107,9 +108,12 @@
                     {{-- صف المنتج الأساسي --}}
                     <tr class="bg-gray-100">
                         <td class="px-6 py-3 font-bold">{{ $productData['name'] ?? 'المنتج الأساسي' }}</td>
+                        <td>
+                            <flux:input type="number" wire:model.defer="main_price" />
+                        </td>
                         @foreach ($this->getRoles as $roleIndex => $role)
-                            <td class="px-6 py-3">
-                                <flux:input type="text"
+                        <td class="px-6 py-3">
+                            <flux:input type="text"
                                     wire:change="updateProductMrbpRole('{{ $role['role'] }}', $event.target.value)"
                                     wire:model.defer="parentRoleValues.{{ $role['role'] }}" class="bg-gray-50" />
                             </td>
@@ -120,6 +124,9 @@
                     @foreach ($productVariations as $variationIndex => $variation)
                         <tr>
                             <td class="px-6 py-3">{{ $variation['name'] }}</td>
+                            <td>
+                                <flux:input type="number" wire:model.defer="price.{{ $variationIndex }}" wire:change="updatePrice({{ $variation['id'] }}, $event.target.value)" />
+                            </td>
                             @foreach ($this->getRoles as $roleIndex => $role)
                                 <td class="px-6 py-3">
                                     <flux:input type="text"

@@ -1109,4 +1109,9 @@ class WooCommerceService
     {
         return $this->updateProductMrbpRole($productId, $roleId, $value);
     }
+
+    public function updateProductVariation($productId, $variationId, $query = [])
+    {
+        return $this->put("products/{$productId}/variations/{$variationId}", $query);
+    }
 }

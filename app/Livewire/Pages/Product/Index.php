@@ -36,7 +36,7 @@ class Index extends Component
 
     public $price = 0;
     public $sale_price = 0;
-
+    public $main_price = 0;
     protected WooCommerceService $wooService;
 
     public function boot(WooCommerceService $wooService): void
@@ -99,7 +99,8 @@ class Index extends Component
     }
 
     #[Computed]
-    public function getMrbpRole($productId) {
+    public function getMrbpRole($productId)
+    {
         $result = $this->wooService->getMrbpRoleById($productId);
         return $result;
     }
@@ -123,6 +124,7 @@ class Index extends Component
 
             $this->price = $product['regular_price'];
             $this->sale_price = $product['sale_price'];
+            $this->main_price = $product['regular_price'];
 
             // تسجيل البيانات المستلمة من API للتصحيح
             logger()->info('Product data from API', [
@@ -187,8 +189,12 @@ class Index extends Component
             // تهيئة مصفوفة لتخزين قيم كل متغير
             $this->variationValues = [];
 
+            $this->price = [];
+
             // استخراج قيم roles مباشرة من المتغيرات
             foreach ($variations as $variationIndex => $variation) {
+
+                $this->price[$variationIndex] = $variation['regular_price'];
                 $this->variationValues[$variationIndex] = $variation['role_values'] ?? [];
             }
 
@@ -217,6 +223,24 @@ class Index extends Component
         $this->wooService->updateVariationMrbpRole($variationId, $roleKey, $value);
         Toaster::success('تم تحديث المنتج بنجاح');
     }
+
+    public function updatePrice($value, $key)
+    {
+        try {
+            $this->wooService->updateProductVariation($this->productData['id'], $value, [
+                'price' => $key,
+                'regular_price' => $key
+            ]);
+            Toaster::success('تم تحديث المنتج بنجاح');
+        } catch (\Exception $e) {
+            if (str_contains($e->getMessage(), 'woocommerce_rest_invalid_product_id')) {
+                Toaster::error('المنتج غير موجود أو تم حذفه.');
+            } else {
+                throw $e; // غير هيك ارمي الخطأ
+            }
+        }
+    }
+
 
     /**
      * تحديث سعر الدور للمنتج الأساسي
