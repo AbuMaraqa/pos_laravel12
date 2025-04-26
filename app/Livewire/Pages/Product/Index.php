@@ -8,6 +8,7 @@ use Livewire\Attributes\Computed;
 use Livewire\Component;
 use Livewire\Attributes\Url;
 use Masmerise\Toaster\Toaster;
+use Barryvdh\DomPDF\Facade\Pdf;
 
 class Index extends Component
 {
@@ -81,7 +82,7 @@ class Index extends Component
 
     public function printBarcodes()
     {
-        $pdf = \PDF::loadView('livewire.pages.product.pdf.index', [
+        $pdf = Pdf::loadView('livewire.pages.product.pdf.index', [
             'product' => $this->product,
             'variations' => $this->variations,
             'quantities' => $this->quantities,
@@ -129,16 +130,35 @@ class Index extends Component
             // جلب بيانات المنتج الأساسي
             $product = $this->wooService->getProduct($productId);
 
+            // تسجيل البيانات المستلمة من API للتصحيح
+            logger()->info('Product data from API', [
+                'productId' => $productId,
+                'hasId' => isset($product['id']),
+                'hasMetaData' => isset($product['meta_data'])
+            ]);
+
             // التأكد من أن المنتج موجود وله معرف
             if (!isset($product['id'])) {
-                logger()->error('Product data missing id', ['productId' => $productId, 'product' => $product]);
+                logger()->error('Product data missing id', ['productId' => $productId]);
                 $this->productData = ['name' => 'المنتج الأساسي', 'id' => $productId];
             } else {
+                // استخدام معرف المنتج المرسل كمعلمة وليس المعرف من البيانات
+                $product['id'] = $productId;
                 $this->productData = $product;
             }
 
             // تهيئة قيم أدوار المنتج الأساسي
             $this->parentRoleValues = [];
+
+            // الحصول على قائمة الأدوار المتاحة
+            $roles = $this->wooService->getRoles();
+
+            // تهيئة قيم فارغة لكل الأدوار
+            foreach ($roles as $role) {
+                if (isset($role['role'])) {
+                    $this->parentRoleValues[$role['role']] = '';
+                }
+            }
 
             // استخراج قيم الأدوار من meta_data الخاصة بالمنتج الأساسي
             if (isset($product['meta_data']) && is_array($product['meta_data'])) {
@@ -146,13 +166,25 @@ class Index extends Component
                     if ($meta['key'] === 'mrbp_role' && is_array($meta['value'])) {
                         foreach ($meta['value'] as $roleEntry) {
                             $roleKey = array_key_first($roleEntry);
-                            if ($roleKey) {
-                                $this->parentRoleValues[$roleKey] = $roleEntry[$roleKey]['mrbp_regular_price'] ?? '';
+
+                            // التنسيق القديم - قيم داخل قوسين إضافيين
+                            if ($roleKey && isset($roleEntry[$roleKey]) && isset($roleEntry[$roleKey]['mrbp_regular_price'])) {
+                                $this->parentRoleValues[$roleKey] = $roleEntry[$roleKey]['mrbp_regular_price'];
+                            }
+                            // التنسيق الجديد - القيم مباشرة
+                            else if ($roleKey && isset($roleEntry['mrbp_regular_price'])) {
+                                $this->parentRoleValues[$roleKey] = $roleEntry['mrbp_regular_price'];
                             }
                         }
                     }
                 }
             }
+
+            // تسجيل قيم الأدوار المستخرجة للتصحيح
+            logger()->info('Extracted role values for parent product', [
+                'productId' => $productId,
+                'parentRoleValues' => $this->parentRoleValues
+            ]);
 
             // استخدام الدالة المحسّنة لجلب جميع المتغيرات مع قيمها مرة واحدة
             $variations = $this->wooService->getProductVariationsWithRoles($productId);
@@ -171,7 +203,8 @@ class Index extends Component
         } catch (\Exception $e) {
             logger()->error('Error opening variations modal', [
                 'productId' => $productId,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
             ]);
             Toaster::error('حدث خطأ أثناء جلب البيانات: ' . $e->getMessage());
         }
@@ -194,13 +227,53 @@ class Index extends Component
     /**
      * تحديث سعر الدور للمنتج الأساسي
      */
-    public function updateProductMrbpRole($productId, $roleKey, $value)
+    public function updateProductMrbpRole($roleKey, $value)
     {
+        // dd($this->productData);
         try {
-            $this->wooService->updateProductMrbpRole($productId, $roleKey, $value);
-            Toaster::success('تم تحديث سعر المنتج بنجاح');
+            // التحقق من أن معرف المنتج صالح
+            if (empty($this->productData['id']) || $this->productData['id'] == 0) {
+                // استخدام معرف المنتج من productData إذا كان متاحًا
+                if (isset($this->productData['id']) && !empty($this->productData['id'])) {
+                    logger()->info('Using product ID from productData', ['productId' => $this->productData['id']]);
+                } else {
+                    logger()->error('Invalid product ID and no productData available', ['providedId' => $this->productData['id']]);
+                    Toaster::error('معرف المنتج غير صالح.');
+                    return;
+                }
+            }
+
+            // تسجيل المعلومات قبل تحديث سعر الدور
+            // logger()->info('Updating product role price', [
+            //     'productId' => $productId,
+            //     'roleKey' => $roleKey,
+            //     'value' => $value
+            // ]);
+
+            // تحديث سعر الدور للمنتج
+            $result = $this->wooService->updateProductRolePrice($this->productData['id'], $roleKey, $value);
+
+            // تحديث القيمة في مصفوفة parentRoleValues
+            $this->parentRoleValues[$roleKey] = $value;
+
+            // تسجيل نتيجة التحديث
+            logger()->info('Product role price update result', [
+                'productId' => $this->productData['id'],
+                'roleKey' => $roleKey,
+                'success' => $result !== false
+            ]);
+
+            // عرض رسالة نجاح للمستخدم
+            Toaster::success('تم تحديث سعر الدور بنجاح.');
         } catch (\Exception $e) {
-            Toaster::error('حدث خطأ: ' . $e->getMessage());
+            // تسجيل الخطأ وعرض رسالة للمستخدم
+            // logger()->error('Error updating product role price', [
+            //     'productId' => $productId,
+            //     'roleKey' => $roleKey,
+            //     'error' => $e->getMessage(),
+            //     'trace' => $e->getTraceAsString()
+            // ]);
+            Toaster::error('حدث خطأ أثناء تحديث سعر الدور: ' . $e->getMessage());
         }
     }
 

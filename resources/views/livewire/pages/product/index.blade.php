@@ -67,9 +67,7 @@
                         @foreach ($this->getRoles as $roleIndex => $role)
                             <td class="px-6 py-3">
                                 <flux:input type="text"
-                                    @if(isset($productData['id']))
-                                    wire:change="updateProductMrbpRole({{ $productData['id'] }}, '{{ $role['role'] }}', $event.target.value)"
-                                    @endif
+                                    wire:change="updateProductMrbpRole('{{ $role['role'] }}', $event.target.value)"
                                     wire:model.defer="parentRoleValues.{{ $role['role'] }}"
                                     class="bg-gray-50"
                                 />
@@ -193,9 +191,25 @@
                                     @if ($meta['key'] == 'mrbp_role')
                                         @foreach ($meta['value'] as $area)
                                             <flux:badge color="lime">
-                                                <span>{{ array_key_first($area) }} :&nbsp;</span>
-                                                <span>{{ $area['mrbp_regular_price'] ?? '' }} &nbsp;</span>
-                                                <span>{{ $area['mrbp_sale_price'] ?? '' }}</span>
+                                                @php
+                                                    $roleKey = array_key_first($area);
+
+                                                    // التنسيق القديم - قيم داخل قوسين إضافيين
+                                                    if (isset($area[$roleKey]) && is_array($area[$roleKey])) {
+                                                        $roleName = $roleKey;
+                                                        $regularPrice = $area[$roleKey]['mrbp_regular_price'] ?? '';
+                                                        $salePrice = $area[$roleKey]['mrbp_sale_price'] ?? '';
+                                                    }
+                                                    // التنسيق الجديد - القيم مباشرة
+                                                    else {
+                                                        $roleName = $area[$roleKey] ?? $roleKey;
+                                                        $regularPrice = $area['mrbp_regular_price'] ?? '';
+                                                        $salePrice = $area['mrbp_sale_price'] ?? '';
+                                                    }
+                                                @endphp
+                                                <span>{{ $roleName }} :&nbsp;</span>
+                                                <span>{{ $regularPrice }} &nbsp;</span>
+                                                {{-- <span>{{ $salePrice }}</span> --}}
                                             </flux:badge>
                                         @endforeach
                                     @endif
