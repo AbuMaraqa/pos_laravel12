@@ -45,9 +45,9 @@
 
     <flux:modal name="list-variations" class="" style="min-width: 90vw; max-width: 90vw;">
         <div class="space-y-6">
-            <div>
+            {{-- <div>
                 <flux:heading size="lg">{{ __('List of variations') }}</flux:heading>
-            </div>
+            </div> --}}
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-200 p-4">
 
@@ -94,11 +94,11 @@
                             <div class="flex items-center gap-1">
                                 <input type="number" id="column-price-{{ $role['role'] }}"
                                     placeholder="Set all for {{ $role['name'] }}"
-                                    class="w-full text-xs p-1 border border-gray-300 rounded" min="0"
+                                    class="w-full text-xs p-1 border border-gray-300 rounded bg-amber-400" min="0"
                                     step="0.01">
                                 <button type="button" onclick="applyColumnPrice('{{ $role['role'] }}')"
                                     class="bg-blue-500 hover:bg-blue-600 text-white px-2 py-1 rounded text-xs">
-                                    Apply
+                                    {{ __('Apply') }}
                                 </button>
                             </div>
                         </th>
