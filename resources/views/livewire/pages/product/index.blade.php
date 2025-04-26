@@ -56,7 +56,24 @@
                     </th>
                     @foreach ($this->getRoles as $role)
                         <th scope="col" class="px-6 py-3">
-                            {{ $role['name'] }}
+                            <div class="mb-1">{{ $role['name'] }}</div>
+                            <div class="flex items-center gap-1">
+                                <input
+                                    type="number"
+                                    id="column-price-{{ $role['role'] }}"
+                                    placeholder="Set all for {{ $role['name'] }}"
+                                    class="w-full text-xs p-1 border border-gray-300 rounded"
+                                    min="0"
+                                    step="0.01"
+                                >
+                                <button
+                                    type="button"
+                                    onclick="applyColumnPrice('{{ $role['role'] }}')"
+                                    class="bg-blue-500 hover:bg-blue-600 text-white px-2 py-1 rounded text-xs"
+                                >
+                                    Apply
+                                </button>
+                            </div>
                         </th>
                     @endforeach
                 </thead>
@@ -91,6 +108,84 @@
                     @endforeach
                 </tbody>
             </table>
+
+            <!-- Script para la funcionalidad de columna -->
+            <script>
+                // Función para aplicar precio a una columna específica
+                function applyColumnPrice(roleId) {
+                    // Obtener el valor del input de columna
+                    const columnInput = document.getElementById(`column-price-${roleId}`);
+                    const columnPrice = columnInput.value;
+
+                    if (!columnPrice) {
+                        alert('{{ __("Please enter a price value for this column") }}');
+                        return;
+                    }
+
+                    // Buscar el índice de la columna en la tabla
+                    const headings = Array.from(document.querySelectorAll('table thead th'));
+                    const columnIndex = headings.findIndex(th => th.querySelector(`#column-price-${roleId}`));
+
+                    if (columnIndex === -1) {
+                        alert('{{ __("Column not found") }}');
+                        return;
+                    }
+
+                    // Obtener el componente Livewire
+                    const livewireComponent = window.Livewire.find(
+                        document.querySelector('[wire\\:id]').getAttribute('wire:id')
+                    );
+
+                    // Obtener todos los inputs de la columna (uno por fila)
+                    const rows = document.querySelectorAll('table tbody tr');
+
+                    rows.forEach(row => {
+                        // Obtener la celda en la posición columnIndex
+                        const cells = row.querySelectorAll('td');
+                        if (cells.length > columnIndex) {
+                            const input = cells[columnIndex].querySelector('input[type="text"]');
+                            if (input) {
+                                // Actualizar el valor del input
+                                input.value = columnPrice;
+
+                                // Disparar evento de cambio
+                                const event = new Event('change', { 'bubbles': true });
+                                input.dispatchEvent(event);
+
+                                // Actualizar el modelo Livewire
+                                const wireModel = input.getAttribute('wire:model.defer');
+                                if (wireModel) {
+                                    livewireComponent.set(wireModel, columnPrice);
+                                }
+
+                                // Si hay un wire:change, extraer y ejecutar el comando
+                                const wireChange = input.getAttribute('wire:change');
+                                if (wireChange) {
+                                    // Extraer los parámetros del wire:change
+                                    const match = wireChange.match(/([^\(]+)\(([^\)]+)\)/);
+                                    if (match && match.length >= 3) {
+                                        const method = match[1];
+                                        let params = match[2].split(',').map(p => p.trim());
+
+                                        // Reemplazar "$event.target.value" por el valor real
+                                        params = params.map(p => {
+                                            if (p === "$event.target.value") return columnPrice;
+                                            if (p.startsWith("'") && p.endsWith("'")) return p.slice(1, -1);
+                                            return p;
+                                        });
+
+                                        // Llamar al método de Livewire
+                                        livewireComponent.call(method, ...params);
+                                    }
+                                }
+                            }
+                        }
+                    });
+
+                    // Mostrar mensaje de confirmación
+                    alert(`{{ __("Price applied to all rows for") }} ${roleId}`);
+                }
+            </script>
         </div>
     </flux:modal>
 
