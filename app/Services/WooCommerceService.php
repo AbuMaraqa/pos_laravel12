@@ -1030,19 +1030,28 @@ class WooCommerceService
                             if (isset($roleEntry[$roleId])) {
                                 $roleEntryExists = true;
 
-                                // إضافة القيم الأصلية
-                                $originalValues = $roleEntry[$roleId];
+                                // إضافة القيم الأصلية - تحقق أولاً من أن القيمة مصفوفة
+                                if (is_array($roleEntry[$roleId])) {
+                                    $originalValues = $roleEntry[$roleId];
 
-                                // تحديث القيم الموجودة
-                                $originalValues['mrbp_regular_price'] = $value;
-                                $originalValues['mrbp_sale_price'] = $value;
+                                    // تحديث القيم الموجودة
+                                    $originalValues['mrbp_regular_price'] = $value;
+                                    $originalValues['mrbp_sale_price'] = $value;
 
-                                // إذا لم تكن قيمة mrbp_make_empty_price موجودة، أضفها
-                                if (!isset($originalValues['mrbp_make_empty_price'])) {
-                                    $originalValues['mrbp_make_empty_price'] = "";
+                                    // إذا لم تكن قيمة mrbp_make_empty_price موجودة، أضفها
+                                    if (!isset($originalValues['mrbp_make_empty_price'])) {
+                                        $originalValues['mrbp_make_empty_price'] = "";
+                                    }
+
+                                    $roleEntry[$roleId] = $originalValues;
+                                } else {
+                                    // إذا كانت القيمة ليست مصفوفة، إنشاء تنسيق جديد
+                                    $roleEntry[$roleId] = [
+                                        'mrbp_regular_price' => $value,
+                                        'mrbp_sale_price' => $value,
+                                        'mrbp_make_empty_price' => ""
+                                    ];
                                 }
-
-                                $roleEntry[$roleId] = $originalValues;
                                 $newRoleValues[] = $roleEntry;
                             } else {
                                 $newRoleValues[] = $roleEntry;
@@ -1053,10 +1062,11 @@ class WooCommerceService
                         if (!$roleEntryExists) {
                             // إنشاء قيمة جديدة بالتنسيق المطلوب
                             $newRoleValues[] = [
-                                $roleId => ucfirst($roleId), // إضافة اسم الدور مع الحرف الأول كبير
-                                'mrbp_regular_price' => $value,
-                                'mrbp_sale_price' => $value,
-                                'mrbp_make_empty_price' => ""
+                                $roleId => [
+                                    'mrbp_regular_price' => $value,
+                                    'mrbp_sale_price' => $value,
+                                    'mrbp_make_empty_price' => ""
+                                ]
                             ];
                         }
 
@@ -1072,10 +1082,11 @@ class WooCommerceService
                     'key' => 'mrbp_role',
                     'value' => [
                         [
-                            $roleId => ucfirst($roleId), // إضافة اسم الدور مع الحرف الأول كبير
-                            'mrbp_regular_price' => $value,
-                            'mrbp_sale_price' => $value,
-                            'mrbp_make_empty_price' => ""
+                            $roleId => [
+                                'mrbp_regular_price' => $value,
+                                'mrbp_sale_price' => $value,
+                                'mrbp_make_empty_price' => ""
+                            ]
                         ]
                     ]
                 ];
