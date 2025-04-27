@@ -271,14 +271,14 @@
                     </th>
                     <th scope="col" class="px-6 py-4 font-semibold text-center">
                         {{ __('Featured') }}
-                        <flux:icon.loading variant="mini" wire:loading wire:target="updateProductFeatured" />
+                        {{-- <flux:icon.loading variant="mini" wire:loading wire:target="updateProductFeatured" /> --}}
                     </th>
                     <th scope="col" class="px-6 py-4 font-semibold text-center">
                         {{ __('Status') }}
                     </th>
                     <th scope="col" class="px-6 py-4 font-semibold">
                         {{ __('Area price') }}
-                        <flux:icon.loading variant="mini" wire:loading wire:target="openListVariationsModal" />
+                        {{-- <flux:icon.loading variant="mini" wire:loading wire:target="openListVariationsModal" /> --}}
                     </th>
                     <th scope="col" class="px-6 py-4 font-semibold text-center">
                         {{ __('Stock Quantity') }}
@@ -317,13 +317,28 @@
                         </td>
                         <td class="px-6 py-4 text-center">
                             @if ($product['featured'])
+                            <div wire:loading.remove wire:target="updateProductFeatured({{ $product['id'] }}, false)">
                                 <flux:icon.star wire:click="updateProductFeatured({{ $product['id'] }}, false)"
                                     variant="solid"
                                     class="cursor-pointer mx-auto transform hover:scale-110 transition-transform"
                                     color="orange" />
+                            </div>
+
+                            <!-- أيقونة اللودينغ (تظهر فقط أثناء التحميل) -->
+                            <div wire:loading wire:target="updateProductFeatured({{ $product['id'] }}, false)">
+                                <flux:icon.loading variant="mini"/>
+                            </div>
+
                             @else
-                                <flux:icon.star wire:click="updateProductFeatured({{ $product['id'] }}, true)"
-                                    class="cursor-pointer mx-auto transform hover:scale-110 transition-transform" />
+                                <div wire:loading.remove wire:target="updateProductFeatured({{ $product['id'] }}, true)">
+                                    <flux:icon.star wire:click="updateProductFeatured({{ $product['id'] }}, true)"
+                                        class="cursor-pointer mx-auto transform hover:scale-110 transition-transform" />
+                                </div>
+
+                                <!-- أيقونة اللودينغ (تظهر فقط أثناء التحميل) -->
+                                <div wire:loading wire:target="updateProductFeatured({{ $product['id'] }}, true)">
+                                    <flux:icon.loading variant="mini"/>
+                                </div>
                             @endif
                         </td>
                         <td class="px-6 py-4 text-center">
@@ -334,12 +349,18 @@
                         </td>
                         <td class="px-6 py-4">
                             <div class="flex flex-wrap items-center gap-2">
-                                {{-- <div wire:loading wire:target="openListVariationsModal({{ $product['id'] }})">
+                                <div wire:loading.remove wire:target="openListVariationsModal({{ $product['id'] }})">
+                                    <flux:icon.cog-8-tooth
+                                        variant="mini"
+                                        class="cursor-pointer hover:text-blue-600"
+                                        wire:click="openListVariationsModal({{ $product['id'] }})"
+                                    />
+                                </div>
+
+                                <!-- أيقونة اللودينغ (تظهر فقط أثناء التحميل) -->
+                                <div wire:loading wire:target="openListVariationsModal({{ $product['id'] }})">
                                     <flux:icon.loading variant="mini"/>
-                                </div> --}}
-                                <flux:icon.cog-8-tooth variant="mini" class="cursor-pointer hover:text-blue-600"
-                                    wire:click="openListVariationsModal({{ $product['id'] }})" />
-                                @foreach ($product['meta_data'] as $meta)
+                                </div>                                @foreach ($product['meta_data'] as $meta)
                                     @if ($meta['key'] == 'mrbp_role')
                                         @foreach ($meta['value'] as $area)
                                             <flux:badge color="lime">
