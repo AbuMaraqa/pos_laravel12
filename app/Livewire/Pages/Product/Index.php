@@ -5,11 +5,13 @@ namespace App\Livewire\Pages\Product;
 use App\Services\WooCommerceService;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Livewire\Attributes\Computed;
+use Livewire\Attributes\Isolate;
 use Livewire\Component;
 use Livewire\Attributes\Url;
 use Masmerise\Toaster\Toaster;
 use PDF;
 
+#[Isolate]
 class Index extends Component
 {
     #[Url(as: 'page')]

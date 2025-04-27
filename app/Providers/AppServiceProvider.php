@@ -16,10 +16,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        Livewire::component('checkout-wizard', WizardRegistration::class);
-        Livewire::component('product-info', ProductInfo::class);
-        Livewire::component('product-variation', ProductVariation::class);
-        Livewire::component('tabs-component', TabsComponent::class);
+        // Livewire::component('checkout-wizard', WizardRegistration::class);
+        // Livewire::component('product-info', ProductInfo::class);
+        // Livewire::component('product-variation', ProductVariation::class);
+        // Livewire::component('tabs-component', TabsComponent::class);
     }
 
     /**

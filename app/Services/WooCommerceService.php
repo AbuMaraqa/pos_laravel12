@@ -28,7 +28,7 @@ class WooCommerceService
             abort(403, "لا توجد مفاتيح WooCommerce صالحة");
         }
 
-        $this->baseUrl = env('WOOCOMMERCE_STORE_URL');
+        $this->baseUrl = env('WOOCOMMERCE_STORE_URL' , 'https://veronastores.com/ar');
         $this->consumerKey = $subscription->consumer_key;
         $this->consumerSecret = $subscription->consumer_secret;
 

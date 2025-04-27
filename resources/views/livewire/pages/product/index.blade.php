@@ -342,6 +342,7 @@
                             @endif
                         </td>
                         <td class="px-6 py-4 text-center">
+                            {{-- {{ $product['status'] }} --}}
                             <span
                                 class="px-2 py-1 rounded-full text-xs font-medium">
                                 @if ($product['status'] == 'publish')
