@@ -343,8 +343,12 @@
                         </td>
                         <td class="px-6 py-4 text-center">
                             <span
-                                class="px-2 py-1 rounded-full text-xs font-medium {{ $product['status'] == 'publish' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800' }}">
-                                {{ $product['status'] }}
+                                class="px-2 py-1 rounded-full text-xs font-medium">
+                                @if ($product['status'] == 'publish')
+                                    <flux:switch  wire:change="updateProductStatus({{ $product['id'] }}, 'draft')" checked/>
+                                @else
+                                    <flux:switch  wire:change="updateProductStatus({{ $product['id'] }}, 'publish')"/>
+                                @endif
                             </span>
                         </td>
                         <td class="px-6 py-4">

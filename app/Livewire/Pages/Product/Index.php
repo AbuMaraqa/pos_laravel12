@@ -329,6 +329,13 @@ class Index extends Component
         Toaster::success('تم تحديث سعر المنتج بنجاح');
     }
 
+    public function updateProductStatus($productId, $status)
+    {
+        $status = $status == 'publish' ? 'publish' : 'draft';
+        $this->wooService->updateProductStatus($productId, $status);
+        Toaster::success('تم تحديث سعر المنتج بنجاح');
+    }
+
     public function render()
     {
         $query = [

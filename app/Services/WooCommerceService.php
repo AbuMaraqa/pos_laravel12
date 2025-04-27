@@ -1140,4 +1140,11 @@ class WooCommerceService
             ]
         ]);
     }
+
+    public function updateProductStatus($productId, $status)
+    {
+        return $this->put("products/{$productId}", [
+            'status' => $status
+        ]);
+    }
 }
