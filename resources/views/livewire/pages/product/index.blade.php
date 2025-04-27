@@ -237,86 +237,90 @@
         </flux:button>
     @endforeach
 
-    <div class="relative overflow-x-auto sm:rounded-lg">
-        <table class="w-full text-sm text-left rtl:text-right text-gray-500 dark:text-gray-400">
-            <thead class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
+    <div class="relative overflow-x-auto shadow-lg sm:rounded-lg my-6 border border-gray-200">
+        <table class="w-full text-sm text-left rtl:text-right text-gray-500 dark:text-gray-400 divide-y divide-gray-200">
+            <thead class="text-xs font-medium uppercase bg-gradient-to-r from-indigo-50 to-blue-50 dark:bg-gray-700 dark:text-gray-400">
                 <tr>
-                    <th scope="col" class="px-6 py-3">
-
+                    <th scope="col" class="px-6 py-4 rounded-tl-lg">
+                        {{ __('Image') }}
                     </th>
-                    <th scope="col" class="px-6 py-3">
+                    <th scope="col" class="px-6 py-4 font-semibold">
                         {{ __('Product name') }}
                     </th>
-                    <th scope="col" class="px-6 py-3">
+                    <th scope="col" class="px-6 py-4 font-semibold">
                         {{ __('Categories') }}
                     </th>
-                    <th scope="col" class="px-6 py-3">
+                    <th scope="col" class="px-6 py-4 font-semibold text-center">
                         {{ __('Regular price') }}
                     </th>
-                    <th scope="col" class="px-6 py-3">
+                    <th scope="col" class="px-6 py-4 font-semibold text-center">
                         {{ __('Sale price') }}
                     </th>
-                    <th scope="col" class="px-6 py-3">
+                    <th scope="col" class="px-6 py-4 font-semibold text-center">
                         {{ __('Featured') }}
+                        <flux:icon.loading variant="mini" wire:loading wire:target="updateProductFeatured"/>
                     </th>
-                    <th scope="col" class="px-6 py-3">
+                    <th scope="col" class="px-6 py-4 font-semibold text-center">
                         {{ __('Status') }}
                     </th>
-                    <th scope="col" class="px-6 py-3">
+                    <th scope="col" class="px-6 py-4 font-semibold">
                         {{ __('Area price') }}
+                        <flux:icon.loading variant="mini" wire:loading wire:target="openListVariationsModal"/>
                     </th>
-                    <th scope="col" class="px-6 py-3">
+                    <th scope="col" class="px-6 py-4 font-semibold text-center">
                         {{ __('Stock Quantity') }}
                     </th>
-                    {{-- <th scope="col" class="px-6 py-3">
-
-                </th> --}}
-                    <th scope="col" class="px-6 py-3">
+                    <th scope="col" class="px-6 py-4 font-semibold text-center rounded-tr-lg">
                         {{ __('Actions') }}
                     </th>
                 </tr>
             </thead>
-            <tbody>
+            <tbody class="divide-y divide-gray-200">
                 @foreach ($products as $product)
                     <tr
-                        class="odd:bg-white odd:dark:bg-gray-900 even:bg-gray-50 even:dark:bg-gray-800 border-b dark:border-gray-700 border-gray-200">
-                        <td>
-                            <img style="width: 70px" src="{{ $product['images'][0]['src'] ?? '' }}" alt="">
+                        class="bg-white hover:bg-gray-50 dark:bg-gray-800 transition-colors duration-200 ease-in-out">
+                        <td class="p-4 text-center">
+                            <img class="w-16 h-16 object-cover rounded-md border border-gray-200 shadow-sm mx-auto" src="{{ $product['images'][0]['src'] ?? asset('images/no-image.png') }}" alt="{{ $product['name'] }}">
                         </td>
                         <td scope="row"
                             class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white">
                             {{ $product['name'] }}
                         </td>
-                        <th scope="col" class="px-6 py-3">
-                            @foreach ($product['categories'] as $category)
-                                <flux:badge color="indigo">
-                                    {{ $category['name'] }}
-                                </flux:badge>
-                            @endforeach
-                        </th>
-                        <td class="text-center">
+                        <td class="px-6 py-4">
+                            <div class="flex flex-wrap gap-1">
+                                @foreach ($product['categories'] as $category)
+                                    <flux:badge color="indigo">
+                                        {{ $category['name'] }}
+                                    </flux:badge>
+                                @endforeach
+                            </div>
+                        </td>
+                        <td class="px-6 py-4 text-center font-medium">
                             {{ $product['regular_price'] }}
                         </td>
-                        <td class="text-center">
+                        <td class="px-6 py-4 text-center font-medium text-emerald-600">
                             {{ $product['sale_price'] }}
                         </td>
-                        <td>
+                        <td class="px-6 py-4 text-center">
                             @if ($product['featured'])
                                 <flux:icon.star wire:click="updateProductFeatured({{ $product['id'] }}, false)"
-                                    variant="solid" color="orange" />
+                                    variant="solid" class="cursor-pointer mx-auto transform hover:scale-110 transition-transform" color="orange" />
                             @else
-                                <flux:icon.star wire:click="updateProductFeatured({{ $product['id'] }}, true)" />
+                                <flux:icon.star wire:click="updateProductFeatured({{ $product['id'] }}, true)"
+                                    class="cursor-pointer mx-auto transform hover:scale-110 transition-transform" />
                             @endif
                         </td>
-                        <td>
-                            {{ $product['status'] }}
+                        <td class="px-6 py-4 text-center">
+                            <span class="px-2 py-1 rounded-full text-xs font-medium {{ $product['status'] == 'publish' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800' }}">
+                                {{ $product['status'] }}
+                            </span>
                         </td>
-                        <td>
-                            <div class="flex items-center space-x-2">
-                                <div wire:loading wire:target="openListVariationsModal({{ $product['id'] }})">
-                                    <flux:icon.loading />
-                                </div>
-                                <flux:icon.cog-8-tooth wire:click="openListVariationsModal({{ $product['id'] }})" />
+                        <td class="px-6 py-4">
+                            <div class="flex flex-wrap items-center gap-2">
+                                {{-- <div wire:loading wire:target="openListVariationsModal({{ $product['id'] }})">
+                                    <flux:icon.loading variant="mini"/>
+                                </div> --}}
+                                <flux:icon.cog-8-tooth variant="mini" class="cursor-pointer hover:text-blue-600" wire:click="openListVariationsModal({{ $product['id'] }})" />
                                 @foreach ($product['meta_data'] as $meta)
                                     @if ($meta['key'] == 'mrbp_role')
                                         @foreach ($meta['value'] as $area)
@@ -346,15 +350,16 @@
                                 @endforeach
                             </div>
                         </td>
-                        <td class="text-center">
-                            {{ $product['stock_quantity'] }}
+                        <td class="px-6 py-4 text-center font-medium">
+                            <span class="px-3 py-1 rounded-full {{ $product['stock_quantity'] > 0 ? 'bg-blue-50 text-blue-700' : 'bg-red-50 text-red-700' }}">
+                                {{ $product['stock_quantity'] }}
+                            </span>
                         </td>
-                        {{-- <td>
-                            {{ $this->getMrbpRole($product['id']) ?? 'role' }}
-                        </td> --}}
-                        <td>
+                        <td class="px-6 py-4 text-center">
                             <flux:dropdown>
-                                <flux:button icon:trailing="chevron-down">{{ __('Options') }}</flux:button>
+                                <flux:button icon:trailing="chevron-down" class="bg-indigo-500 hover:bg-indigo-600">
+                                    {{ __('Options') }}
+                                </flux:button>
 
                                 <flux:menu>
                                     <flux:menu.item wire:click="openPrintBarcodeModal({{ $product['id'] }})"
