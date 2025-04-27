@@ -8,7 +8,7 @@ use Livewire\Attributes\Computed;
 use Livewire\Component;
 use Livewire\Attributes\Url;
 use Masmerise\Toaster\Toaster;
-use Barryvdh\DomPDF\Facade\Pdf;
+use PDF;
 
 class Index extends Component
 {
@@ -37,6 +37,10 @@ class Index extends Component
     public $price = 0;
     public $sale_price = 0;
     public $main_price = 0;
+    public $main_sale_price = 0;
+
+    public $showVariationTable = false;
+
     protected WooCommerceService $wooService;
 
     public function boot(WooCommerceService $wooService): void
@@ -59,6 +63,11 @@ class Index extends Component
     {
         $this->categoryId = null;
         $this->page = 1;
+    }
+
+    public function updateShowVariationTable(): void
+    {
+        $this->showVariationTable = !$this->showVariationTable;
     }
 
     public function setCategory($categoryId): void
@@ -125,7 +134,13 @@ class Index extends Component
             $this->price = $product['regular_price'];
             $this->sale_price = $product['sale_price'];
             $this->main_price = $product['regular_price'];
+            $this->main_sale_price = $product['sale_price'];
 
+            foreach ($product['meta_data'] as $meta) {
+                if ($meta['key'] == 'mrbp_metabox_user_role_enable') {
+                    $this->showVariationTable = $meta['value'] == 'yes';
+                }
+            }
             // تسجيل البيانات المستلمة من API للتصحيح
             logger()->info('Product data from API', [
                 'productId' => $productId,
@@ -298,6 +313,19 @@ class Index extends Component
     public function updateMainProductPrice()
     {
         $this->wooService->updateMainProductPrice($this->productData['id'], $this->main_price);
+        Toaster::success('تم تحديث سعر المنتج بنجاح');
+    }
+
+    public function updateMainSalePrice()
+    {
+        $this->wooService->updateMainSalePrice($this->productData['id'], $this->main_sale_price);
+        Toaster::success('تم تحديث سعر المنتج بنجاح');
+    }
+
+    public function updateMrbpMetaboxUserRoleEnable()
+    {
+        $yes = $this->showVariationTable ? 'yes' : 'no';
+        $this->wooService->updateMrbpMetaboxUserRoleEnable($this->productData['id'], $yes);
         Toaster::success('تم تحديث سعر المنتج بنجاح');
     }
 

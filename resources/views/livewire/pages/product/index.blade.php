@@ -43,7 +43,7 @@
         </div>
     </flux:modal>
 
-    <flux:modal name="list-variations" class="" style="min-width: 90vw; max-width: 90vw;">
+    <flux:modal x-data="{}" name="list-variations" class="" style="min-width: 90vw; max-width: 90vw;">
         <div class="space-y-6">
             {{-- <div>
                 <flux:heading size="lg">{{ __('List of variations') }}</flux:heading>
@@ -60,7 +60,8 @@
                             <h1 class="text-2xl font-bold">{{ $productData['name'] ?? '' }}</h1>
                             <flux:separator class="my-2" />
                             <p>
-                                يمكن من خلال هذه الصفحة تحديد السعر الرئيسي للمنتج و الأسعار بناءا على المناطق او الفئات من خلال الجدول ادناه
+                                يمكن من خلال هذه الصفحة تحديد السعر الرئيسي للمنتج و الأسعار بناءا على المناطق او الفئات
+                                من خلال الجدول ادناه
                             </p>
                         </div>
                     </div>
@@ -72,17 +73,25 @@
                         class="grid grid-cols-2 gap-4 max-w-full p-6 bg-white border border-gray-200 rounded-lg shadow-sm dark:bg-gray-800 dark:border-gray-700">
 
                         <div>
-                            <flux:input type="number" wire:model.defer="main_price" wire:change="updateMainProductPrice" label="{{ __('Price') }}" />
+                            <flux:input type="number" wire:model.defer="main_price"
+                                wire:change="updateMainProductPrice" label="{{ __('Price') }}" />
                         </div>
                         <div>
-                            <flux:input type="number" wire:model.defer="sale_price" label="{{ __('Sale Price') }}" />
+                            <flux:input type="number" wire:model.defer="main_sale_price"
+                                wire:change='updateMainSalePrice' label="{{ __('Sale Price') }}" />
                         </div>
                     </div>
 
                 </div>
             </div>
-
-            <table class="w-full text-sm text-left rtl:text-right text-gray-500 dark:text-gray-400">
+            <div class="inline-flex items-center gap-2">
+                <flux:field variant="inline">
+                    <flux:label>{{ __('Enable Multiple Price') }}</flux:label>
+                    <flux:switch wire:model="showVariationTable" wire:change="updateMrbpMetaboxUserRoleEnable" checked/>
+                </flux:field>
+            </div>
+            <table x-bind:class="{ 'hidden': !$wire.showVariationTable }"
+                class="w-full text-sm text-left rtl:text-right text-gray-500 dark:text-gray-400">
                 <thead class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
                     <th scope="col" class="px-6 py-3">
                         Variation Name
@@ -94,8 +103,8 @@
                             <div class="flex items-center gap-1">
                                 <input type="number" id="column-price-{{ $role['role'] }}"
                                     placeholder="Set all for {{ $role['name'] }}"
-                                    class="w-full text-xs p-1 border border-gray-300 rounded bg-amber-400" min="0"
-                                    step="0.01">
+                                    class="w-full text-xs p-1 border border-gray-300 rounded bg-amber-400"
+                                    min="0" step="0.01">
                                 <button type="button" onclick="applyColumnPrice('{{ $role['role'] }}')"
                                     class="bg-blue-500 hover:bg-blue-600 text-white px-2 py-1 rounded text-xs">
                                     {{ __('Apply') }}
@@ -109,11 +118,12 @@
                     <tr class="bg-gray-100">
                         <td class="px-6 py-3 font-bold">{{ $productData['name'] ?? 'المنتج الأساسي' }}</td>
                         <td>
-                            <flux:input type="number" wire:model.defer="main_price" wire:change="updateMainProductPrice" />
+                            <flux:input type="number" wire:model.defer="main_price"
+                                wire:change="updateMainProductPrice" />
                         </td>
                         @foreach ($this->getRoles as $roleIndex => $role)
-                        <td class="px-6 py-3">
-                            <flux:input type="text"
+                            <td class="px-6 py-3">
+                                <flux:input type="text"
                                     wire:change="updateProductMrbpRole('{{ $role['role'] }}', $event.target.value)"
                                     wire:model.defer="parentRoleValues.{{ $role['role'] }}" class="bg-gray-50" />
                             </td>
@@ -125,7 +135,8 @@
                         <tr>
                             <td class="px-6 py-3">{{ $variation['name'] }}</td>
                             <td>
-                                <flux:input type="number" wire:model.defer="price.{{ $variationIndex }}" wire:change="updatePrice({{ $variation['id'] }}, $event.target.value)" />
+                                <flux:input type="number" wire:model.defer="price.{{ $variationIndex }}"
+                                    wire:change="updatePrice({{ $variation['id'] }}, $event.target.value)" />
                             </td>
                             @foreach ($this->getRoles as $roleIndex => $role)
                                 <td class="px-6 py-3">
@@ -238,8 +249,10 @@
     @endforeach
 
     <div class="relative overflow-x-auto shadow-lg sm:rounded-lg my-6 border border-gray-200">
-        <table class="w-full text-sm text-left rtl:text-right text-gray-500 dark:text-gray-400 divide-y divide-gray-200">
-            <thead class="text-xs font-medium uppercase bg-gradient-to-r from-indigo-50 to-blue-50 dark:bg-gray-700 dark:text-gray-400">
+        <table
+            class="w-full text-sm text-left rtl:text-right text-gray-500 dark:text-gray-400 divide-y divide-gray-200">
+            <thead
+                class="text-xs font-medium uppercase bg-gradient-to-r from-indigo-50 to-blue-50 dark:bg-gray-700 dark:text-gray-400">
                 <tr>
                     <th scope="col" class="px-6 py-4 rounded-tl-lg">
                         {{ __('Image') }}
@@ -258,14 +271,14 @@
                     </th>
                     <th scope="col" class="px-6 py-4 font-semibold text-center">
                         {{ __('Featured') }}
-                        <flux:icon.loading variant="mini" wire:loading wire:target="updateProductFeatured"/>
+                        <flux:icon.loading variant="mini" wire:loading wire:target="updateProductFeatured" />
                     </th>
                     <th scope="col" class="px-6 py-4 font-semibold text-center">
                         {{ __('Status') }}
                     </th>
                     <th scope="col" class="px-6 py-4 font-semibold">
                         {{ __('Area price') }}
-                        <flux:icon.loading variant="mini" wire:loading wire:target="openListVariationsModal"/>
+                        <flux:icon.loading variant="mini" wire:loading wire:target="openListVariationsModal" />
                     </th>
                     <th scope="col" class="px-6 py-4 font-semibold text-center">
                         {{ __('Stock Quantity') }}
@@ -277,10 +290,11 @@
             </thead>
             <tbody class="divide-y divide-gray-200">
                 @foreach ($products as $product)
-                    <tr
-                        class="bg-white hover:bg-gray-50 dark:bg-gray-800 transition-colors duration-200 ease-in-out">
+                    <tr class="bg-white hover:bg-gray-50 dark:bg-gray-800 transition-colors duration-200 ease-in-out">
                         <td class="p-4 text-center">
-                            <img class="w-16 h-16 object-cover rounded-md border border-gray-200 shadow-sm mx-auto" src="{{ $product['images'][0]['src'] ?? asset('images/no-image.png') }}" alt="{{ $product['name'] }}">
+                            <img class="w-16 h-16 object-cover rounded-md border border-gray-200 shadow-sm mx-auto"
+                                src="{{ $product['images'][0]['src'] ?? asset('images/no-image.png') }}"
+                                alt="{{ $product['name'] }}">
                         </td>
                         <td scope="row"
                             class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white">
@@ -304,14 +318,17 @@
                         <td class="px-6 py-4 text-center">
                             @if ($product['featured'])
                                 <flux:icon.star wire:click="updateProductFeatured({{ $product['id'] }}, false)"
-                                    variant="solid" class="cursor-pointer mx-auto transform hover:scale-110 transition-transform" color="orange" />
+                                    variant="solid"
+                                    class="cursor-pointer mx-auto transform hover:scale-110 transition-transform"
+                                    color="orange" />
                             @else
                                 <flux:icon.star wire:click="updateProductFeatured({{ $product['id'] }}, true)"
                                     class="cursor-pointer mx-auto transform hover:scale-110 transition-transform" />
                             @endif
                         </td>
                         <td class="px-6 py-4 text-center">
-                            <span class="px-2 py-1 rounded-full text-xs font-medium {{ $product['status'] == 'publish' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800' }}">
+                            <span
+                                class="px-2 py-1 rounded-full text-xs font-medium {{ $product['status'] == 'publish' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800' }}">
                                 {{ $product['status'] }}
                             </span>
                         </td>
@@ -320,7 +337,8 @@
                                 {{-- <div wire:loading wire:target="openListVariationsModal({{ $product['id'] }})">
                                     <flux:icon.loading variant="mini"/>
                                 </div> --}}
-                                <flux:icon.cog-8-tooth variant="mini" class="cursor-pointer hover:text-blue-600" wire:click="openListVariationsModal({{ $product['id'] }})" />
+                                <flux:icon.cog-8-tooth variant="mini" class="cursor-pointer hover:text-blue-600"
+                                    wire:click="openListVariationsModal({{ $product['id'] }})" />
                                 @foreach ($product['meta_data'] as $meta)
                                     @if ($meta['key'] == 'mrbp_role')
                                         @foreach ($meta['value'] as $area)
@@ -351,7 +369,8 @@
                             </div>
                         </td>
                         <td class="px-6 py-4 text-center font-medium">
-                            <span class="px-3 py-1 rounded-full {{ $product['stock_quantity'] > 0 ? 'bg-blue-50 text-blue-700' : 'bg-red-50 text-red-700' }}">
+                            <span
+                                class="px-3 py-1 rounded-full {{ $product['stock_quantity'] > 0 ? 'bg-blue-50 text-blue-700' : 'bg-red-50 text-red-700' }}">
                                 {{ $product['stock_quantity'] }}
                             </span>
                         </td>

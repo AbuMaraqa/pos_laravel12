@@ -1121,4 +1121,23 @@ class WooCommerceService
             'regular_price' => $price
         ]);
     }
+
+    public function updateMainSalePrice($productId, $price)
+    {
+        return $this->put("products/{$productId}", [
+            'sale_price' => $price
+        ]);
+    }
+
+    public function updateMrbpMetaboxUserRoleEnable($productId, $yes)
+    {
+        return $this->put("products/{$productId}", [
+            'meta_data' => [
+                [
+                    'key' => 'mrbp_metabox_user_role_enable',
+                    'value' => $yes
+                ]
+            ]
+        ]);
+    }
 }
