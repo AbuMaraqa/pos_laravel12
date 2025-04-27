@@ -72,7 +72,7 @@
                         class="grid grid-cols-2 gap-4 max-w-full p-6 bg-white border border-gray-200 rounded-lg shadow-sm dark:bg-gray-800 dark:border-gray-700">
 
                         <div>
-                            <flux:input type="number" wire:model.defer="main_price" label="{{ __('Price') }}" />
+                            <flux:input type="number" wire:model.defer="main_price" wire:change="updateMainProductPrice" label="{{ __('Price') }}" />
                         </div>
                         <div>
                             <flux:input type="number" wire:model.defer="sale_price" label="{{ __('Sale Price') }}" />
@@ -109,7 +109,7 @@
                     <tr class="bg-gray-100">
                         <td class="px-6 py-3 font-bold">{{ $productData['name'] ?? 'المنتج الأساسي' }}</td>
                         <td>
-                            <flux:input type="number" wire:model.defer="main_price" />
+                            <flux:input type="number" wire:model.defer="main_price" wire:change="updateMainProductPrice" />
                         </td>
                         @foreach ($this->getRoles as $roleIndex => $role)
                         <td class="px-6 py-3">

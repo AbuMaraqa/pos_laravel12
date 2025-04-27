@@ -295,6 +295,12 @@ class Index extends Component
         }
     }
 
+    public function updateMainProductPrice()
+    {
+        $this->wooService->updateMainProductPrice($this->productData['id'], $this->main_price);
+        Toaster::success('تم تحديث سعر المنتج بنجاح');
+    }
+
     public function render()
     {
         $query = [
@@ -324,4 +330,5 @@ class Index extends Component
             'categories' => $this->categories,
         ]);
     }
+
 }

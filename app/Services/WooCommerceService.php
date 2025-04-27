@@ -1114,4 +1114,11 @@ class WooCommerceService
     {
         return $this->put("products/{$productId}/variations/{$variationId}", $query);
     }
+
+    public function updateMainProductPrice($productId, $price)
+    {
+        return $this->put("products/{$productId}", [
+            'regular_price' => $price
+        ]);
+    }
 }

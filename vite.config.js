@@ -3,6 +3,7 @@ import {
 } from 'vite';
 import laravel from 'laravel-vite-plugin';
 import tailwindcss from "@tailwindcss/vite";
+import { viteStaticCopy } from 'vite-plugin-static-copy';
 
 export default defineConfig({
     plugins: [
@@ -14,6 +15,14 @@ export default defineConfig({
             ],
         }),
         tailwindcss(),
+        viteStaticCopy({
+            targets: [
+                {
+                    src: 'resources/fonts/*',
+                    dest: 'public/fonts'
+                }
+            ],
+        })
     ],
     server: {
         cors: true,
