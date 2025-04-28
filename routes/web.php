@@ -40,9 +40,8 @@ Route::group(
     Route::get('/product/index', \App\Livewire\Pages\Product\Index::class)->name('product.index');
     Route::get('/product/add', \App\Livewire\Pages\Product\Add::class)->name('product.add');
     Route::get('/products/{id}/edit', App\Livewire\Pages\Product\Edit::class)->name('products.edit');
-
     Route::get('/product/attributes/add', \App\Livewire\Pages\Product\Attributes\Index::class)->name('product.attributes.add');
-
+    Route::get('/product/variation/image/{id}', \App\Livewire\Pages\Product\VariationImages::class)->name('product.variation.image');
     Route::get('/inventory/index', \App\Livewire\Pages\Inventory\Index::class)->name('inventory.index');
 
     Route::get('/order/index', \App\Livewire\Pages\Order\Index::class)->name('order.index');

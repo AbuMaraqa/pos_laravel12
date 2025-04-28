@@ -28,7 +28,7 @@ class WooCommerceService
             abort(403, "لا توجد مفاتيح WooCommerce صالحة");
         }
 
-        $this->baseUrl = env('WOOCOMMERCE_STORE_URL' , 'https://veronastores.com/ar');
+        $this->baseUrl = env('WOOCOMMERCE_STORE_URL', 'https://veronastores.com/ar');
         $this->consumerKey = $subscription->consumer_key;
         $this->consumerSecret = $subscription->consumer_secret;
 
@@ -76,6 +76,18 @@ class WooCommerceService
         return [
             'body' => json_decode($response->getBody()->getContents(), true),
             'headers' => $response->getHeaders()
+        ];
+    }
+
+    public function getProductsWithHeaders($query = [])
+    {
+        $response = $this->client->get('products', [
+            'query' => $query,
+        ]);
+
+        return [
+            'data' => json_decode($response->getBody()->getContents(), true),
+            'headers' => $response->getHeaders(),
         ];
     }
 
@@ -1146,5 +1158,11 @@ class WooCommerceService
         return $this->put("products/{$productId}", [
             'status' => $status
         ]);
+    }
+
+    public function getProductTranslations($productId)
+    {
+        dd($this->get('products/' . $productId . '/translations'));
+        return $this->get('products/' . $productId . '/translations');
     }
 }

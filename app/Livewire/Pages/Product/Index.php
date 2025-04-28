@@ -344,6 +344,8 @@ class Index extends Component
             'search' => $this->search,
             'per_page' => $this->perPage,
             'page' => $this->page,
+            'lang' => 'all',
+            'status' => 'any',
         ];
 
         if ($this->categoryId) {
@@ -367,5 +369,4 @@ class Index extends Component
             'categories' => $this->categories,
         ]);
     }
-
 }

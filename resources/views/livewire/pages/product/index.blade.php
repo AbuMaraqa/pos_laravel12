@@ -298,7 +298,12 @@
                         </td>
                         <td scope="row"
                             class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white">
-                            {{ $product['name'] }}
+                            <div class="flex items-center gap-2">
+                                <a href="{{ route('products.edit', $product['id']) }}" wire:navigate>
+                                    <flux:icon.pencil-square variant="micro" color="blue"/>
+                                </a>
+                                {{ $product['name'] }}
+                            </div>
                         </td>
                         <td class="px-6 py-4">
                             <div class="flex flex-wrap gap-1">
@@ -414,6 +419,8 @@
                                         {{ __('View in website') }}</flux:menu.item>
                                     <flux:menu.item wire:navigate href="{{ route('products.edit', $product['id']) }}"
                                         icon="pencil-square">{{ __('Edit product') }}</flux:menu.item>
+                                    <flux:menu.item wire:navigate href="{{ route('product.variation.image', $product['id']) }}"
+                                        icon="eye">{{ __('Variation Image') }}</flux:menu.item>
                                     <flux:menu.item variant="danger"
                                         wire:confirm="Are you sure you want to delete this product?"
                                         wire:click="deleteProduct({{ $product['id'] }})" icon="trash">
