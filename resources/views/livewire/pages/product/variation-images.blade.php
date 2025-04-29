@@ -13,7 +13,7 @@
                     لا توجد صورة
                 </div>
             @endif
-            <x-filepond::upload wire:model.live="mainImage" />
+            <x-filepond::upload wire:model.live="mainImageUpload" />
         </div>
         {{-- صور الجاليري --}}
         <div>
@@ -25,7 +25,7 @@
                     <span class="text-gray-400">لا توجد صور في المعرض</span>
                 @endforelse
             </div>
-            <x-filepond::upload wire:model="galleryImages" multiple/>
+            <x-filepond::upload wire:model.live="galleryUploads" multiple/>
         </div>
     </div>
 

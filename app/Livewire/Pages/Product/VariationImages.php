@@ -18,6 +18,8 @@ class VariationImages extends Component
     public array $variationsImage = [];
     public $mainImage;
     public $galleryImages = [];
+    public $mainImageUpload;
+    public $galleryUploads = [];
 
     protected WooCommerceService $wooService;
 
@@ -30,6 +32,7 @@ class VariationImages extends Component
     {
         $this->productId = $id;
         $product = $this->wooService->getProductsById($id);
+        dd($product);
 
         // الصورة الرئيسية
         $this->mainImage = $product['images'][0]['src'] ?? null;
@@ -37,6 +40,7 @@ class VariationImages extends Component
         // صور الجاليري (كل الصور ما عدا الرئيسية)
         $this->galleryImages = [];
         if (!empty($product['images'])) {
+            // dd($product['images']);
             foreach ($product['images'] as $index => $img) {
                 if ($index > 0) {
                     $this->galleryImages[] = $img['src'];
@@ -67,37 +71,118 @@ class VariationImages extends Component
                         'src' => $uploadedImage['src']
                     ]
                 ]);
-                Toaster::success('تم رفع الصورة بنجاح');
+                Toaster::success('تم رفع صورة المتغير بنجاح');
                 $this->variationsImage[$key] = null;
             } catch (\Exception $e) {
-                session()->flash('error', 'حدث خطأ أثناء رفع الصورة: ' . $e->getMessage());
+                Toaster::error('حدث خطأ أثناء رفع صورة المتغير: ' . $e->getMessage());
             }
         }
     }
 
-    public function updatedgalleryImages($value)
+    public function updatedMainImageUpload($value)
     {
-        dd($value);
-        $uploadedImages = [];
+        if ($value) {
+            try {
+                // رفع الصورة إلى ووردبريس
+                $uploadedImage = $this->wooService->uploadImage($value);
 
-        foreach ($value as $image) {
-            $uploadedImage = $this->wooService->uploadImage($image);
+                // الحصول على الصور الحالية للمنتج
+                $product = $this->wooService->getProductsById($this->productId);
+                $currentImages = $product['images'] ?? [];
 
-            // جهز مصفوفة الصور لرفعها مرة وحدة
-            $uploadedImages[] = [
-                'id' => $uploadedImage['id'],
-                'src' => $uploadedImage['src']
-            ];
+                // إنشاء مصفوفة الصور الجديدة مع وضع الصورة الرئيسية في المقدمة
+                $images = [
+                    [
+                        'id' => $uploadedImage['id'],
+                        'src' => $uploadedImage['src']
+                    ]
+                ];
 
-            // خزن الرابط داخلياً لعرضه
-            $this->galleryImages[] = $uploadedImage['src'];
+                // إضافة صور المعرض الحالية (إن وجدت)
+                if (count($currentImages) > 1) {
+                    for ($i = 1; $i < count($currentImages); $i++) {
+                        $images[] = [
+                            'id' => $currentImages[$i]['id'],
+                            'src' => $currentImages[$i]['src']
+                        ];
+                    }
+                }
+
+                // تحديث المنتج بالصور الجديدة
+                $this->wooService->updateProduct($this->productId, [
+                    'images' => $images
+                ]);
+
+                // تحديث الصورة للعرض
+                $this->mainImage = $uploadedImage['src'];
+                $this->mainImageUpload = null;
+
+                Toaster::success('تم تحديث الصورة الرئيسية بنجاح');
+            } catch (\Exception $e) {
+                Toaster::error('حدث خطأ أثناء رفع الصورة الرئيسية: ' . $e->getMessage());
+            }
+        }
+    }
+
+    public function updatedGalleryUploads($value)
+    {
+        if (empty($value)) {
+            return;
         }
 
-        // بعد رفع كل الصور، حدّث المنتج مرة وحدة بالصور كلها
-        if (!empty($uploadedImages)) {
+        try {
+            // الحصول على صور المنتج الحالية
+            $product = $this->wooService->getProductsById($this->productId);
+            $currentImages = $product['images'] ?? [];
+
+            // تحضير مصفوفة الصور للتحديث
+            $updatedImages = [];
+
+            // الاحتفاظ بالصورة الرئيسية إذا كانت موجودة
+            if (!empty($currentImages[0])) {
+                $updatedImages[] = [
+                    'id' => $currentImages[0]['id'],
+                    'src' => $currentImages[0]['src']
+                ];
+            }
+
+            // الاحتفاظ بصور المعرض الحالية
+            if (count($currentImages) > 1) {
+                for ($i = 1; $i < count($currentImages); $i++) {
+                    $updatedImages[] = [
+                        'id' => $currentImages[$i]['id'],
+                        'src' => $currentImages[$i]['src']
+                    ];
+                }
+            }
+
+            // إضافة صور المعرض الجديدة
+            $newGalleryImages = [];
+            foreach ($value as $image) {
+                $uploadedImage = $this->wooService->uploadImage($image);
+
+                $updatedImages[] = [
+                    'id' => $uploadedImage['id'],
+                    'src' => $uploadedImage['src']
+                ];
+
+                $newGalleryImages[] = $uploadedImage['src'];
+            }
+
+            // تحديث المنتج بكل الصور (الرئيسية + الحالية + الجديدة)
             $this->wooService->updateProduct($this->productId, [
-                'images' => $uploadedImages
+                'images' => $updatedImages
             ]);
+
+            // تحديث قائمة الصور المعروضة
+            $this->galleryImages = array_merge($this->galleryImages, $newGalleryImages);
+
+            // تفريغ حقل الرفع بعد الانتهاء
+            $this->reset('galleryUploads');
+
+            Toaster::success('تم إضافة صور المعرض بنجاح');
+        } catch (\Exception $e) {
+            Toaster::error('حدث خطأ أثناء رفع صور المعرض: ' . $e->getMessage());
         }
     }
 
