@@ -32,7 +32,6 @@ class VariationImages extends Component
     {
         $this->productId = $id;
         $product = $this->wooService->getProductsById($id);
-        dd($product);
 
         // الصورة الرئيسية
         $this->mainImage = $product['images'][0]['src'] ?? null;
