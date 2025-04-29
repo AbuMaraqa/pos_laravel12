@@ -131,9 +131,12 @@
                         <flux:heading size="xl">{{ __('Save Changes') }}</flux:heading>
                     </div>
                     <div class="mb-3">
-                        <flux:button wire:click="syncBeforeSave" wire:loading.attr="disabled" wire:target="syncBeforeSave" class="btn btn-primary">
+                        <flux:button wire:click="syncBeforeSave" wire:loading.remove wire:loading.attr="disabled" wire:target="syncBeforeSave" class="btn btn-primary">
                             {{ __('Update Product') }}
                         </flux:button>
+                        <span wire:loading wire:target="syncBeforeSave" class="text-sm text-gray-500">
+                            {{ __('Updating...') }}
+                        </span>
                     </div>
                 </div>
             </div>
@@ -202,7 +205,7 @@
         </div>
     </div>
 
-    @if (session()->has('success'))
+    {{-- @if (session()->has('success'))
         <div class="fixed bottom-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg">
             {{ session('success') }}
         </div>
@@ -212,5 +215,5 @@
         <div class="fixed bottom-4 right-4 bg-red-500 text-white px-6 py-3 rounded-lg shadow-lg">
             {{ session('error') }}
         </div>
-    @endif
+    @endif --}}
 </div>

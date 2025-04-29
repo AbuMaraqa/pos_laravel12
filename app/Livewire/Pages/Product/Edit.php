@@ -777,7 +777,7 @@ class Edit extends Component
 
             // Toaster::success('تم تعديل المنتج بنجاح');
             session()->flash('success', 'تم تعديل المنتج بنجاح');
-            return redirect()->route('products.index');
+            return redirect()->route('product.index');
 
         } catch (\Exception $e) {
             // تسجيل الخطأ بشكل مفصل

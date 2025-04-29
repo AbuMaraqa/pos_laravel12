@@ -318,6 +318,7 @@ class Add extends Component
                                     'option' => $options[0],
                                 ];
                             }
+                            dd($this->variations);
                         } else {
                             logger()->warning('تم تجاهل الخاصية لأنها لا تحتوي على خيارات', [
                                 'attribute_id' => $attribute['id'],
