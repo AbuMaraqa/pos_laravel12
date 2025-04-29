@@ -12,11 +12,11 @@
             </a>
 
             <flux:navbar class="-mb-px max-lg:hidden">
-                <flux:navbar.item icon="layout-grid" :href="route('dashboard')" :current="request()->routeIs('dashboard')" wire:navigate>
+                <flux:navbar.item icon="home" :href="route('dashboard')" :current="request()->routeIs('dashboard')" wire:navigate>
                     {{ __('Home') }}
                 </flux:navbar.item>
                 <flux:dropdown class="max-lg:hidden">
-                    <flux:navbar.item icon:trailing="chevron-down">{{ __('Products') }}</flux:navbar.item>
+                    <flux:navbar.item icon="layout-grid">{{ __('Products') }}</flux:navbar.item>
                     <flux:navmenu>
                         <flux:navmenu.item wire:navigate href="{{ route('product.index') }}">{{ __('List Products') }}</flux:navmenu.item>
                         <flux:navmenu.item wire:navigate href="{{ route('product.add') }}">{{ __('Add Product') }}</flux:navmenu.item>
@@ -27,19 +27,19 @@
 
                     </flux:navmenu>
                 </flux:dropdown>
-                <flux:navbar.item icon="layout-grid" :href="route('order.index')" :current="request()->routeIs('order.index')" wire:navigate>
+                <flux:navbar.item icon="shopping-cart" :href="route('order.index')" :current="request()->routeIs('order.index')" wire:navigate>
                     {{ __('Orders') }}
                 </flux:navbar.item>
-                <flux:navbar.item icon="layout-grid" :href="route('inventory.index')" :current="request()->routeIs('inventory.index')" wire:navigate>
+                <flux:navbar.item icon="clipboard-document-list" :href="route('inventory.index')" :current="request()->routeIs('inventory.index')" wire:navigate>
                     {{ __('Inventories') }}
                 </flux:navbar.item>
-                <flux:navbar.item icon="layout-grid" wire:navigate :href="route('user.index')" :current="request()->routeIs('user.index')" wire:navigate>
+                <flux:navbar.item icon="users" wire:navigate :href="route('user.index')" :current="request()->routeIs('user.index')" wire:navigate>
                     {{ __('Users') }}
                 </flux:navbar.item>
-                <flux:navbar.item icon="layout-grid" :href="route('dashboard')" :current="request()->routeIs('dashboard')" wire:navigate>
+                <flux:navbar.item icon="document" :href="route('dashboard')" :current="request()->routeIs('')" wire:navigate>
                     {{ __('Reports') }}
                 </flux:navbar.item>
-                <flux:navbar.item icon="layout-grid" :href="route('dashboard')" :current="request()->routeIs('dashboard')" wire:navigate>
+                <flux:navbar.item icon="cog-6-tooth" :href="route('dashboard')" :current="request()->routeIs('')" wire:navigate>
                     {{ __('Settings') }}
                 </flux:navbar.item>
             </flux:navbar>
