@@ -651,26 +651,59 @@ class Edit extends Component
                 'description' => $this->productDescription,
                 'type' => $this->productType,
                 'stock_status' => $this->stockStatus,
-                'categories' => array_map(fn($id) => ['id' => $id], $this->selectedCategories),
+                'categories' => array_map(fn($id) => ['id' => (int)$id], $this->selectedCategories),
             ];
 
-            // أضف السعر إن وجد
+            // معالجة الأسعار بشكل صحيح
+            $regularPrice = null;
             if (!empty($this->regularPrice)) {
-                $productData['regular_price'] = $this->regularPrice;
+                // تنظيف وتحويل السعر العادي (استبدال الفواصل بالنقاط)
+                $regularPrice = (float) str_replace(',', '.', $this->regularPrice);
+                // تخزينه كنص للتوافق مع API
+                $productData['regular_price'] = (string) number_format($regularPrice, 2, '.', '');
             }
 
             if (!empty($this->salePrice)) {
-                $productData['sale_price'] = $this->salePrice;
+                // تنظيف وتحويل سعر التخفيض
+                $salePrice = (float) str_replace(',', '.', $this->salePrice);
+
+                // التحقق من أن سعر التخفيض أقل من السعر العادي
+                if (isset($regularPrice) && $salePrice >= $regularPrice) {
+                    session()->flash('error', 'سعر التخفيض يجب أن يكون أقل من السعر العادي');
+                    Log::warning('تم تجاهل سعر التخفيض لأنه ليس أقل من السعر العادي', [
+                        'regular_price' => $regularPrice,
+                        'sale_price' => $salePrice
+                    ]);
+                } else {
+                    // تخزين سعر التخفيض كنص بتنسيق صحيح
+                    $productData['sale_price'] = (string) number_format($salePrice, 2, '.', '');
+                }
+            } else {
+                // إذا كان حقل سعر التخفيض فارغاً، نضع قيمة فارغة لإزالة أي قيمة سابقة
+                $productData['sale_price'] = '';
             }
 
-            // أضف الكمية إذا محددة
-            if (!is_null($this->stockQuantity)) {
-                $productData['stock_quantity'] = (int) $this->stockQuantity;
+            // إدارة المخزون
+            if ($this->productType !== 'variable') {
+                $productData['manage_stock'] = (bool) $this->isStockManagementEnabled;
+
+                // تحويل كمية المخزون إلى رقم صحيح
+                if (!is_null($this->stockQuantity)) {
+                    $productData['stock_quantity'] = (int) $this->stockQuantity;
+                }
+
+                $productData['stock_status'] = $this->stockStatus;
+                $productData['sold_individually'] = (bool) $this->soldIndividually;
+                $productData['backorders'] = $this->allowBackorders;
+
+                if (!is_null($this->lowStockThreshold)) {
+                    $productData['low_stock_amount'] = (int) $this->lowStockThreshold;
+                }
             }
 
-            // أضف SKU إذا موجود
+            // إضافة SKU إذا موجود
             if (!empty($this->sku)) {
-                $productData['sku'] = $this->sku;
+                $productData['sku'] = trim($this->sku);
             }
 
             // أضف الخصائص إذا كان المنتج متغير
@@ -691,34 +724,6 @@ class Edit extends Component
                 }
             }
 
-            else {
-                // تحديث هنا لمعالجة قيمة false بشكل صحيح
-                $productData['manage_stock'] = (bool)$this->isStockManagementEnabled;
-
-                // تخزين كمية المخزون بغض النظر عن قيمتها
-                $productData['stock_quantity'] = $this->stockQuantity;
-
-                // تخزين حالة المخزون بغض النظر عن قيمتها
-                $productData['stock_status'] = $this->stockStatus;
-
-                // تخزين القيم الأخرى
-                $productData['sold_individually'] = (bool)$this->soldIndividually;
-
-                // تخزين حد المخزون المنخفض
-                $productData['low_stock_amount'] = $this->lowStockThreshold;
-
-                // تخزين حالة الطلبات المؤجلة
-                $productData['backorders'] = $this->allowBackorders;
-
-                // تسجيل البيانات قبل الإرسال للتشخيص
-                \Illuminate\Support\Facades\Log::debug('بيانات المخزون قبل الحفظ', [
-                    'manage_stock' => $productData['manage_stock'],
-                    'stock_status' => $productData['stock_status'],
-                    'backorders' => $productData['backorders'],
-                    'low_stock_amount' => $productData['low_stock_amount']
-                ]);
-            }
-
             Log::info('بيانات المنتج قبل التحديث', [
                 'product_id' => $this->productId,
                 'product_data' => $productData
@@ -726,7 +731,6 @@ class Edit extends Component
 
             // تحديث المنتج
             $updatedProduct = $this->wooService->updateProduct($this->productId, $productData);
-
 
             if (!$updatedProduct) {
                 throw new \Exception('فشل تحديث المنتج الأساسي');
@@ -754,6 +758,42 @@ class Edit extends Component
             // تحديث المتغيرات في حال كان المنتج متغير
             if ($this->productType === 'variable' && !empty($this->variations)) {
                 try {
+                    // تحويل الأسعار في كل متغير إلى صيغة صحيحة
+                    foreach ($this->variations as $key => $variation) {
+                        if (!empty($variation['regular_price'])) {
+                            $this->variations[$key]['regular_price'] = (string) number_format(
+                                (float) str_replace(',', '.', $variation['regular_price']),
+                                2,
+                                '.',
+                                ''
+                            );
+                        }
+
+                        if (!empty($variation['sale_price'])) {
+                            $salePrice = (float) str_replace(',', '.', $variation['sale_price']);
+                            $regularPrice = !empty($variation['regular_price']) ?
+                                (float) str_replace(',', '.', $variation['regular_price']) :
+                                0;
+
+                            // تجاهل سعر التخفيض إذا كان أكبر من أو يساوي السعر العادي
+                            if ($regularPrice > 0 && $salePrice >= $regularPrice) {
+                                $this->variations[$key]['sale_price'] = '';
+                                Log::warning('تم إلغاء سعر التخفيض للمتغير لأنه ليس أقل من السعر العادي', [
+                                    'variation_index' => $key,
+                                    'regular_price' => $regularPrice,
+                                    'sale_price' => $salePrice
+                                ]);
+                            } else {
+                                $this->variations[$key]['sale_price'] = (string) number_format($salePrice, 2, '.', '');
+                            }
+                        }
+
+                        // التأكد من أن كمية المخزون عدد صحيح
+                        if (isset($this->variations[$key]['stock_quantity']) && $this->variations[$key]['stock_quantity'] !== '') {
+                            $this->variations[$key]['stock_quantity'] = (int) $this->variations[$key]['stock_quantity'];
+                        }
+                    }
+
                     $syncResult = $this->wooService->syncVariations($this->productId, $this->variations);
 
                     Log::info('تم مزامنة المتغيرات بنجاح', [
@@ -773,9 +813,6 @@ class Edit extends Component
             }
 
             Toaster::success('تم تحديث المنتج بنجاح');
-
-
-            // Toaster::success('تم تعديل المنتج بنجاح');
             session()->flash('success', 'تم تعديل المنتج بنجاح');
             return redirect()->route('product.index');
 
