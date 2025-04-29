@@ -1162,7 +1162,6 @@ class WooCommerceService
 
     public function getProductTranslations($productId)
     {
-        dd($this->get('products/' . $productId . '/translations'));
         return $this->get('products/' . $productId . '/translations');
     }
 }

@@ -129,7 +129,8 @@ class VariationManager extends Component
                 $isVariationAttribute = true;
                 if ($this->productId) {
                     // في حالة التعديل، نتحقق مما إذا كانت الخاصية مستخدمة للمتغيرات
-                    $isVariationAttribute = false;
+                    // Mohamad Maraqa This Is Important For Variable Product
+                    // $isVariationAttribute = false;
                     foreach ($variationAttributes as $varAttr) {
                         if ($varAttr['id'] == $attribute['id']) {
                             $isVariationAttribute = true;
@@ -202,7 +203,6 @@ class VariationManager extends Component
                     'loadedAttributesCount' => count($this->loadedAttributes)
                 ]);
             }
-
         } catch (\Exception $e) {
             logger()->error('خطأ في تحميل مدير المتغيرات:', [
                 'message' => $e->getMessage(),

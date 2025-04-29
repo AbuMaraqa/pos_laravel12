@@ -334,8 +334,22 @@ class Index extends Component
     public function updateProductStatus($productId, $status)
     {
         $status = $status == 'publish' ? 'publish' : 'draft';
+
+        // 1. غير حالة المنتج الأساسي
         $this->wooService->updateProductStatus($productId, $status);
-        Toaster::success('تم تحديث سعر المنتج بنجاح');
+
+        // 2. جيب الترجمات المرتبطة
+        $translations = $this->wooService->getProductTranslations($productId);
+
+        if (!empty($translations)) {
+            foreach ($translations as $lang => $translatedProductId) {
+                if ($translatedProductId != $productId) { // تأكد أنه مش هو نفس المنتج
+                    $this->wooService->updateProductStatus($translatedProductId, $status);
+                }
+            }
+        }
+
+        Toaster::success('تم تحديث حالة المنتج وجميع الترجمات بنجاح');
     }
 
     public function render()
@@ -344,8 +358,9 @@ class Index extends Component
             'search' => $this->search,
             'per_page' => $this->perPage,
             'page' => $this->page,
-            'lang' => 'all',
-            'status' => 'any',
+            'lang' => app()->getLocale(), // اللغة النشطة
+            'status' => 'any', // خليه 'any' عادي، بس اللغة بتحدد
+            'wpml_language' => app()->getLocale(), // مهمة جداً
         ];
 
         if ($this->categoryId) {

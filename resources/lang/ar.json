@@ -8,9 +8,6 @@
     "Users": "المستخدمون",
     "Reports": "التقارير",
     "Settings": "الإعدادات",
-    "Categories": "الفئات",
-    "Attributes": "السمات",
-
     "Lang": "اللغة",
 
     "Add Product": "إضافة منتج",
@@ -21,6 +18,7 @@
     "Actions": "العمليات",
     "Add": "إضافة",
     "Apply": "تطبيق",
+    "Image": "الصورة",
 
     "Add product": "اضافة منتج",
     "Product name": "اسم المنتج",
@@ -99,9 +97,20 @@
 
     "Add Attribute": "إضافة سمة",
     "Attribute Name": "اسم السمة",
-    "Slug": "الاسم المستعار",
     "Configure terms": "تكوين الشروط",
     "Term": "الشرط",
 
-    "Translation": "الترجمة"
+    "Translation": "الترجمة",
+
+    "Main Image": "الصورة الرئيسية",
+    "Upload Image": "رفع صورة",
+    "Upload": "رفع",
+    "Uploaded": "تم الرفع",
+    "Uploaded Images": "صور مرفوعة",
+    "Variation Image": "صورة المتغير",
+    "Variation Name": "اسم المتغير",
+    "Upload Variation Image": "رفع صورة المتغير",
+    "Uploaded Variation Image": "صورة المتغير مرفوعة",
+
+    "Enable Multiple Price": "تمكين سعر متعدد"
 }
