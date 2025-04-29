@@ -136,11 +136,20 @@
                                     <p class="text-lg leading-6 dark:text-white font-semibold text-gray-800">DPD Delivery<br /><span class="font-normal">Delivery with 24 Hours</span></p>
                                 </div> --}}
                                 <div>
-
+                                    <flux:icon icon="loading" wire:target="updateOrder" wire:loading/>
                                     @foreach ($this->shippingZones as $zone)
                                         @foreach ($this->shippingZoneMethods($zone['id']) as $method)
-                                            <div class="flex items-center space-x-2">
-                                                <input {{ $order['shipping_lines'][0]['method_id'] == $method['id'] ? 'checked' : '' }} id="{{ $method['id'] }}" type="radio" wire:click="updateOrder({{ $method['id'] }}, {{ $zone['id'] }})" value="{{ $method['id'] }}">
+                                            <div class="flex items-center space-x-2" wire:loading.remove>
+                                                <input
+                                                    {{ $order['shipping_lines'][0]['method_id'] == $method['id'] ? 'checked' : '' }}
+                                                    id="{{ $method['id'] }}"
+                                                    type="radio"
+                                                    name="shipping_method"
+                                                    wire:click="updateOrder({{ $method['id'] }}, {{ $zone['id'] }})"
+                                                    value="{{ $method['id'] }}"
+
+                                                    wire:target="updateOrder"
+                                                >
                                                 <label for="{{ $method['id'] }}"
                                                     class="block cursor-pointer">
                                                     {{ $method['title'] }} - {{ $method['settings']['cost']['value'] }}
