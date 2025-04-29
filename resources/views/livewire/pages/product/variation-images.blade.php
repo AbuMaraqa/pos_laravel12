@@ -1,31 +1,34 @@
 <div class="p-6 bg-gray-50 min-h-screen">
-    <h2 class="text-2xl font-bold mb-6 text-gray-700">صور متغيرات المنتج</h2>
+    <h2 class="text-2xl font-bold mb-6 text-gray-700">صور المنتج</h2>
 
     {{-- عرض صورة المنتج الرئيسية وصور الجاليري --}}
     <div class="flex flex-col md:flex-row items-start gap-8 mb-8">
         {{-- صورة المنتج الرئيسية --}}
-        <div>
-            <h3 class="font-semibold text-gray-600 mb-2">الصورة الرئيسية</h3>
-            @if(!empty($mainImage))
-                <img src="{{ $mainImage }}" alt="الصورة الرئيسية" class="w-48 h-48 object-contain rounded-lg border bg-gray-100 shadow-sm">
-            @else
-                <div class="w-48 h-48 flex items-center justify-center bg-gray-100 rounded-lg border text-gray-400">
-                    لا توجد صورة
-                </div>
-            @endif
-            <x-filepond::upload wire:model.live="mainImageUpload" />
-        </div>
-        {{-- صور الجاليري --}}
-        <div>
-            <h3 class="font-semibold text-gray-600 mb-2">معرض الصور</h3>
-            <div class="flex flex-wrap gap-2">
-                @forelse($galleryImages as $gallery)
-                    <img src="{{ $gallery }}" alt="صورة جاليري" class="w-24 h-24 object-contain rounded border bg-gray-50">
-                @empty
-                    <span class="text-gray-400">لا توجد صور في المعرض</span>
-                @endforelse
+        <div class="grid grid-cols-3 gap-4">
+            <div class="col-span-1">
+                <h3 class="font-semibold text-gray-600 mb-2">الصورة الرئيسية</h3>
+                @if(!empty($mainImage))
+                    <img src="{{ $mainImage }}" alt="الصورة الرئيسية" class="w-48 h-48 object-contain rounded-lg border bg-gray-100 shadow-sm">
+                @else
+                    <div class="w-48 h-48 flex items-center justify-center bg-gray-100 rounded-lg border text-gray-400">
+                        لا توجد صورة
+                    </div>
+                @endif
+                <x-filepond::upload wire:model.live="mainImageUpload" />
             </div>
-            <x-filepond::upload wire:model.live="galleryUploads" multiple/>
+            <div class="col-span-2">
+                <h3 class="font-semibold text-gray-600 mb-2">معرض الصور</h3>
+                <div class="flex flex-wrap gap-2">
+                    @forelse($galleryImages as $gallery)
+                        <img src="{{ $gallery }}" alt="صورة جاليري" class="w-24 h-24 object-contain rounded border bg-gray-50">
+                    @empty
+                        <div class="w-48 h-48 flex items-center justify-center bg-gray-100 rounded-lg border text-gray-400">
+                            <span class="text-gray-400">لا توجد صور في المعرض</span>
+                        </div>
+                    @endforelse
+                </div>
+                <x-filepond::upload wire:model.live="galleryUploads" multiple/>
+            </div>
         </div>
     </div>
 
