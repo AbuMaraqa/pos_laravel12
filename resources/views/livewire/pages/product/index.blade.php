@@ -311,6 +311,9 @@
                     <th scope="col" class="px-6 py-4 font-semibold text-center">
                         {{ __('Status') }}
                     </th>
+                    <th>
+                        {{ __('Type') }}
+                    </th>
                     <th scope="col" class="px-6 py-4 font-semibold">
                         {{ __('Area price') }}
                         {{-- <flux:icon.loading variant="mini" wire:loading wire:target="openListVariationsModal" /> --}}
@@ -391,6 +394,17 @@
                                     <flux:switch  wire:change="updateProductStatus({{ $product['id'] }}, 'publish')"/>
                                 @endif
                             </span>
+                        </td>
+                        <td class="px-6 py-4">
+                            @if ($product['type'] == 'variable')
+                                <flux:badge color="orange">
+                                    {{ __('Variable') }}
+                                </flux:badge>
+                            @else
+                                <flux:badge color="blue">
+                                    {{ __('Simple') }}
+                                </flux:badge>
+                            @endif
                         </td>
                         <td class="px-6 py-4">
                             <div class="flex flex-wrap items-center gap-2">
