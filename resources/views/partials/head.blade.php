@@ -8,5 +8,7 @@
 
 <link href="https://cdn.quilljs.com/1.3.6/quill.bubble.css" rel="stylesheet">
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
 @vite(['resources/css/app.css', 'resources/js/app.js'])
 {{--@fluxAppearance--}}

@@ -1373,4 +1373,9 @@ class WooCommerceService
             throw $e;
         }
     }
+
+    public function getOrdersReportData()
+    {
+        return $this->get('reports/orders/totals');
+    }
 }

@@ -27,6 +27,9 @@
 
                     </flux:navmenu>
                 </flux:dropdown>
+                <flux:navbar.item icon="shopping-bag" :href="route('pos.index')" :current="request()->routeIs('pos.index')" wire:navigate>
+                    {{ __('Point of Sale') }}
+                </flux:navbar.item>
                 <flux:navbar.item icon="shopping-cart" :href="route('order.index')" :current="request()->routeIs('order.index')" wire:navigate>
                     {{ __('Orders') }}
                 </flux:navbar.item>
@@ -36,7 +39,7 @@
                 <flux:navbar.item icon="users" wire:navigate :href="route('user.index')" :current="request()->routeIs('user.index')" wire:navigate>
                     {{ __('Users') }}
                 </flux:navbar.item>
-                <flux:navbar.item icon="document" :href="route('dashboard')" :current="request()->routeIs('')" wire:navigate>
+                <flux:navbar.item icon="document" :href="route('report.index')" :current="request()->routeIs('report.index')" wire:navigate>
                     {{ __('Reports') }}
                 </flux:navbar.item>
                 <flux:navbar.item icon="cog-6-tooth" :href="route('dashboard')" :current="request()->routeIs('')" wire:navigate>
