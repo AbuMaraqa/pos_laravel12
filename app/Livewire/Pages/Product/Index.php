@@ -339,15 +339,15 @@ class Index extends Component
         $this->wooService->updateProductStatus($productId, $status);
 
         // 2. جيب الترجمات المرتبطة
-        $translations = $this->wooService->getProductTranslations($productId);
+        // $translations = $this->wooService->getProductTranslations($productId);
 
-        if (!empty($translations)) {
-            foreach ($translations as $lang => $translatedProductId) {
-                if ($translatedProductId != $productId) { // تأكد أنه مش هو نفس المنتج
-                    $this->wooService->updateProductStatus($translatedProductId, $status);
-                }
-            }
-        }
+        // if (!empty($translations)) {
+        //     foreach ($translations as $lang => $translatedProductId) {
+        //         if ($translatedProductId != $productId) { // تأكد أنه مش هو نفس المنتج
+        //             $this->wooService->updateProductStatus($translatedProductId, $status);
+        //         }
+        //     }
+        // }
 
         Toaster::success('تم تحديث حالة المنتج وجميع الترجمات بنجاح');
     }

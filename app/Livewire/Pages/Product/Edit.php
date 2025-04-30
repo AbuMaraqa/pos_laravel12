@@ -310,15 +310,17 @@ class Edit extends Component
             'product_type' => $product['type'],
             'has_attributes' => !empty($product['attributes']),
             'attributes_count' => count($product['attributes'] ?? []),
-            'attributes' => $product['attributes'] ?? []
+            'attributes' => $product['attributes'] ?? [],
+            'regular_price' => $product['regular_price'] ?? null,
+            'sale_price' => $product['sale_price'] ?? null
         ]);
 
         // بيانات المنتج الأساسية
         $this->productName = $product['name'];
         $this->productDescription = $product['description'];
         $this->productType = $product['type'];
-        $this->regularPrice = $product['regular_price'];
-        $this->salePrice = $product['sale_price'];
+        $this->regularPrice = $product['regular_price'] ?? '';
+        $this->salePrice = $product['sale_price'] ?? '';
         $this->sku = $product['sku'];
 
         // إدارة المخزون
@@ -328,6 +330,9 @@ class Edit extends Component
         $this->soldIndividually = $product['sold_individually'] ?? false;
         $this->allowBackorders = $product['backorders'] ?? 'no';
         $this->lowStockThreshold = $product['low_stock_amount'] ?? null;
+
+        // مزامنة البيانات المهمة مع مكون التبويب
+        $this->syncPriceData();
 
         // التصنيفات
         $this->selectedCategories = collect($product['categories'])->pluck('id')->toArray();
@@ -437,7 +442,7 @@ class Edit extends Component
                 'variations' => $this->variations
             ]);
         }
-        // dd($product);
+
         // تحميل بيانات MRBP
         $this->loadMrbpData();
     }
@@ -455,10 +460,25 @@ class Edit extends Component
     #[On('updateMultipleFieldsFromTabs')]
     public function handleFieldsUpdate($data)
     {
+        // تسجيل البيانات المستلمة للتشخيص
+        \Illuminate\Support\Facades\Log::info('تم استلام بيانات من TabsComponent', [
+            'data' => $data,
+            'regularPrice_before' => $this->regularPrice,
+            'salePrice_before' => $this->salePrice,
+            'sku_before' => $this->sku
+        ]);
+
         // تحديث الحقول الأساسية
         $this->regularPrice = $data['regularPrice'] ?? $this->regularPrice;
         $this->salePrice = $data['salePrice'] ?? $this->salePrice;
         $this->sku = $data['sku'] ?? $this->sku;
+
+        // تسجيل البيانات بعد التحديث
+        \Illuminate\Support\Facades\Log::info('البيانات بعد التحديث', [
+            'regularPrice_after' => $this->regularPrice,
+            'salePrice_after' => $this->salePrice,
+            'sku_after' => $this->sku
+        ]);
 
         // تحديث حقول إدارة المخزون
         $this->isStockManagementEnabled = $data['isStockManagementEnabled'] ?? false;
@@ -467,14 +487,6 @@ class Edit extends Component
         $this->soldIndividually = $data['soldIndividually'] ?? $this->soldIndividually;
         $this->allowBackorders = $data['allowBackorders'] ?? $this->allowBackorders;
         $this->lowStockThreshold = $data['lowStockThreshold'] ?? $this->lowStockThreshold;
-
-        // تسجيل البيانات المستلمة للتشخيص
-        \Illuminate\Support\Facades\Log::debug('تم استلام بيانات من TabsComponent', [
-            'data' => $data,
-            'stockStatus' => $this->stockStatus,
-            'allowBackorders' => $this->allowBackorders,
-            'lowStockThreshold' => $this->lowStockThreshold
-        ]);
     }
 
     #[On('updateMrbpPrice')]
@@ -642,7 +654,9 @@ class Edit extends Component
         try {
             Log::info('بدء حفظ المنتج', [
                 'product_id' => $this->productId,
-                'product_type' => $this->productType
+                'product_type' => $this->productType,
+                'regularPrice' => $this->regularPrice,
+                'salePrice' => $this->salePrice
             ]);
 
             // تجهيز بيانات المنتج الأساسية
@@ -654,14 +668,26 @@ class Edit extends Component
                 'categories' => array_map(fn($id) => ['id' => (int)$id], $this->selectedCategories),
             ];
 
-            // معالجة الأسعار بشكل صحيح
+            // معالجة الأسعار بشكل صحيح - السعر العادي
             $regularPrice = null;
             if (!empty($this->regularPrice)) {
                 // تنظيف وتحويل السعر العادي (استبدال الفواصل بالنقاط)
                 $regularPrice = (float) str_replace(',', '.', $this->regularPrice);
                 // تخزينه كنص للتوافق مع API
                 $productData['regular_price'] = (string) number_format($regularPrice, 2, '.', '');
+
+                Log::info('تم تجهيز السعر العادي', [
+                    'input' => $this->regularPrice,
+                    'processed' => $productData['regular_price']
+                ]);
             }
+
+            // معالجة سعر التخفيض - طباعة قيمة سعر التخفيض قبل المعالجة للتأكد من وجود قيمة
+            Log::info('قيمة سعر التخفيض قبل المعالجة', [
+                'salePrice' => $this->salePrice,
+                'isEmpty' => empty($this->salePrice),
+                'isNull' => is_null($this->salePrice)
+            ]);
 
             if (!empty($this->salePrice)) {
                 // تنظيف وتحويل سعر التخفيض
@@ -674,13 +700,23 @@ class Edit extends Component
                         'regular_price' => $regularPrice,
                         'sale_price' => $salePrice
                     ]);
+
+                    // تعيين قيمة فارغة كنص
+                    $productData['sale_price'] = '';
                 } else {
                     // تخزين سعر التخفيض كنص بتنسيق صحيح
                     $productData['sale_price'] = (string) number_format($salePrice, 2, '.', '');
+
+                    Log::info('تم تجهيز سعر التخفيض', [
+                        'input' => $this->salePrice,
+                        'processed' => $productData['sale_price']
+                    ]);
                 }
             } else {
                 // إذا كان حقل سعر التخفيض فارغاً، نضع قيمة فارغة لإزالة أي قيمة سابقة
                 $productData['sale_price'] = '';
+
+                Log::info('تم تعيين سعر التخفيض كقيمة فارغة');
             }
 
             // إدارة المخزون
@@ -728,6 +764,8 @@ class Edit extends Component
                 'product_id' => $this->productId,
                 'product_data' => $productData
             ]);
+
+            // dd($productData);
 
             // تحديث المنتج
             $updatedProduct = $this->wooService->updateProduct($this->productId, $productData);
@@ -1257,6 +1295,38 @@ class Edit extends Component
         };
 
         return $buildTree();
+    }
+
+    public function updatedProductName()
+    {
+        $this->syncPriceData();
+    }
+
+    public function updatedRegularPrice()
+    {
+        $this->syncPriceData();
+    }
+
+    public function updatedSalePrice()
+    {
+        $this->syncPriceData();
+    }
+
+    public function syncPriceData()
+    {
+        // سجل البيانات قبل إرسالها للتتبع
+        \Illuminate\Support\Facades\Log::info('سيتم إرسال بيانات الأسعار من Edit إلى Tabs', [
+            'regularPrice' => $this->regularPrice,
+            'salePrice' => $this->salePrice,
+            'sku' => $this->sku
+        ]);
+
+        // أرسل البيانات المحدثة إلى مكون التبويبات
+        $this->dispatch('updatePricesFromEdit', [
+            'regularPrice' => $this->regularPrice,
+            'salePrice' => $this->salePrice,
+            'sku' => $this->sku
+        ])->to('tabs-component');
     }
 
     public function render()

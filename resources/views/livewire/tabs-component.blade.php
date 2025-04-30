@@ -67,9 +67,13 @@
         <div x-show="openTab === 1" x-transition>
             <div class="mb-3">
                 <flux:input wire:model.live="localRegularPrice" label="{{ __('Regular price') }}" />
+                <!-- عرض قيمة السعر العادي للتتبع -->
+                <p class="text-xs text-gray-500 mt-1">Local regular price value: {{ $localRegularPrice }}</p>
             </div>
             <div class="mb-3">
                 <flux:input wire:model.live="localSalePrice" label="{{ __('Sale price') }}" />
+                <!-- عرض قيمة سعر التخفيض للتتبع -->
+                <p class="text-xs text-gray-500 mt-1">Local sale price value: {{ $localSalePrice }}</p>
             </div>
             <div class="mb-3">
                 <flux:input wire:model.live="localSku" label="{{ __('SKU') }}" />

@@ -91,7 +91,15 @@
                 </flux:field>
             </div>
             <table x-bind:class="{ 'hidden': !$wire.showVariationTable }"
-                class="w-full text-sm text-left rtl:text-right text-gray-500 dark:text-gray-400">
+                class="w-full text-sm text-left rtl:text-right text-gray-500 dark:text-gray-400 relative">
+                <!-- Global loader overlay for the entire table -->
+                <div wire:loading.flex wire:target="updateMainProductPrice, updateMainSalePrice, updateProductMrbpRole, updateVariationMrbpRole, updatePrice"
+                    class="absolute inset-0 bg-white bg-opacity-70 items-center justify-center z-10">
+                    <div class="flex flex-col items-center justify-center">
+                        <flux:icon.loading class="text-blue-600 animate-spin h-10 w-10" />
+                        <span class="mt-2 text-sm font-medium text-blue-600">{{ __('Updating variations...') }}</span>
+                    </div>
+                </div>
                 <thead class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
                     <th scope="col" class="px-6 py-3">
                         {{ __('Variation Name') }}
@@ -108,6 +116,9 @@
                                 <button type="button" onclick="applyColumnPrice('{{ $role['role'] }}')"
                                     class="bg-blue-500 hover:bg-blue-600 text-white px-2 py-1 rounded text-xs">
                                     {{ __('Apply') }}
+                                    <span wire:loading wire:target="updateProductMrbpRole, updateVariationMrbpRole">
+                                        <flux:icon.loading variant="micro" class="text-white" />
+                                    </span>
                                 </button>
                             </div>
                         </th>
@@ -118,14 +129,26 @@
                     <tr class="bg-gray-100">
                         <td class="px-6 py-3 font-bold">{{ $productData['name'] ?? 'المنتج الأساسي' }}</td>
                         <td>
-                            <flux:input type="number" wire:model.defer="main_price"
-                                wire:change="updateMainProductPrice" />
+                            <div class="relative">
+                                <flux:input type="number" wire:model.defer="main_price"
+                                    wire:change="updateMainProductPrice" />
+                                <div wire:loading wire:target="updateMainProductPrice"
+                                    class="absolute inset-y-0 right-2 flex items-center">
+                                    <flux:icon.loading variant="micro" class="text-blue-600" />
+                                </div>
+                            </div>
                         </td>
                         @foreach ($this->getRoles as $roleIndex => $role)
                             <td class="px-6 py-3">
-                                <flux:input type="text"
-                                    wire:change="updateProductMrbpRole('{{ $role['role'] }}', $event.target.value)"
-                                    wire:model.defer="parentRoleValues.{{ $role['role'] }}" class="bg-gray-50" />
+                                <div class="relative">
+                                    <flux:input type="text"
+                                        wire:change="updateProductMrbpRole('{{ $role['role'] }}', $event.target.value)"
+                                        wire:model.defer="parentRoleValues.{{ $role['role'] }}" class="bg-gray-50" />
+                                    <div wire:loading wire:target="updateProductMrbpRole('{{ $role['role'] }}')"
+                                        class="absolute inset-y-0 right-2 flex items-center">
+                                        <flux:icon.loading variant="micro" class="text-blue-600" />
+                                    </div>
+                                </div>
                             </td>
                         @endforeach
                     </tr>
@@ -135,14 +158,26 @@
                         <tr>
                             <td class="px-6 py-3">{{ $variation['name'] }}</td>
                             <td>
-                                <flux:input type="number" wire:model.defer="price.{{ $variationIndex }}"
-                                    wire:change="updatePrice({{ $variation['id'] }}, $event.target.value)" />
+                                <div class="relative">
+                                    <flux:input type="number" wire:model.defer="price.{{ $variationIndex }}"
+                                        wire:change="updatePrice({{ $variation['id'] }}, $event.target.value)" />
+                                    <div wire:loading wire:target="updatePrice({{ $variation['id'] }})"
+                                        class="absolute inset-y-0 right-2 flex items-center">
+                                        <flux:icon.loading variant="micro" class="text-blue-600" />
+                                    </div>
+                                </div>
                             </td>
                             @foreach ($this->getRoles as $roleIndex => $role)
                                 <td class="px-6 py-3">
-                                    <flux:input type="text"
-                                        wire:change="updateVariationMrbpRole({{ $variation['id'] }}, '{{ $role['role'] }}', $event.target.value)"
-                                        wire:model.defer="variationValues.{{ $variationIndex }}.{{ $role['role'] }}" />
+                                    <div class="relative">
+                                        <flux:input type="text"
+                                            wire:change="updateVariationMrbpRole({{ $variation['id'] }}, '{{ $role['role'] }}', $event.target.value)"
+                                            wire:model.defer="variationValues.{{ $variationIndex }}.{{ $role['role'] }}" />
+                                        <div wire:loading wire:target="updateVariationMrbpRole({{ $variation['id'] }}, '{{ $role['role'] }}')"
+                                            class="absolute inset-y-0 right-2 flex items-center">
+                                            <flux:icon.loading variant="micro" class="text-blue-600" />
+                                        </div>
+                                    </div>
                                 </td>
                             @endforeach
                         </tr>

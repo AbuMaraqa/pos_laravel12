@@ -386,31 +386,122 @@ class WooCommerceService
         try {
             logger()->info('Updating product attributes', [
                 'productId' => $productId,
-                'data' => $data
+                'attributes_count' => count($data['attributes'] ?? []),
+                'variations_count' => count($data['variations'] ?? [])
             ]);
 
-            // First update the product attributes
-            if (isset($data['attributes'])) {
-                $productData = ['attributes' => $data['attributes']];
-                $this->put("products/{$productId}", $productData);
+            // Log sample variation for debugging
+            if (!empty($data['variations'])) {
+                logger()->info('Sample variation data', [
+                    'sample' => $data['variations'][0]
+                ]);
             }
 
-            // Then update or create variations
-            if (isset($data['variations'])) {
-                foreach ($data['variations'] as $variation) {
-                    if (isset($variation['id'])) {
-                        // Update existing variation
-                        $this->put("products/{$productId}/variations/{$variation['id']}", $variation);
-                    } else {
-                        // Create new variation
-                        $this->post("products/{$productId}/variations", $variation);
+            // First update the product attributes
+            if (isset($data['attributes']) && !empty($data['attributes'])) {
+                $productData = ['attributes' => $data['attributes']];
+                $attributeResponse = $this->put("products/{$productId}", $productData);
+
+                logger()->info('Product attributes updated', [
+                    'response' => $attributeResponse
+                ]);
+            } else {
+                logger()->warning('No attributes provided for update');
+            }
+
+            // Prepare batch update for variations
+            $variationUpdates = [
+                'create' => [],
+                'update' => []
+            ];
+            $errors = [];
+
+            if (isset($data['variations']) && !empty($data['variations'])) {
+                foreach ($data['variations'] as $index => $variation) {
+                    try {
+                        // Validate required fields
+                        if (empty($variation['regular_price']) ||
+                            !isset($variation['stock_quantity']) ||
+                            empty($variation['sku'])) {
+
+                            $missing = [];
+                            if (empty($variation['regular_price'])) $missing[] = 'regular_price';
+                            if (!isset($variation['stock_quantity'])) $missing[] = 'stock_quantity';
+                            if (empty($variation['sku'])) $missing[] = 'sku';
+
+                            logger()->warning('Incomplete variation data', [
+                                'missing_fields' => $missing,
+                                'variation_index' => $index
+                            ]);
+
+                            $errors[] = "Variation at index {$index} has missing required fields: " . implode(', ', $missing);
+                            continue;
+                        }
+
+                        // Clean and prepare variation data
+                        $cleanVariation = $this->sanitizeVariationData($variation);
+
+                        // Add to appropriate batch operation
+                        if (isset($cleanVariation['id']) && !empty($cleanVariation['id'])) {
+                            // Update existing variation
+                            $variationUpdates['update'][] = $cleanVariation;
+                        } else {
+                            // Create new variation
+                            $variationUpdates['create'][] = $cleanVariation;
+                        }
+                    } catch (\Exception $ve) {
+                        logger()->error('Failed to process variation', [
+                            'variation_index' => $index,
+                            'error' => $ve->getMessage()
+                        ]);
+                        $errors[] = "Failed to process variation at index {$index}: " . $ve->getMessage();
                     }
                 }
+
+                // Execute batch update if there are variations to update/create
+                $batchResults = null;
+                if (!empty($variationUpdates['update']) || !empty($variationUpdates['create'])) {
+                    try {
+                        $batchResults = $this->batchUpdateVariations($productId, $variationUpdates);
+
+                        logger()->info('Batch variation update completed', [
+                            'updated_count' => count($batchResults['update'] ?? []),
+                            'created_count' => count($batchResults['create'] ?? [])
+                        ]);
+                    } catch (\Exception $e) {
+                        logger()->error('Batch variation update failed', [
+                            'error' => $e->getMessage()
+                        ]);
+                        $errors[] = "Batch update failed: " . $e->getMessage();
+                    }
+                } else {
+                    logger()->warning('No valid variations for batch update');
+                }
+            } else {
+                logger()->warning('No variations provided for update');
+            }
+
+            if (!empty($errors)) {
+                logger()->warning('Some variations had errors', [
+                    'errors' => $errors
+                ]);
+
+                return [
+                    'success' => $batchResults !== null,
+                    'message' => 'Product attributes updated with some errors. ' . count($errors) . ' variations failed.',
+                    'updated_count' => count($batchResults['update'] ?? []),
+                    'created_count' => count($batchResults['create'] ?? []),
+                    'errors' => $errors,
+                    'batch_results' => $batchResults
+                ];
             }
 
             return [
                 'success' => true,
-                'message' => 'Product attributes and variations updated successfully'
+                'message' => "Product attributes and variations updated successfully via batch API.",
+                'updated_count' => count($batchResults['update'] ?? []),
+                'created_count' => count($batchResults['create'] ?? []),
+                'batch_results' => $batchResults
             ];
         } catch (\Exception $e) {
             logger()->error('Failed to update product attributes', [
@@ -647,114 +738,110 @@ class WooCommerceService
     public function syncVariations($productId, array $variations): array
     {
         try {
-            logger()->info('Syncing variations for product', [
-                'productId' => $productId,
-                'variationsCount' => count($variations)
-            ]);
+            // Get the product first
+            $product = $this->getProduct($productId);
 
-            // 1. Get existing variations to compare
+            if (!$product) {
+                return [
+                    'success' => false,
+                    'message' => 'Product not found',
+                    'updated' => 0,
+                    'created' => 0,
+                    'deleted' => 0
+                ];
+            }
+
+            // Get existing variations to determine which ones to update/create/delete
             $existingVariations = $this->getVariationsByProductId($productId);
             $existingVariationsMap = [];
 
             foreach ($existingVariations as $variation) {
-                $existingVariationsMap[$variation['id']] = $variation;
+                if (isset($variation['id'])) {
+                    $existingVariationsMap[$variation['id']] = $variation;
+                }
             }
 
-            $results = [
-                'created' => 0,
-                'updated' => 0,
-                'deleted' => 0,
-                'errors' => []
+            // Prepare batch data
+            $batchData = [
+                'create' => [],
+                'update' => [],
+                'delete' => []
             ];
 
-            // 2. Process each variation
+            $results = [
+                'updated' => 0,
+                'created' => 0,
+                'deleted' => 0
+            ];
+
+            // Process variations for update/create
             foreach ($variations as $variation) {
                 try {
                     // تجهيز بيانات المتغيّر
-                    $variationData = [
-                        'regular_price' => $variation['regular_price'] ?? '',
-                        'sale_price' => $variation['sale_price'] ?? '',
-                        'stock_quantity' => $variation['stock_quantity'] ?? 0,
-                        'description' => $variation['description'] ?? ''
-                    ];
-
-                    // إضافة الخصائص للمتغيّر
-                    if (isset($variation['options']) && !empty($variation['options'])) {
-                        $attributes = [];
-                        foreach ($variation['options'] as $index => $option) {
-                            if (isset($variation['attributes'][$index]) && isset($variation['attributes'][$index]['id'])) {
-                                $attributes[] = [
-                                    'id' => $variation['attributes'][$index]['id'],
-                                    'option' => $option
-                                ];
-                            }
-                        }
-                        if (!empty($attributes)) {
-                            $variationData['attributes'] = $attributes;
-                        }
-                    }
-
-                    // إضافة صورة إذا وجدت
-                    if (isset($variation['image']) && !empty($variation['image'])) {
-                        if (is_string($variation['image'])) {
-                            $variationData['image'] = ['src' => $variation['image']];
-                        } else if (isset($variation['image']['src'])) {
-                            $variationData['image'] = ['src' => $variation['image']['src']];
-                        }
-                    }
+                    $variationData = $this->sanitizeVariationData($variation);
 
                     // تحديث أو إنشاء
-                    if (isset($variation['id']) && !empty($variation['id'])) {
-                        // Update existing variation
-                        $this->put("products/{$productId}/variations/{$variation['id']}", $variationData);
-                        $results['updated']++;
+                    if (isset($variationData['id']) && !empty($variationData['id'])) {
+                        // Add to update batch
+                        $batchData['update'][] = $variationData;
 
-                        // Remove from map to track which variations need to be deleted
-                        if (isset($existingVariationsMap[$variation['id']])) {
-                            unset($existingVariationsMap[$variation['id']]);
+                        // Remove from existingVariationsMap to track which ones should be deleted
+                        if (isset($existingVariationsMap[$variationData['id']])) {
+                            unset($existingVariationsMap[$variationData['id']]);
                         }
                     } else {
-                        // Create new variation
-                        $this->post("products/{$productId}/variations", $variationData);
-                        $results['created']++;
+                        // Add to create batch
+                        $batchData['create'][] = $variationData;
                     }
                 } catch (\Exception $e) {
-                    $results['errors'][] = [
-                        'message' => $e->getMessage(),
-                        'variation' => $variation
-                    ];
-
-                    logger()->error('Error processing variation', [
-                        'error' => $e->getMessage(),
-                        'variation' => $variation
+                    logger()->error('Failed to prepare variation for batch operation', [
+                        'variation' => $variation,
+                        'error' => $e->getMessage()
                     ]);
                 }
             }
 
-            // 3. Delete variations that no longer exist
-            foreach ($existingVariationsMap as $variationId => $variation) {
-                try {
-                    // Only delete if the client requested management of all variations
-                    $this->delete("products/{$productId}/variations/{$variationId}");
-                    $results['deleted']++;
-                } catch (\Exception $e) {
-                    $results['errors'][] = [
-                        'message' => $e->getMessage(),
-                        'variation_id' => $variationId
-                    ];
-
-                    logger()->error('Error deleting variation', [
-                        'error' => $e->getMessage(),
-                        'variation_id' => $variationId
-                    ]);
-                }
+            // Add remaining variations to delete batch
+            foreach ($existingVariationsMap as $id => $variation) {
+                $batchData['delete'][] = $id;
             }
 
-            logger()->info('Variations sync completed', $results);
+            logger()->info('Prepared batch operation for variations', [
+                'productId' => $productId,
+                'create_count' => count($batchData['create']),
+                'update_count' => count($batchData['update']),
+                'delete_count' => count($batchData['delete'])
+            ]);
+
+            // Execute batch operation if there's anything to do
+            if (!empty($batchData['create']) || !empty($batchData['update']) || !empty($batchData['delete'])) {
+                $batchResult = $this->batchUpdateVariations($productId, $batchData);
+
+                // Count results
+                $results['created'] = count($batchResult['create'] ?? []);
+                $results['updated'] = count($batchResult['update'] ?? []);
+                $results['deleted'] = count($batchResult['delete'] ?? []);
+
+                logger()->info('Batch operation completed', [
+                    'created' => $results['created'],
+                    'updated' => $results['updated'],
+                    'deleted' => $results['deleted']
+                ]);
+            } else {
+                logger()->info('No variations to process in batch operation');
+            }
 
             return [
                 'success' => true,
-                'results' => $results
+                'message' => sprintf(
+                    'Variations synced successfully via batch API: updated %d, created %d, deleted %d',
+                    $results['updated'],
+                    $results['created'],
+                    $results['deleted']
+                ),
+                'updated' => $results['updated'],
+                'created' => $results['created'],
+                'deleted' => $results['deleted']
             ];
         } catch (\Exception $e) {
             logger()->error('Failed to sync variations', [
@@ -765,7 +852,10 @@ class WooCommerceService
 
             return [
                 'success' => false,
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
+                'updated' => 0,
+                'created' => 0,
+                'deleted' => 0
             ];
         }
     }
@@ -1163,5 +1253,124 @@ class WooCommerceService
     public function getProductTranslations($productId)
     {
         return $this->get('products/' . $productId . '/translations');
+    }
+
+    private function sanitizeVariationData(array $variation): array
+    {
+        $cleanData = [];
+
+        // Required fields
+        if (isset($variation['regular_price'])) {
+            $cleanData['regular_price'] = (string)$variation['regular_price'];
+        }
+
+        if (isset($variation['stock_quantity'])) {
+            $cleanData['stock_quantity'] = (int)$variation['stock_quantity'];
+        }
+
+        if (isset($variation['sku'])) {
+            $cleanData['sku'] = (string)$variation['sku'];
+        }
+
+        // Optional fields
+        if (isset($variation['id'])) {
+            $cleanData['id'] = (int)$variation['id'];
+        }
+
+        if (!empty($variation['sale_price'])) {
+            $cleanData['sale_price'] = (string)$variation['sale_price'];
+        }
+
+        if (!empty($variation['description'])) {
+            $cleanData['description'] = (string)$variation['description'];
+        }
+
+        // Process attributes
+        if (isset($variation['attributes']) && is_array($variation['attributes'])) {
+            $cleanData['attributes'] = [];
+            foreach ($variation['attributes'] as $attribute) {
+                if (isset($attribute['id']) && isset($attribute['option'])) {
+                    $cleanData['attributes'][] = [
+                        'id' => (int)$attribute['id'],
+                        'option' => (string)$attribute['option']
+                    ];
+                }
+            }
+        }
+
+        // Process image
+        if (isset($variation['image']) && !empty($variation['image'])) {
+            if (is_string($variation['image'])) {
+                $cleanData['image'] = ['src' => $variation['image']];
+            } else if (is_array($variation['image']) && isset($variation['image']['src'])) {
+                $cleanData['image'] = ['src' => $variation['image']['src']];
+            }
+        }
+
+        return $cleanData;
+    }
+
+    private function sanitizeAttributes(array $attributes): array
+    {
+        $sanitized = [];
+        foreach ($attributes as $attribute) {
+            if (isset($attribute['id']) && isset($attribute['option'])) {
+                $sanitized[] = [
+                    'id' => (int)$attribute['id'],
+                    'option' => (string)$attribute['option']
+                ];
+            }
+        }
+        return $sanitized;
+    }
+
+    private function sanitizeImage($image): array
+    {
+        if (is_string($image)) {
+            return ['src' => $image];
+        } else if (is_array($image) && isset($image['src'])) {
+            return ['src' => $image['src']];
+        }
+        return [];
+    }
+
+    public function batchUpdateProducts(array $data): array
+    {
+        try {
+            logger()->info('Sending batch update to WooCommerce API', [
+                'create_count' => count($data['create'] ?? []),
+                'update_count' => count($data['update'] ?? []),
+                'delete_count' => count($data['delete'] ?? [])
+            ]);
+
+            return $this->post('products/batch', $data);
+        } catch (\Exception $e) {
+            logger()->error('Failed to process batch update', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            throw $e;
+        }
+    }
+
+    public function batchUpdateVariations($productId, array $data): array
+    {
+        try {
+            logger()->info('Sending batch variation update for product', [
+                'productId' => $productId,
+                'create_count' => count($data['create'] ?? []),
+                'update_count' => count($data['update'] ?? []),
+                'delete_count' => count($data['delete'] ?? [])
+            ]);
+
+            return $this->post("products/{$productId}/variations/batch", $data);
+        } catch (\Exception $e) {
+            logger()->error('Failed to process batch variation update', [
+                'productId' => $productId,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            throw $e;
+        }
     }
 }

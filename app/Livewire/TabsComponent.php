@@ -28,12 +28,22 @@ class TabsComponent extends Component
 
     protected WooCommerceService $wooService;
 
-    public function mount($productType, $regularPrice = null, $productId = null)
+    public function mount($productType, $regularPrice = null, $salePrice = null, $sku = null, $productId = null)
     {
         $this->productType = $productType;
         $this->localRegularPrice = $regularPrice;
+        $this->localSalePrice = $salePrice;
+        $this->localSku = $sku;
         $this->showAttributesTab = ($productType === 'variable');
         $this->productId = $productId;
+
+        \Illuminate\Support\Facades\Log::info('TabsComponent mounted', [
+            'productType' => $productType,
+            'regularPrice' => $regularPrice,
+            'salePrice' => $salePrice,
+            'sku' => $sku,
+            'productId' => $productId
+        ]);
 
         // إذا كان المنتج موجود، نجلب البيانات من Edit Component
         if ($this->productId) {
@@ -60,18 +70,26 @@ class TabsComponent extends Component
         }
     }
 
-    public function setActiveTab($tab)
+    public function updatedLocalRegularPrice($value)
     {
-        $this->activeTab = $tab;
+        $this->localRegularPrice = $value;
+        $this->sendUpdatedData();
     }
 
-    public function updated($field, $value)
+    public function updatedLocalSalePrice($value)
     {
-        if ($field === 'productType') {
-            $this->showAttributesTab = ($value === 'variable');
-        }
+        $this->localSalePrice = $value;
+        $this->sendUpdatedData();
+    }
 
-        // عند تغيير أي قيمة، أرسل كل البيانات إلى مكون التحرير
+    public function updatedLocalSku($value)
+    {
+        $this->localSku = $value;
+        $this->sendUpdatedData();
+    }
+
+    public function sendUpdatedData()
+    {
         $data = [
             'regularPrice' => $this->localRegularPrice ?? '',
             'salePrice' => $this->localSalePrice ?? '',
@@ -86,6 +104,8 @@ class TabsComponent extends Component
             'lowStockThreshold' => $this->lowStockThreshold ?? '',
             'terms' => $this->terms ?? '',
         ];
+
+        \Illuminate\Support\Facades\Log::info('Sending updated data from tabs', $data);
 
         $this->dispatch('updateMultipleFieldsFromTabs', $data)->to('pages.product.add');
         $this->dispatch('updateMultipleFieldsFromTabs', $data)->to('pages.product.edit');
@@ -116,6 +136,39 @@ class TabsComponent extends Component
     {
         return view('livewire.tabs-component', [
             'showAttributesTab' => $this->showAttributesTab
+        ]);
+    }
+
+    public function setActiveTab($tab)
+    {
+        $this->activeTab = $tab;
+    }
+
+    public function updated($field, $value)
+    {
+        if ($field === 'productType') {
+            $this->showAttributesTab = ($value === 'variable');
+        }
+
+        // لا نرسل الحقول التي لديها وظائف محددة
+        if (!in_array($field, ['localRegularPrice', 'localSalePrice', 'localSku'])) {
+            $this->sendUpdatedData();
+        }
+    }
+
+    #[On('updatePricesFromEdit')]
+    public function handlePricesUpdate($data)
+    {
+        \Illuminate\Support\Facades\Log::info('TabsComponent received price update', $data);
+
+        $this->localRegularPrice = $data['regularPrice'] ?? $this->localRegularPrice;
+        $this->localSalePrice = $data['salePrice'] ?? $this->localSalePrice;
+        $this->localSku = $data['sku'] ?? $this->localSku;
+
+        \Illuminate\Support\Facades\Log::info('TabsComponent after update', [
+            'localRegularPrice' => $this->localRegularPrice,
+            'localSalePrice' => $this->localSalePrice,
+            'localSku' => $this->localSku
         ]);
     }
 }

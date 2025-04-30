@@ -122,6 +122,8 @@
                             :productId="$productId"
                             :productType="$productType"
                             :regular-price="$regularPrice"
+                            :sale-price="$salePrice"
+                            :sku="$sku"
                             :key="'tabs-'.$productId"
                         />
                     </div>
