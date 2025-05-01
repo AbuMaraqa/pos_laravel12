@@ -13,6 +13,8 @@ class Index extends Component
     public string $search = '';
     public array $categories = [];
     public array $products = [];
+    public array $variations = [];
+    public array $productArray = [];
 
     public ?int $selectedCategory = 0;
 
@@ -25,7 +27,7 @@ class Index extends Component
 
     public function mount()
     {
-        $this->categories = $this->wooService->getCategories();
+        $this->categories = $this->wooService->getCategories(['parent' => 0]);
         $this->products = $this->wooService->getProducts(
             [
                 'per_page' => 100,
@@ -64,6 +66,21 @@ class Index extends Component
     public function updatedSearch()
     {
         $this->products = $this->wooService->getProducts(['per_page' => 100, 'search' => $this->search]);
+    }
+
+    public function openVariationsModal($id , $type)
+    {
+        dd($type);
+        $this->modal('variations-modal')->show();
+    }
+
+    public function addProduct($productID, $productName, $productPrice)
+    {
+        $this->productArray[] = [
+            'id' => $productID,
+            'name' => $productName,
+            'price' => $productPrice,
+        ];
     }
 
     public function render()
