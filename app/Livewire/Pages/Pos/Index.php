@@ -68,10 +68,12 @@ class Index extends Component
         $this->products = $this->wooService->getProducts(['per_page' => 100, 'search' => $this->search]);
     }
 
-    public function openVariationsModal($id , $type)
+    public function openVariationsModal($id , string $type)
     {
-        dd($type);
-        $this->modal('variations-modal')->show();
+        if($type == 'variable'){
+            $this->variations = $this->wooService->getProductVariations($id);
+            $this->modal('variations-modal')->show();
+        }
     }
 
     public function addProduct($productID, $productName, $productPrice)

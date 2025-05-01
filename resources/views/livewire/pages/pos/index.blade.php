@@ -1,14 +1,63 @@
 <div>
-    <flux:modal name="variations-modal" class="md:w-96">
+    <flux:modal name="variations-modal" class="" style="min-width: 600px">
         <div class="space-y-6">
-            <div>
-                <flux:heading size="lg">Update profile</flux:heading>
-                <flux:text class="mt-2">Make changes to your personal details.</flux:text>
+
+            <div class="relative overflow-x-auto shadow-md sm:rounded-lg">
+                <table class="w-full text-sm text-left rtl:text-right text-gray-500 dark:text-gray-400">
+                    <thead class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
+                        <tr>
+                            <th scope="col" class="px-6 py-3">
+                                Product name
+                            </th>
+                            <th scope="col" class="px-6 py-3">
+                                Color
+                            </th>
+                            <th scope="col" class="px-6 py-3">
+                                Category
+                            </th>
+                            <th scope="col" class="px-6 py-3">
+                                Price
+                            </th>
+                            <th scope="col" class="px-6 py-3 text-center">
+                                Qty
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach ($variations as $index => $item)
+                            <tr
+                                class="odd:bg-white odd:dark:bg-gray-900 even:bg-gray-50 even:dark:bg-gray-800 border-b dark:border-gray-700 border-gray-200">
+                                <th class="px-6 py-4">
+                                    <img src="{{ $item['image']['src'] ?? '' }}" alt="{{ $item['name'] ?? '' }}"
+                                        class="m-0 object-cover" style="max-height: 50px;min-height: 50px;">
+                                </th>
+                                <th scope="row"
+                                    class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white">
+                                    {{ $item['name'] ?? '' }}
+                                </th>
+                                <td class="px-6 py-4">
+                                    {{ $item['attributes'][1]['name'] ?? '' }}
+                                </td>
+                                <td class="px-6 py-4 gap-2">
+                                    {{ $item['price'] ?? '' }}
+                                </td>
+                                <td class="px-6 py-4 flex gap-2">
+                                    <flux:button icon="plus" type="button" size="sm" variant="primary"
+                                        wire:click="addVariation({{ $index }})">
+                                    </flux:button>
+                                    <flux:input type="number" size="sm" style="display:inline"
+                                        wire:model.live.debounce.500ms="variations[{{ $index }}].qty"
+                                        placeholder="Qty" />
+                                    <flux:button icon="minus" type="button" size="sm" variant="primary"
+                                        wire:click="addVariation({{ $index }})">
+                                    </flux:button>
+                                </td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
             </div>
 
-            <flux:input label="Name" placeholder="Your name" />
-
-            <flux:input label="Date of birth" type="date" />
 
             <div class="flex">
                 <flux:spacer />
@@ -59,7 +108,7 @@
                     {{-- <h1>{{ __('Products') }}</h1> --}}
                     <div id="productsContainer" class="grid grid-cols-4 gap-4 overflow-y-auto max-h-[600px]">
                         @foreach ($products as $item)
-                            <div wire:click="openVariationsModal({{ $item['id'] }},{{ $item['type'] }})"
+                            <div wire:click="openVariationsModal({{ $item['id'] }}, '{{ $item['type'] ?? 'simple' }}')"
                                 class="bg-white rounded-lg shadow-md relative">
                                 <p style="width: 100%;position:absolute;background-color: #000;color: #fff;top: 0;left: 0;right: 0;z-index: 100;opacity: 0.5;"
                                     class="font-bold text-sm text-center">
