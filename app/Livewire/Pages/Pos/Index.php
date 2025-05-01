@@ -26,7 +26,12 @@ class Index extends Component
     public function mount()
     {
         $this->categories = $this->wooService->getCategories();
-        $this->products = $this->wooService->getProducts();
+        $this->products = $this->wooService->getProducts(
+            [
+                'per_page' => 100,
+                'page' => 1,
+            ]
+        );
     }
 
     public function selectCategory(?int $id = null)
@@ -54,6 +59,11 @@ class Index extends Component
         // Get fresh categories from the API
         $categories = $this->wooService->getCategories();
         return $categories;
+    }
+
+    public function updatedSearch()
+    {
+        $this->products = $this->wooService->getProducts(['per_page' => 100, 'search' => $this->search]);
     }
 
     public function render()
