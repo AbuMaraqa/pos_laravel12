@@ -420,9 +420,11 @@ class WooCommerceService
                 foreach ($data['variations'] as $index => $variation) {
                     try {
                         // Validate required fields
-                        if (empty($variation['regular_price']) ||
+                        if (
+                            empty($variation['regular_price']) ||
                             !isset($variation['stock_quantity']) ||
-                            empty($variation['sku'])) {
+                            empty($variation['sku'])
+                        ) {
 
                             $missing = [];
                             if (empty($variation['regular_price'])) $missing[] = 'regular_price';
@@ -1377,5 +1379,61 @@ class WooCommerceService
     public function getOrdersReportData()
     {
         return $this->get('reports/orders/totals');
+    }
+
+    public function getAllVariations(): array
+    {
+        $allVariations = [];
+
+        try {
+            // 1. جلب كل المنتجات القابلة للتغيير (variable)
+            $page = 1;
+            do {
+                $response = $this->get('products', [
+                    'type' => 'variable',
+                    'per_page' => 100,
+                    'page' => $page,
+                    'status' => 'publish'
+                ]);
+
+                $products = is_array($response) && isset($response['data']) ? $response['data'] : $response;
+
+                foreach ($products as $product) {
+                    $productId = $product['id'];
+
+                    // 2. جلب المتغيرات الخاصة بهذا المنتج
+                    $variations = $this->getVariationsByProductId($productId);
+
+                    foreach ($variations as &$variation) {
+                        $variation['product_id'] = $productId; // نضيف معرف المنتج لسهولة الاستخدام
+                    }
+
+                    $allVariations = array_merge($allVariations, $variations);
+                }
+
+                // 3. تحقق من وجود صفحات أخرى
+                $totalPages = $response['total_pages'] ?? 1;
+                $page++;
+            } while ($page <= $totalPages);
+
+            logger()->info("✅ All variations fetched", ['total' => count($allVariations)]);
+            return $allVariations;
+        } catch (\Exception $e) {
+            logger()->error('❌ Error fetching all variations', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return [];
+        }
+    }
+
+    public function getVariableProductsPaginated(int $page = 1, int $perPage = 100): array
+    {
+        return $this->get('products', [
+            'type' => 'variable',
+            'status' => 'publish',
+            'per_page' => $perPage,
+            'page' => $page,
+        ]);
     }
 }
