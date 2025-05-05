@@ -174,13 +174,10 @@
 
                         request.onsuccess = function() {
                             const variations = request.result;
-                            alert(variations.length);
                             if (variations.length > 0) {
                                 showVariationsModal(variations);
-                                // ✅ أضف هذا السطر لإظهار المودال
-                                Flux.modal('variations-modal').show();
+                                Flux.modal('variations-modal').show(); // ✅ افتح المودال هنا مباشرة
                             } else {
-                                // إذا لم تكن موجودة، جلبها من Livewire
                                 Livewire.dispatch('fetch-variations-for-product', {
                                     id: item.id
                                 });
@@ -259,7 +256,7 @@
         };
     }
 
-    document.addEventListener("DOMContentLoaded", () => {
+    document.addEventListener("livewire:navigated", () => {
         const openRequest = indexedDB.open(dbName, 3);
 
         openRequest.onupgradeneeded = function(event) {
@@ -302,7 +299,7 @@
         openRequest.onsuccess = function(event) {
             db = event.target.result;
 
-            renderProductsFromIndexedDB(currentSearchTerm, selectedCategoryId);
+            setTimeout(() => renderProductsFromIndexedDB(currentSearchTerm, selectedCategoryId), 300);
             renderCategoriesFromIndexedDB();
 
             const searchInput = document.getElementById('searchInput');
@@ -353,7 +350,10 @@
             const tx = db.transaction("products", "readwrite");
             const store = tx.objectStore("products");
             data.products.forEach(p => store.put(p));
-            tx.oncomplete = () => renderProductsFromIndexedDB(currentSearchTerm, selectedCategoryId);
+            tx.oncomplete = () => {
+                console.log("✅ Products stored");
+                renderProductsFromIndexedDB(currentSearchTerm, selectedCategoryId); // مهم جدًا
+            };
         });
 
         Livewire.on('store-categories', (data) => {
@@ -394,34 +394,30 @@
 
     function showVariationsModal(variations) {
         const modal = Flux.modal('variations-modal');
-
-        // 🟡 تفريغ الجسم السابق
         const tbody = document.querySelector('[name="variations-modal"] tbody');
         if (!tbody) return;
+
         tbody.innerHTML = '';
 
-        // 🟢 إدراج المتغيرات
         variations.forEach(item => {
             const row = document.createElement("tr");
             row.className = "odd:bg-white even:bg-gray-50 border-b";
 
             row.innerHTML = `
-            <td class="px-6 py-4">
-                <img src="${item.image?.src ?? ''}" style="max-height: 50px;" />
-            </td>
+            <td class="px-6 py-4"><img src="${item.image?.src ?? ''}" style="max-height: 50px;" /></td>
             <td class="px-6 py-4">${item.name ?? ''}</td>
             <td class="px-6 py-4">${item.attributes?.[1]?.option ?? ''}</td>
             <td class="px-6 py-4">${item.price ?? ''} ₪</td>
             <td class="px-6 py-4 text-center">
-                <button class="bg-blue-500 text-white px-2 py-1 rounded">+</button>
+                <button onclick="addVariationToCart(${item.id})" class="bg-blue-500 text-white px-2 py-1 rounded">+</button>
             </td>
         `;
             tbody.appendChild(row);
         });
 
-        // ✅ عرض المودال
-        modal.show();
+        modal.show(); // ✅ استخدم Flux لفتح المودال
     }
+
 
     document.addEventListener('livewire:init', () => {
         Livewire.on('store-products', (data) => {
@@ -429,7 +425,10 @@
             const tx = db.transaction("products", "readwrite");
             const store = tx.objectStore("products");
             data.products.forEach(p => store.put(p));
-            tx.oncomplete = () => renderProductsFromIndexedDB(currentSearchTerm, selectedCategoryId);
+            tx.oncomplete = () => {
+                console.log("✅ Products stored");
+                renderProductsFromIndexedDB(currentSearchTerm, selectedCategoryId); // مهم جدًا
+            };
         });
         Livewire.on('store-categories', (data) => {
             if (!db) return;
@@ -683,5 +682,7 @@
                 alert("🚫 لا يوجد اتصال. تم حفظ الطلبية مؤقتًا.");
             }
         };
+        alert('test');
+
     });
 </script>
