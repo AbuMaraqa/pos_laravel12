@@ -94,8 +94,15 @@
         </div>
 
         <div class="col-span-2">
-            <div class="bg-white p-4 rounded-lg shadow-md">
-                <h2 class="text-lg font-medium mb-2">إجمالي المبيعات</h2>
+            <div class="bg-white p-4 rounded-lg shadow-md h-full flex flex-col">
+                <h2 class="text-lg font-medium mb-4">إجمالي المبيعات</h2>
+                <button onclick="clearCart()" class="mt-2 bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700">
+                    🧹 حذف جميع المنتجات
+                </button>
+                <div id="cartItemsContainer" class="space-y-2 overflow-y-auto max-h-[500px] flex-1"></div>
+                <div class="mt-4 border-t pt-4 text-right">
+                    <p class="font-bold text-xl">المجموع: <span id="cartTotal">0 ₪</span></p>
+                </div>
             </div>
         </div>
     </div>
@@ -155,7 +162,7 @@
 
                 div.onclick = function() {
                     if (item.type === 'variable') {
-                        // جلب المتغيرات من IndexedDB أو Livewire
+                        // جلب المتغيرات من IndexedDB
                         const tx = db.transaction("variations", "readonly");
                         const store = tx.objectStore("variations");
                         const index = store.index("product_id");
@@ -165,16 +172,17 @@
                             const variations = request.result;
 
                             if (variations.length > 0) {
-                                showVariationsModal(variations); // عرضهم مباشرة
+                                showVariationsModal(
+                                    variations); // ✅ سنعدل هذه الدالة لعرض الـ modal الذي زودتني به
                             } else {
+                                // إذا لم تكن موجودة، جلبها من Livewire
                                 Livewire.dispatch('fetch-variations-for-product', {
                                     id: item.id
                                 });
                             }
                         };
                     } else if (item.type === 'simple') {
-                        // المنتج بسيط، أضفه إلى السلة مباشرة
-                        addToCart(item);
+                        addToCart(item); // ✅ موجودة مسبقاً
                     }
                 };
 
@@ -377,27 +385,28 @@
         if (!modal) return;
 
         const tbody = modal.querySelector('tbody');
-        if (!tbody) return;
         tbody.innerHTML = '';
 
-        variations.forEach(item => {
+        variations.forEach((item, index) => {
             const row = document.createElement("tr");
             row.className = "odd:bg-white even:bg-gray-50 border-b";
 
             row.innerHTML = `
-            <td class="px-6 py-4">${item.name}</td>
-            <td class="px-6 py-4">${item.attributes?.map(a => a.option).join(', ') ?? ''}</td>
+            <td class="px-6 py-4">
+                <img src="${item.image?.src ?? ''}" alt="${item.name ?? ''}" class="m-0 object-cover rounded" style="max-height: 50px; min-height: 50px;">
+            </td>
+            <td class="px-6 py-4">${item.name ?? ''}</td>
+            <td class="px-6 py-4">${item.attributes?.[1]?.option ?? ''}</td>
             <td class="px-6 py-4">${item.price ?? ''} ₪</td>
-            <td class="px-6 py-4 text-center">
-                <button class="bg-blue-500 text-white px-2 py-1 rounded">+</button>
+            <td class="px-6 py-4 flex gap-2 items-center">
+                <button onclick="addVariationToCart(${item.id})" class="bg-blue-600 text-white px-2 py-1 rounded">+</button>
             </td>
         `;
+
             tbody.appendChild(row);
         });
 
-        // إذا كنت تستخدم flux:modal مع Tailwind
-        modal.classList.remove("hidden");
-        modal.classList.add("block");
+        $flux.modal('variations-modal').show();
     }
 
     document.addEventListener('livewire:init', () => {
@@ -408,7 +417,6 @@
             data.products.forEach(p => store.put(p));
             tx.oncomplete = () => renderProductsFromIndexedDB(currentSearchTerm, selectedCategoryId);
         });
-
         Livewire.on('store-categories', (data) => {
             if (!db) return;
             const tx = db.transaction("categories", "readwrite");
@@ -463,19 +471,163 @@
                 existing.quantity += 1;
                 store.put(existing);
             } else {
+                console.log("✅ Image source:", product.images?.[0]?.src);
+
                 store.put({
                     id: product.id,
                     name: product.name,
                     price: product.price,
+                    image: product.images?.[0]?.src ?? '',
                     quantity: 1
                 });
             }
 
             console.log("✅ تم إضافة المنتج إلى السلة:", product.name);
+            renderCart();
         };
 
         getRequest.onerror = function() {
             console.error("❌ فشل في جلب بيانات المنتج من السلة.");
+        };
+    }
+
+    function renderCart() {
+        const tx = db.transaction("cart", "readonly");
+        const store = tx.objectStore("cart");
+        const request = store.getAll();
+
+        request.onsuccess = function() {
+            const cartItems = request.result;
+            const container = document.getElementById("cartItemsContainer");
+            const totalElement = document.getElementById("cartTotal");
+            if (!container || !totalElement) return;
+
+            container.innerHTML = '';
+            let total = 0;
+
+            cartItems.forEach(item => {
+                total += item.price * item.quantity;
+
+                const div = document.createElement("div");
+                div.className = "flex justify-between items-center bg-gray-100 p-2 rounded";
+
+                div.innerHTML = `
+                        <div class="flex items-center gap-2">
+                            <img src="${item.image || '/images/no-image.png'}" alt="${item.name}" class="w-16 h-16 object-cover rounded" />
+                            <div>
+                                <p class="font-semibold">${item.name}</p>
+                                <div class="flex items-center gap-2">
+                                    <button onclick="updateQuantity(${item.id}, -1)" class="bg-gray-300 px-2 rounded hover:bg-gray-400">−</button>
+                                    <span>${item.quantity}</span>
+                                    <button onclick="updateQuantity(${item.id}, 1)" class="bg-gray-300 px-2 rounded hover:bg-gray-400">+</button>
+                                </div>
+                            </div>
+
+                        </div>
+                        <div class="font-bold text-gray-800">
+                            ${item.price * item.quantity} ₪
+                            <flux:icon.trash onclick="removeFromCart(${item.id})" />
+                        </div>
+                        `;
+
+                container.appendChild(div);
+            });
+
+            totalElement.textContent = total.toFixed(2) + " ₪";
+        };
+
+        request.onerror = function() {
+            console.error("❌ فشل في تحميل محتوى السلة.");
+        };
+    }
+
+    function removeFromCart(productId) {
+        const tx = db.transaction("cart", "readwrite");
+        const store = tx.objectStore("cart");
+        const request = store.delete(productId);
+
+        request.onsuccess = function() {
+            console.log("🗑️ تم حذف المنتج من السلة");
+            renderCart(); // تحديث السلة بعد الحذف
+        };
+
+        request.onerror = function() {
+            console.error("❌ فشل في حذف المنتج من السلة");
+        };
+    }
+
+    function clearCart() {
+        const tx = db.transaction("cart", "readwrite");
+        const store = tx.objectStore("cart");
+        const clearRequest = store.clear();
+
+        clearRequest.onsuccess = function() {
+            console.log("🧹 تم حذف جميع المنتجات من السلة");
+            renderCart(); // إعادة تحميل السلة
+        };
+
+        clearRequest.onerror = function() {
+            console.error("❌ فشل في حذف السلة");
+        };
+    }
+
+    function updateQuantity(productId, change) {
+        const tx = db.transaction("cart", "readwrite");
+        const store = tx.objectStore("cart");
+        const getRequest = store.get(productId);
+
+        getRequest.onsuccess = function() {
+            const item = getRequest.result;
+            if (!item) return;
+
+            item.quantity += change;
+
+            if (item.quantity <= 0) {
+                store.delete(productId);
+            } else {
+                store.put(item);
+            }
+
+            renderCart();
+        };
+
+        getRequest.onerror = function() {
+            console.error("❌ فشل في تحديث كمية المنتج");
+        };
+    }
+
+    function addVariationToCart(variationId) {
+        const tx = db.transaction("variations", "readonly");
+        const store = tx.objectStore("variations");
+        const request = store.get(variationId);
+
+        request.onsuccess = function() {
+            const variation = request.result;
+            if (!variation) return;
+
+            const cartTx = db.transaction("cart", "readwrite");
+            const cartStore = cartTx.objectStore("cart");
+
+            const getCartItem = cartStore.get(variation.id);
+
+            getCartItem.onsuccess = function() {
+                const existing = getCartItem.result;
+
+                if (existing) {
+                    existing.quantity += 1;
+                    cartStore.put(existing);
+                } else {
+                    cartStore.put({
+                        id: variation.id,
+                        name: variation.name,
+                        price: variation.price,
+                        quantity: 1,
+                        image: variation.image?.src ?? ''
+                    });
+                }
+
+                renderCart();
+            };
         };
     }
 </script>
