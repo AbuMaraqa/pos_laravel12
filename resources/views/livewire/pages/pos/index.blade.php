@@ -139,10 +139,10 @@
             const filtered = products.filter(item => {
                 const term = searchTerm.trim().toLowerCase();
 
-const matchesSearch = !term || (
-    (item.name && item.name.toLowerCase().includes(term)) ||
-    (item.id && item.id.toString().includes(term))
-);
+                const matchesSearch = !term || (
+                    (item.name && item.name.toLowerCase().includes(term)) ||
+                    (item.id && item.id.toString().includes(term))
+                );
 
                 const matchesCategory = !categoryId || (
                     item.categories &&
@@ -486,6 +486,12 @@ const matchesSearch = !term || (
 
             console.log("✅ تم إضافة المنتج إلى السلة:", product.name);
             renderCart();
+            setTimeout(() => {
+    const container = document.getElementById("cartItemsContainer");
+    if (container) {
+        container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+    }
+}, 50); // يمكن تعديل 50 إلى 100 إذا بقيت الم
         };
 
         getRequest.onerror = function() {
