@@ -149,6 +149,20 @@ class Index extends Component
         ];
     }
 
+    #[On('submit-order')]
+    public function submitOrder($order)
+    {
+        $orderData = $order ?? [];
+
+        try {
+            $order = $this->wooService->createOrder($orderData);
+            $this->dispatch('order-success');
+        } catch (\Exception $e) {
+            logger()->error('Order creation failed', ['error' => $e->getMessage()]);
+            $this->dispatch('order-failed');
+        }
+    }
+
     public function render()
     {
         return view('livewire.pages.pos.index');

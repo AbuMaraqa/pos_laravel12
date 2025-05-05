@@ -103,6 +103,9 @@
                 <div class="mt-4 border-t pt-4 text-right">
                     <p class="font-bold text-xl">المجموع: <span id="cartTotal">0 ₪</span></p>
                 </div>
+                <flux:button type="button" id="completeOrderBtn" class="mt-4 w-full" variant="primary">
+                    إتمام الطلب
+                </flux:button>
             </div>
         </div>
     </div>
@@ -164,7 +167,6 @@
 
                 div.onclick = function() {
                     if (item.type === 'variable') {
-                        // جلب المتغيرات من IndexedDB
                         const tx = db.transaction("variations", "readonly");
                         const store = tx.objectStore("variations");
                         const index = store.index("product_id");
@@ -172,10 +174,11 @@
 
                         request.onsuccess = function() {
                             const variations = request.result;
-
+                            alert(variations.length);
                             if (variations.length > 0) {
-                                showVariationsModal(
-                                    variations); // ✅ سنعدل هذه الدالة لعرض الـ modal الذي زودتني به
+                                showVariationsModal(variations);
+                                // ✅ أضف هذا السطر لإظهار المودال
+                                Flux.modal('variations-modal').show();
                             } else {
                                 // إذا لم تكن موجودة، جلبها من Livewire
                                 Livewire.dispatch('fetch-variations-for-product', {
@@ -184,9 +187,10 @@
                             }
                         };
                     } else if (item.type === 'simple') {
-                        addToCart(item); // ✅ موجودة مسبقاً
+                        addToCart(item);
                     }
                 };
+
 
                 div.innerHTML = `
                     <p class="font-bold text-sm text-center" style="width: 100%;position:absolute;background-color: #000;color: #fff;top: 0;left: 0;right: 0;z-index: 100;opacity: 0.5;">
@@ -287,6 +291,12 @@
                     keyPath: "id"
                 });
             }
+
+            if (!db.objectStoreNames.contains("pendingOrders")) {
+                db.createObjectStore("pendingOrders", {
+                    autoIncrement: true
+                });
+            }
         };
 
         openRequest.onsuccess = function(event) {
@@ -383,32 +393,34 @@
     });
 
     function showVariationsModal(variations) {
-        const modal = document.querySelector('[name="variations-modal"]');
-        if (!modal) return;
+        const modal = Flux.modal('variations-modal');
 
-        const tbody = modal.querySelector('tbody');
+        // 🟡 تفريغ الجسم السابق
+        const tbody = document.querySelector('[name="variations-modal"] tbody');
+        if (!tbody) return;
         tbody.innerHTML = '';
 
-        variations.forEach((item, index) => {
+        // 🟢 إدراج المتغيرات
+        variations.forEach(item => {
             const row = document.createElement("tr");
             row.className = "odd:bg-white even:bg-gray-50 border-b";
 
             row.innerHTML = `
             <td class="px-6 py-4">
-                <img src="${item.image?.src ?? ''}" alt="${item.name ?? ''}" class="m-0 object-cover rounded" style="max-height: 50px; min-height: 50px;">
+                <img src="${item.image?.src ?? ''}" style="max-height: 50px;" />
             </td>
             <td class="px-6 py-4">${item.name ?? ''}</td>
             <td class="px-6 py-4">${item.attributes?.[1]?.option ?? ''}</td>
             <td class="px-6 py-4">${item.price ?? ''} ₪</td>
-            <td class="px-6 py-4 flex gap-2 items-center">
-                <button onclick="addVariationToCart(${item.id})" class="bg-blue-600 text-white px-2 py-1 rounded">+</button>
+            <td class="px-6 py-4 text-center">
+                <button class="bg-blue-500 text-white px-2 py-1 rounded">+</button>
             </td>
         `;
-
             tbody.appendChild(row);
         });
 
-        $flux.modal('variations-modal').show();
+        // ✅ عرض المودال
+        modal.show();
     }
 
     document.addEventListener('livewire:init', () => {
@@ -487,11 +499,14 @@
             console.log("✅ تم إضافة المنتج إلى السلة:", product.name);
             renderCart();
             setTimeout(() => {
-    const container = document.getElementById("cartItemsContainer");
-    if (container) {
-        container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
-    }
-}, 50); // يمكن تعديل 50 إلى 100 إذا بقيت الم
+                const container = document.getElementById("cartItemsContainer");
+                if (container) {
+                    container.scrollTo({
+                        top: container.scrollHeight,
+                        behavior: 'smooth'
+                    });
+                }
+            }, 50); // يمكن تعديل 50 إلى 100 إذا بقيت الم
         };
 
         getRequest.onerror = function() {
@@ -532,12 +547,11 @@
                             </div>
 
                         </div>
-                        <div class="font-bold text-gray-800">
+                        <div class="font-bold text-gray-800 flex">
                             ${item.price * item.quantity} ₪
                             <flux:icon.trash onclick="removeFromCart(${item.id})" />
                         </div>
                         `;
-
                 container.appendChild(div);
             });
 
@@ -638,4 +652,36 @@
             };
         };
     }
+
+    document.getElementById('completeOrderBtn').addEventListener('click', function() {
+        const tx = db.transaction("cart", "readonly");
+        const store = tx.objectStore("cart");
+
+        store.getAll().onsuccess = function(event) {
+            const cartItems = event.target.result;
+            if (cartItems.length === 0) return alert("السلة فارغة");
+
+            const orderData = {
+                customer_id: 0,
+                payment_method: 'cod',
+                payment_method_title: 'Cash on Delivery',
+                set_paid: true,
+                line_items: cartItems.map(item => ({
+                    product_id: item.id,
+                    quantity: item.quantity
+                }))
+            };
+
+            if (navigator.onLine) {
+                Livewire.dispatch('submit-order', {
+                    order: orderData
+                });
+            } else {
+                const tx2 = db.transaction("pendingOrders", "readwrite");
+                const store2 = tx2.objectStore("pendingOrders");
+                store2.add(orderData);
+                alert("🚫 لا يوجد اتصال. تم حفظ الطلبية مؤقتًا.");
+            }
+        };
+    });
 </script>

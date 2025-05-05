@@ -124,6 +124,12 @@ class WooCommerceService
                 'data_size' => strlen(json_encode($cleanData))
             ]);
 
+            // Log the actual data being sent after sanitization
+            logger()->debug('Data being sent to WooCommerce API after sanitization', [
+                'endpoint' => $endpoint,
+                'data' => $cleanData
+            ]);
+
             $response = $this->client->post($endpoint, [
                 'json' => $cleanData,
                 'timeout' => 30.0, // زيادة مهلة الانتظار
@@ -146,9 +152,11 @@ class WooCommerceService
             $statusCode = $e->getResponse() ? $e->getResponse()->getStatusCode() : 'unknown';
             $responseBody = $e->getResponse() ? $e->getResponse()->getBody()->getContents() : '';
 
+            // Log the cleaned data along with the error
             logger()->error('WooCommerce API POST Error', [
                 'endpoint' => $endpoint,
                 'status_code' => $statusCode,
+                'sent_data' => $cleanData, // Log data that caused the error
                 'error' => $errorMessage,
                 'response' => $responseBody
             ]);
@@ -281,6 +289,11 @@ class WooCommerceService
     public function updateOrder($id, $query = []): array
     {
         return $this->put('orders/' . $id, $query);
+    }
+
+    public function createOrder($query = []): array
+    {
+        return $this->post('orders', $query);
     }
 
     public function getAttributes(array $query = []): array

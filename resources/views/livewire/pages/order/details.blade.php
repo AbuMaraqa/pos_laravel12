@@ -138,22 +138,23 @@
                                 <div>
                                     <flux:icon icon="loading" wire:target="updateOrder" wire:loading/>
                                     @foreach ($this->shippingZones as $zone)
-                                        @foreach ($this->shippingZoneMethods($zone['id']) as $method)
+                                        @foreach ($this->shippingZoneMethods($zone['id'] ?? '') as $method)
+                                            @php
+                                                $currentMethodId = $order['shipping_lines'][0]['method_id'] ?? null;
+                                                $isChecked = $currentMethodId == ($method['id'] ?? null);
+                                            @endphp
                                             <div class="flex items-center space-x-2" wire:loading.remove>
                                                 <input
-                                                    {{ $order['shipping_lines'][0]['method_id'] == $method['id'] ? 'checked' : '' }}
-                                                    id="{{ $method['id'] }}"
+                                                    {{ $isChecked ? 'checked' : '' }}
+                                                    id="{{ $method['id'] ?? '' }}"
                                                     type="radio"
                                                     name="shipping_method"
-                                                    wire:click="updateOrder({{ $method['id'] }}, {{ $zone['id'] }})"
-                                                    value="{{ $method['id'] }}"
-
+                                                    wire:click="updateOrder({{ $method['id'] ?? 'null' }}, {{ $zone['id'] ?? 'null' }})"
+                                                    value="{{ $method['id'] ?? '' }}"
                                                     wire:target="updateOrder"
                                                 >
-                                                <label for="{{ $method['id'] }}"
-                                                    class="block cursor-pointer">
-                                                    {{ $method['title'] }} - {{ $method['settings']['cost']['value'] }}
-                                                    شيكل
+                                                <label for="{{ $method['id'] ?? '' }}" class="block cursor-pointer">
+                                                    {{ $method['title'] ?? 'بدون عنوان' }} - {{ $method['settings']['cost']['value'] ?? '0' }} شيكل
                                                 </label>
                                             </div>
                                         @endforeach
