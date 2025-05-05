@@ -85,7 +85,7 @@
                     <flux:separator />
                 </div>
 
-                <div class="mt-4 bg-gray-200 p-4 rounded-lg shadow-md">
+                <div class="mt-4 h-full bg-gray-200 p-4 rounded-lg shadow-md">
                     <div id="productsContainer" class="grid grid-cols-4 gap-4 overflow-y-auto max-h-[600px]">
                         <!-- المنتجات ستُعرض من IndexedDB هنا -->
                     </div>
@@ -93,7 +93,7 @@
             </div>
         </div>
 
-        <div class="col-span-2">
+        <div class="col-span-2 h-full">
             <div class="bg-white p-4 rounded-lg shadow-md h-full flex flex-col">
                 <h2 class="text-lg font-medium mb-4">إجمالي المبيعات</h2>
                 <button onclick="clearCart()" class="mt-2 bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700">
@@ -137,10 +137,12 @@
             container.innerHTML = '';
 
             const filtered = products.filter(item => {
-                const matchesSearch = !searchTerm.trim() || (
-                    item.name &&
-                    item.name.toLowerCase().includes(searchTerm.trim().toLowerCase())
-                );
+                const term = searchTerm.trim().toLowerCase();
+
+const matchesSearch = !term || (
+    (item.name && item.name.toLowerCase().includes(term)) ||
+    (item.id && item.id.toString().includes(term))
+);
 
                 const matchesCategory = !categoryId || (
                     item.categories &&
