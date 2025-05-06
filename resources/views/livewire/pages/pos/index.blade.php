@@ -2,47 +2,24 @@
     <flux:modal name="variations-modal" style="min-width: 600px">
         <div class="space-y-6">
             <div class="relative overflow-x-auto shadow-md sm:rounded-lg">
-                <table class="w-full text-sm text-left rtl:text-right text-gray-500 dark:text-gray-400">
-                    <thead class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
+                <table class="w-full text-sm text-left text-gray-500">
+                    <thead class="text-xs text-gray-700 uppercase bg-gray-50">
                         <tr>
-                            <th scope="col" class="px-6 py-3">Product name</th>
-                            <th scope="col" class="px-6 py-3">Color</th>
-                            <th scope="col" class="px-6 py-3">Category</th>
-                            <th scope="col" class="px-6 py-3">Price</th>
-                            <th scope="col" class="px-6 py-3 text-center">Qty</th>
+                            <th class="px-6 py-3">صورة</th>
+                            <th class="px-6 py-3">الاسم</th>
+                            <th class="px-6 py-3">الصفة</th>
+                            <th class="px-6 py-3">السعر</th>
+                            <th class="px-6 py-3 text-center">الكمية</th>
                         </tr>
                     </thead>
-                    <tbody>
-                        @foreach ($variations as $index => $item)
-                            <tr
-                                class="odd:bg-white odd:dark:bg-gray-900 even:bg-gray-50 even:dark:bg-gray-800 border-b dark:border-gray-700 border-gray-200">
-                                <th class="px-6 py-4">
-                                    <img src="{{ $item['image']['src'] ?? '' }}" alt="{{ $item['name'] ?? '' }}"
-                                        class="m-0 object-cover" style="max-height: 50px;min-height: 50px;">
-                                </th>
-                                <th scope="row"
-                                    class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white">
-                                    {{ $item['name'] ?? '' }}
-                                </th>
-                                <td class="px-6 py-4">{{ $item['attributes'][1]['name'] ?? '' }}</td>
-                                <td class="px-6 py-4 gap-2">{{ $item['price'] ?? '' }}</td>
-                                <td class="px-6 py-4 flex gap-2">
-                                    <flux:button icon="plus" type="button" size="sm" variant="primary"
-                                        wire:click="addVariation({{ $index }})"></flux:button>
-                                    <flux:input type="number" size="sm" style="display:inline"
-                                        wire:model.live.debounce.500ms="variations[{{ $index }}].qty"
-                                        placeholder="Qty" />
-                                    <flux:button icon="minus" type="button" size="sm" variant="primary"
-                                        wire:click="addVariation({{ $index }})"></flux:button>
-                                </td>
-                            </tr>
-                        @endforeach
+                    <tbody id="variationsTableBody">
+                        <!-- سيتم تعبئة هذا القسم من خلال showVariationsModal -->
                     </tbody>
                 </table>
             </div>
-            <div class="flex">
-                <flux:spacer />
-                <flux:button type="submit" variant="primary">Save changes</flux:button>
+            <div class="flex justify-end">
+                <flux:button type="button" variant="primary" onclick="Flux.modal('variations-modal').close()">إغلاق
+                </flux:button>
             </div>
         </div>
     </flux:modal>
@@ -142,6 +119,9 @@
             const filtered = products.filter(item => {
                 const term = searchTerm.trim().toLowerCase();
 
+                const isAllowedType = item.type === 'simple' || item.type ===
+                    'variable'; // ✅ فقط Simple و Variable
+
                 const matchesSearch = !term || (
                     (item.name && item.name.toLowerCase().includes(term)) ||
                     (item.id && item.id.toString().includes(term))
@@ -152,7 +132,7 @@
                     item.categories.some(cat => cat.id === categoryId)
                 );
 
-                return matchesSearch && matchesCategory;
+                return isAllowedType && matchesSearch && matchesCategory;
             });
 
             if (filtered.length === 0) {
@@ -166,28 +146,29 @@
                 div.style.cursor = "pointer";
 
                 div.onclick = function() {
-                    if (item.type === 'variable') {
-                        const tx = db.transaction("variations", "readonly");
-                        const store = tx.objectStore("variations");
-                        const index = store.index("product_id");
-                        const request = index.getAll(IDBKeyRange.only(item.id));
+                    if (item.type === 'variable' && Array.isArray(item.variations)) {
+                        const tx = db.transaction("products", "readonly");
+                        const store = tx.objectStore("products");
 
-                        request.onsuccess = function() {
-                            const variations = request.result;
-                            if (variations.length > 0) {
-                                showVariationsModal(variations);
-                                Flux.modal('variations-modal').show(); // ✅ افتح المودال هنا مباشرة
-                            } else {
-                                Livewire.dispatch('fetch-variations-for-product', {
-                                    id: item.id
-                                });
-                            }
-                        };
+                        const variationProducts = [];
+                        let fetched = 0;
+
+                        item.variations.forEach(id => {
+                            const req = store.get(id);
+                            req.onsuccess = function() {
+                                if (req.result) {
+                                    variationProducts.push(req.result);
+                                }
+                                fetched++;
+                                if (fetched === item.variations.length) {
+                                    showVariationsModal(variationProducts);
+                                }
+                            };
+                        });
                     } else if (item.type === 'simple') {
                         addToCart(item);
                     }
                 };
-
 
                 div.innerHTML = `
                     <p class="font-bold text-sm text-center" style="width: 100%;position:absolute;background-color: #000;color: #fff;top: 0;left: 0;right: 0;z-index: 100;opacity: 0.5;">
@@ -356,13 +337,14 @@
 
     document.addEventListener('livewire:init', () => {
         Livewire.on('store-products', (data) => {
-            if (!db) return;
             const tx = db.transaction("products", "readwrite");
             const store = tx.objectStore("products");
+
             data.products.forEach(p => store.put(p));
+
             tx.oncomplete = () => {
-                console.log("✅ Products stored");
-                renderProductsFromIndexedDB(currentSearchTerm, selectedCategoryId); // مهم جدًا
+                console.log("✅ All products including variations stored.");
+                renderProductsFromIndexedDB(currentSearchTerm, selectedCategoryId);
             };
         });
 
@@ -404,40 +386,53 @@
 
     function showVariationsModal(variations) {
         const modal = Flux.modal('variations-modal');
-        const tbody = document.querySelector('[name="variations-modal"] tbody');
+        const tbody = document.getElementById("variationsTableBody");
         if (!tbody) return;
 
         tbody.innerHTML = '';
 
-        variations.forEach(item => {
+        if (variations.length === 0) {
             const row = document.createElement("tr");
-            row.className = "odd:bg-white even:bg-gray-50 border-b";
-
-            row.innerHTML = `
-            <td class="px-6 py-4"><img src="${item.image?.src ?? ''}" style="max-height: 50px;" /></td>
-            <td class="px-6 py-4">${item.name ?? ''}</td>
-            <td class="px-6 py-4">${item.attributes?.[1]?.option ?? ''}</td>
-            <td class="px-6 py-4">${item.price ?? ''} ₪</td>
-            <td class="px-6 py-4 text-center">
-                <button onclick="addVariationToCart(${item.id})" class="bg-blue-500 text-white px-2 py-1 rounded">+</button>
-            </td>
-        `;
+            row.innerHTML = `<td colspan="5" class="text-center text-gray-500 py-4">لا يوجد متغيرات متاحة</td>`;
             tbody.appendChild(row);
-        });
+        } else {
+            variations.forEach(item => {
+                console.log("🟢 Variation", item);
 
-        modal.show(); // ✅ استخدم Flux لفتح المودال
+                const row = document.createElement("tr");
+                row.className = "odd:bg-white even:bg-gray-50 border-b";
+
+                row.innerHTML = `
+                <td class="px-6 py-4">
+                    <img src="${item.images[0]?.src ?? '/images/no-image.png'}" style="max-height: 50px;" class="rounded shadow" />
+                </td>
+                <td class="px-6 py-4">${item.name ?? ''}</td>
+                <td class="px-6 py-4">${item.attributes?.map(a => a.option).join(', ') ?? ''}</td>
+                <td class="px-6 py-4">${item.price ?? ''} ₪</td>
+                <td class="px-6 py-4 text-center">
+                    <button class="bg-blue-500 text-white px-2 py-1 rounded hover:bg-blue-600" onclick="addVariationToCart(${item.id})">+</button>
+                </td>
+            `;
+
+                tbody.appendChild(row);
+            });
+        }
+
+        modal.show();
     }
+
 
 
     document.addEventListener('livewire:init', () => {
         Livewire.on('store-products', (data) => {
-            if (!db) return;
             const tx = db.transaction("products", "readwrite");
             const store = tx.objectStore("products");
+
             data.products.forEach(p => store.put(p));
+
             tx.oncomplete = () => {
-                console.log("✅ Products stored");
-                renderProductsFromIndexedDB(currentSearchTerm, selectedCategoryId); // مهم جدًا
+                console.log("✅ All products including variations stored.");
+                renderProductsFromIndexedDB(currentSearchTerm, selectedCategoryId);
             };
         });
         Livewire.on('store-categories', (data) => {
@@ -647,13 +642,17 @@
     }
 
     function addVariationToCart(variationId) {
-        const tx = db.transaction("variations", "readonly");
-        const store = tx.objectStore("variations");
+        const tx = db.transaction("products", "readonly"); // لأن الـ variation فعليًا منتج
+        const store = tx.objectStore("products");
         const request = store.get(variationId);
 
         request.onsuccess = function() {
             const variation = request.result;
-            if (!variation) return;
+
+            if (!variation || !variation.id) {
+                console.error("❌ Variation not found or missing ID:", variation);
+                return;
+            }
 
             const cartTx = db.transaction("cart", "readwrite");
             const cartStore = cartTx.objectStore("cart");
@@ -672,12 +671,16 @@
                         name: variation.name,
                         price: variation.price,
                         quantity: 1,
-                        image: variation.image?.src ?? ''
+                        image: variation.images?.[0]?.src ?? '/images/no-image.png'
                     });
                 }
 
                 renderCart();
             };
+        };
+
+        request.onerror = function() {
+            console.error("❌ Failed to fetch variation by ID from products store");
         };
     }
 

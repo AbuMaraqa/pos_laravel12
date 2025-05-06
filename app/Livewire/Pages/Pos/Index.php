@@ -93,7 +93,26 @@ class Index extends Component
     public function fetchProductsFromAPI()
     {
         $products = $this->wooService->getProducts(['per_page' => 100]);
-        $this->dispatch('store-products', products: $products);
+        $allProducts = [];
+
+        foreach ($products as $product) {
+            $allProducts[] = $product;
+
+            if ($product['type'] === 'variable' && !empty($product['variations'])) {
+                // اجلب تفاصيل كل variation
+                foreach ($product['variations'] as $variationId) {
+                    $variation = $this->wooService->getProduct($variationId);
+
+                    if ($variation) {
+                        // ضف علاقة للمنتج الأب إن أردت تتبعها لاحقًا
+                        $variation['product_id'] = $product['id'];
+                        $allProducts[] = $variation;
+                    }
+                }
+            }
+        }
+
+        $this->dispatch('store-products', products: $allProducts);
     }
 
     #[On('fetch-categories-from-api')]
