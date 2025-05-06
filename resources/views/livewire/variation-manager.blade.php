@@ -65,7 +65,7 @@
 {{--    @endif--}}
 {{--</div>--}}
 <div>
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-6">
         @foreach ($loadedAttributes as $attribute)
             <div class="p-4 border rounded shadow-md bg-white">
                 <h3 class="font-semibold text-xl mb-2">{{ $attribute['name'] }} <span class="text-sm text-gray-500">({{ count($attributeTerms[$attribute['id']] ?? []) }})</span></h3>
@@ -80,6 +80,23 @@
                             }
                         }
                     @endphp
+
+
+
+                    @foreach ($attributeTerms[$attribute['id']] ?? [] as $term)
+                        <label class="inline-flex items-center p-2 border rounded-md hover:bg-gray-50 cursor-pointer
+                            @if(isset($selectedAttributes[$attribute['id']][$term['id']]) && $selectedAttributes[$attribute['id']][$term['id']])
+                                bg-blue-50 border-blue-300
+                            @endif"
+                        >
+                            <input
+                                type="checkbox"
+                                wire:model.live="selectedAttributes.{{ $attribute['id'] }}.{{ $term['id'] }}"
+                                class="form-checkbox h-5 w-5 text-blue-600"
+                            >
+                            <span class="mr-2 text-sm">{{ $term['name'] }}</span>
+                        </label>
+                    @endforeach
 
                     @if ($hasSelectedTerms && is_array($selectedAttributes[$attribute['id']]))
                         <div class="mb-2 w-full p-2 bg-blue-50 text-blue-700 text-sm rounded">
@@ -100,21 +117,6 @@
                             @endforeach
                         </div>
                     @endif
-
-                    @foreach ($attributeTerms[$attribute['id']] ?? [] as $term)
-                        <label class="inline-flex items-center p-2 border rounded-md hover:bg-gray-50 cursor-pointer
-                            @if(isset($selectedAttributes[$attribute['id']][$term['id']]) && $selectedAttributes[$attribute['id']][$term['id']])
-                                bg-blue-50 border-blue-300
-                            @endif"
-                        >
-                            <input
-                                type="checkbox"
-                                wire:model.live="selectedAttributes.{{ $attribute['id'] }}.{{ $term['id'] }}"
-                                class="form-checkbox h-5 w-5 text-blue-600"
-                            >
-                            <span class="mr-2 text-sm">{{ $term['name'] }}</span>
-                        </label>
-                    @endforeach
                 </div>
             </div>
         @endforeach
