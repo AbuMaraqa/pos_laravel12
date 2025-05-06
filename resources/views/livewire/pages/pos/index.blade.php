@@ -506,7 +506,7 @@
             }
 
             console.log("✅ تم إضافة المنتج إلى السلة:", product.name);
-            renderCart();
+            renderCart(product.id);
             setTimeout(() => {
                 const container = document.getElementById("cartItemsContainer");
                 if (container) {
@@ -523,7 +523,7 @@
         };
     }
 
-    function renderCart() {
+    function renderCart(highlightId = null) {
         const tx = db.transaction("cart", "readonly");
         const store = tx.objectStore("cart");
         const request = store.getAll();
@@ -536,41 +536,60 @@
 
             container.innerHTML = '';
             let total = 0;
+            let highlightElement = null;
 
             cartItems.forEach(item => {
                 total += item.price * item.quantity;
 
                 const div = document.createElement("div");
-                div.className = "flex justify-between items-center bg-gray-100 p-2 rounded";
+                div.id = `cart-item-${item.id}`;
+                div.className =
+                    "flex justify-between items-center bg-gray-100 p-2 rounded transition duration-300";
 
                 div.innerHTML = `
+                <div class="flex items-center gap-2">
+                    <img src="${item.image || '/images/no-image.png'}" alt="${item.name}" class="w-16 h-16 object-cover rounded" />
+                    <div>
+                        <p class="font-semibold">${item.name}</p>
                         <div class="flex items-center gap-2">
-                            <img src="${item.image || '/images/no-image.png'}" alt="${item.name}" class="w-16 h-16 object-cover rounded" />
-                            <div>
-                                <p class="font-semibold">${item.name}</p>
-                                <div class="flex items-center gap-2">
-                                    <button onclick="updateQuantity(${item.id}, -1)" class="bg-gray-300 px-2 rounded hover:bg-gray-400">−</button>
-                                    <span>${item.quantity}</span>
-                                    <button onclick="updateQuantity(${item.id}, 1)" class="bg-gray-300 px-2 rounded hover:bg-gray-400">+</button>
-                                </div>
-                            </div>
+                            <button onclick="updateQuantity(${item.id}, -1)" class="bg-gray-300 px-2 rounded hover:bg-gray-400">−</button>
+                            <span>${item.quantity}</span>
+                            <button onclick="updateQuantity(${item.id}, 1)" class="bg-gray-300 px-2 rounded hover:bg-gray-400">+</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="font-bold text-gray-800 flex">
+                    ${item.price * item.quantity} ₪
+                    <flux:icon.trash onclick="removeFromCart(${item.id})" />
+                </div>
+            `;
 
-                        </div>
-                        <div class="font-bold text-gray-800 flex">
-                            ${item.price * item.quantity} ₪
-                            <flux:icon.trash onclick="removeFromCart(${item.id})" />
-                        </div>
-                        `;
                 container.appendChild(div);
+
+                if (highlightId && item.id === highlightId) {
+                    highlightElement = div;
+                }
             });
 
             totalElement.textContent = total.toFixed(2) + " ₪";
+
+            if (highlightElement) {
+                highlightElement.classList.add("bg-yellow-200");
+                setTimeout(() => {
+                    highlightElement.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                    highlightElement.classList.remove("bg-yellow-200");
+                }, 100);
+            }
         };
 
         request.onerror = function() {
             console.error("❌ فشل في تحميل محتوى السلة.");
         };
     }
+
 
     function removeFromCart(productId) {
         const tx = db.transaction("cart", "readwrite");
