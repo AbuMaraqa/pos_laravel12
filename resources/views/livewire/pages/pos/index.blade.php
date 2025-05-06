@@ -257,6 +257,15 @@
     }
 
     document.addEventListener("livewire:navigated", () => {
+        if (db) {
+            // إذا كانت قاعدة البيانات مفتوحة مسبقاً
+            renderProductsFromIndexedDB(currentSearchTerm, selectedCategoryId);
+            renderCategoriesFromIndexedDB();
+            renderCart();
+            return;
+        }
+
+        // فتح قاعدة البيانات إذا لم تكن مفتوحة
         const openRequest = indexedDB.open(dbName, 3);
 
         openRequest.onupgradeneeded = function(event) {
@@ -301,6 +310,7 @@
 
             setTimeout(() => renderProductsFromIndexedDB(currentSearchTerm, selectedCategoryId), 300);
             renderCategoriesFromIndexedDB();
+            renderCart();
 
             const searchInput = document.getElementById('searchInput');
             if (searchInput) {
@@ -331,7 +341,6 @@
             const tx3 = db.transaction("variations", "readonly");
             const store3 = tx3.objectStore("variations");
             const countRequest3 = store3.count();
-
             countRequest3.onsuccess = function() {
                 if (countRequest3.result === 0) {
                     Livewire.dispatch('fetch-variations-from-api');
@@ -343,6 +352,7 @@
             console.error("❌ Error opening IndexedDB");
         };
     });
+
 
     document.addEventListener('livewire:init', () => {
         Livewire.on('store-products', (data) => {
