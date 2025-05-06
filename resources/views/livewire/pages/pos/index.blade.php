@@ -432,6 +432,13 @@
                 renderCustomersDropdown(); // مهم لتحديث القائمة بعد التخزين
             };
         });
+
+        Livewire.on('order-success', () => {
+            renderCart();
+            renderProductsFromIndexedDB(currentSearchTerm, selectedCategoryId);
+            renderCategoriesFromIndexedDB();
+            clearCart();
+        });
     });
 
     function showVariationsModal(variations) {
@@ -540,6 +547,12 @@
                 console.log("✅ تم تخزين العملاء");
                 loadCustomersDropdown(); // إعادة تحميل القائمة المنسدلة
             };
+        });
+
+        Livewire.on('order-success', () => {
+            renderCart();
+            renderProductsFromIndexedDB(currentSearchTerm, selectedCategoryId);
+            renderCategoriesFromIndexedDB();
         });
     });
 
@@ -868,11 +881,15 @@
                 Livewire.dispatch('submit-order', {
                     order: orderData
                 });
-                Flux.modal('confirm-order-modal').close();
-                setTimeout(() => {
-                    clearCart();
+
+                Livewire.on('order-success', () => {
+                    // 👇 إعادة عرض السلة والمنتجات
+                    renderCart();
                     renderProductsFromIndexedDB(currentSearchTerm, selectedCategoryId);
-                }, 200);
+                    renderCategoriesFromIndexedDB();
+                    clearCart();
+                });
+                Flux.modal('confirm-order-modal').close();
             } else {
                 const tx2 = db.transaction("pendingOrders", "readwrite");
                 tx2.objectStore("pendingOrders").add(orderData);

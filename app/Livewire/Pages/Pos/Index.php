@@ -182,8 +182,10 @@ class Index extends Component
 
         try {
             $order = $this->wooService->createOrder($orderData);
+            $this->dispatch('order-success');
         } catch (\Exception $e) {
             logger()->error('Order creation failed', ['error' => $e->getMessage()]);
+            $this->dispatch('order-failed');
         }
     }
 
