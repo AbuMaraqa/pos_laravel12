@@ -94,7 +94,6 @@ class Index extends Component
     {
         $products = $this->wooService->getProducts(['per_page' => 100]);
         $allProducts = [];
-
         foreach ($products as $product) {
             $allProducts[] = $product;
 
@@ -152,6 +151,14 @@ class Index extends Component
         } while ($hasMore);
     }
 
+    #[On('fetch-customers-from-api')]
+    public function fetchCustomersFromAPI()
+    {
+        $customers = $this->wooService->getCustomers();
+        $this->dispatch('store-customers', customers: $customers);
+    }
+
+
     #[On('add-simple-to-cart')]
     public function addSimpleToCart($product)
     {
@@ -175,10 +182,8 @@ class Index extends Component
 
         try {
             $order = $this->wooService->createOrder($orderData);
-            $this->dispatch('order-success');
         } catch (\Exception $e) {
             logger()->error('Order creation failed', ['error' => $e->getMessage()]);
-            $this->dispatch('order-failed');
         }
     }
 

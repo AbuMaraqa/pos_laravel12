@@ -24,6 +24,28 @@
         </div>
     </flux:modal>
 
+    <flux:modal name="confirm-order-modal" style="min-width: 600px">
+        <div class="space-y-6">
+            <h2 class="text-xl font-bold text-center">تأكيد الطلب</h2>
+
+            <flux:select id="customerSelect" label="اختر العميل">
+                <option value="">جاري التحميل...</option>
+            </flux:select>
+
+            <flux:input id="orderNotes" label="ملاحظات إضافية" placeholder="اكتب أي ملاحظة (اختياري)" />
+
+            <div class="flex justify-end gap-2">
+                <flux:button type="button" variant="danger" x-on:click="$flux.modal('confirm-order-modal').close()">
+                    إلغاء
+                </flux:button>
+                <flux:button type="button" variant="primary" id="confirmOrderSubmitBtn">
+                    تأكيد الطلب
+                </flux:button>
+            </div>
+        </div>
+    </flux:modal>
+
+
     <div class="grid gap-4 grid-cols-6">
         <div class="col-span-4">
             <div class="bg-white p-4 rounded-lg shadow-md">
@@ -83,6 +105,7 @@
                 <flux:button type="button" id="completeOrderBtn" class="mt-4 w-full" variant="primary">
                     إتمام الطلب
                 </flux:button>
+
             </div>
         </div>
     </div>
@@ -284,6 +307,13 @@
                     autoIncrement: true
                 });
             }
+
+            if (!db.objectStoreNames.contains("customers")) {
+                db.createObjectStore("customers", {
+                    keyPath: "id"
+                });
+            }
+
         };
 
         openRequest.onsuccess = function(event) {
@@ -325,6 +355,15 @@
             countRequest3.onsuccess = function() {
                 if (countRequest3.result === 0) {
                     Livewire.dispatch('fetch-variations-from-api');
+                }
+            };
+
+            const tx4 = db.transaction("customers", "readonly");
+            const store4 = tx4.objectStore("customers");
+            const countRequest4 = store4.count();
+            countRequest4.onsuccess = function() {
+                if (countRequest4.result === 0) {
+                    Livewire.dispatch('fetch-customers-from-api');
                 }
             };
         };
@@ -381,6 +420,17 @@
             });
 
             modal.showModal?.(); // أو استخدم الطريقة المناسبة لإظهار الـ modal
+        });
+
+        Livewire.on('store-customers', (data) => {
+            if (!db) return;
+            const tx = db.transaction("customers", "readwrite");
+            const store = tx.objectStore("customers");
+            data.customers.forEach(c => store.put(c));
+            tx.oncomplete = () => {
+                console.log("✅ Customers stored in IndexedDB");
+                renderCustomersDropdown(); // مهم لتحديث القائمة بعد التخزين
+            };
         });
     });
 
@@ -473,7 +523,24 @@
             tx.oncomplete = () => showVariationsModal(data.variations);
         });
 
+        Livewire.on('store-customers', (payload) => {
+            if (!db) return;
 
+            const tx = db.transaction("customers", "readwrite");
+            const store = tx.objectStore("customers");
+
+            payload.customers.forEach(customer => {
+                store.put({
+                    id: customer.id,
+                    name: customer.first_name + ' ' + customer.last_name
+                });
+            });
+
+            tx.oncomplete = () => {
+                console.log("✅ تم تخزين العملاء");
+                loadCustomersDropdown(); // إعادة تحميل القائمة المنسدلة
+            };
+        });
     });
 
     function addToCart(product) {
@@ -684,19 +751,113 @@
         };
     }
 
+    // document.getElementById('completeOrderBtn').addEventListener('click', function() {
+    //     const tx = db.transaction("cart", "readonly");
+    //     const store = tx.objectStore("cart");
+
+    //     store.getAll().onsuccess = function(event) {
+    //         const cartItems = event.target.result;
+    //         if (cartItems.length === 0) return alert("السلة فارغة");
+
+    //         const orderData = {
+    //             customer_id: 0,
+    //             payment_method: 'cod',
+    //             payment_method_title: 'Cash on Delivery',
+    //             set_paid: true,
+    //             line_items: cartItems.map(item => ({
+    //                 product_id: item.id,
+    //                 quantity: item.quantity
+    //             }))
+    //         };
+
+    //         if (navigator.onLine) {
+    //             Livewire.dispatch('submit-order', {
+    //                 order: orderData
+    //             });
+    //         } else {
+    //             const tx2 = db.transaction("pendingOrders", "readwrite");
+    //             const store2 = tx2.objectStore("pendingOrders");
+    //             store2.add(orderData);
+    //             alert("🚫 لا يوجد اتصال. تم حفظ الطلبية مؤقتًا.");
+    //         }
+    //     };
+
+    // });
+
+    function renderCustomersDropdown() {
+        const tx = db.transaction("customers", "readonly");
+        const store = tx.objectStore("customers");
+        const request = store.getAll();
+
+        alert(request);
+
+        request.onsuccess = function() {
+            const customers = request.result;
+            const dropdown = document.getElementById("customerSelect");
+            alert(dropdown);
+            if (!dropdown) return;
+
+            dropdown.innerHTML = '<option value="">اختر زبون</option>';
+            customers.forEach(customer => {
+                const option = document.createElement("option");
+                option.value = customer.id;
+                option.textContent = `${customer.first_name ?? ''} ${customer.last_name ?? ''}`;
+                dropdown.appendChild(option);
+            });
+        };
+    }
+
     document.getElementById('completeOrderBtn').addEventListener('click', function() {
+        const dropdown = document.getElementById("customerSelect");
+        if (dropdown) {
+            dropdown.innerHTML = '<option value="">جاري التحميل...</option>';
+        }
+
+        // قراءة العملاء من indexDB ووضعهم في القائمة المنسدلة
+        const tx = db.transaction("customers", "readonly");
+        const store = tx.objectStore("customers");
+        const req = store.getAll();
+
+        req.onsuccess = function() {
+            if (!dropdown) return;
+
+            dropdown.innerHTML = '<option value="">اختر عميلاً</option>';
+            req.result.forEach(customer => {
+                const option = document.createElement("option");
+                option.value = customer.id;
+                option.textContent = customer.name;
+                dropdown.appendChild(option);
+            });
+
+            // عرض المودال
+            Flux.modal('confirm-order-modal').show();
+        };
+
+        req.onerror = function() {
+            console.error("❌ فشل في تحميل العملاء من قاعدة البيانات.");
+        };
+    });
+
+    document.getElementById('confirmOrderSubmitBtn').addEventListener('click', function() {
+        const customerId = document.getElementById("customerSelect").value;
+        const notes = document.getElementById("orderNotes").value;
+
         const tx = db.transaction("cart", "readonly");
         const store = tx.objectStore("cart");
 
         store.getAll().onsuccess = function(event) {
             const cartItems = event.target.result;
-            if (cartItems.length === 0) return alert("السلة فارغة");
+            if (cartItems.length === 0) {
+                alert("السلة فارغة");
+                return;
+            }
 
             const orderData = {
-                customer_id: 0,
+                customer_id: parseInt(customerId),
                 payment_method: 'cod',
-                payment_method_title: 'Cash on Delivery',
+                payment_method_title: 'الدفع عند الاستلام',
                 set_paid: true,
+                customer_note: notes,
                 line_items: cartItems.map(item => ({
                     product_id: item.id,
                     quantity: item.quantity
@@ -707,14 +868,16 @@
                 Livewire.dispatch('submit-order', {
                     order: orderData
                 });
+                Flux.modal('confirm-order-modal').close();
+                setTimeout(() => {
+                    clearCart();
+                    renderProductsFromIndexedDB(currentSearchTerm, selectedCategoryId);
+                }, 200);
             } else {
                 const tx2 = db.transaction("pendingOrders", "readwrite");
-                const store2 = tx2.objectStore("pendingOrders");
-                store2.add(orderData);
-                alert("🚫 لا يوجد اتصال. تم حفظ الطلبية مؤقتًا.");
+                tx2.objectStore("pendingOrders").add(orderData);
+                alert("🚫 لا يوجد اتصال. تم حفظ الطلب مؤقتًا.");
             }
         };
-        alert('test');
-
     });
 </script>

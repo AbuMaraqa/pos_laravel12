@@ -1449,4 +1449,9 @@ class WooCommerceService
             'page' => $page,
         ]);
     }
+
+    public function getCustomers(array $query = []): array
+    {
+        return $this->get('customers', $query);
+    }
 }
