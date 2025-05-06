@@ -106,7 +106,7 @@ class VariationManager extends Component
             }
 
             // جلب جميع الخصائص المتاحة في النظام
-            $allAttributes = $this->wooService->getAttributesWithTerms();
+            $allAttributes = $this->wooService->getAttributesWithTerms(['per_page' => 100]);
 
             // تهيئة البيانات الضرورية
             $this->loadedAttributes = [];

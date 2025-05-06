@@ -332,11 +332,11 @@ class WooCommerceService
         return $this->get("products/attributes/{$attributeId}/terms");
     }
 
-    public function getAttributesWithTerms(): array
+    public function getAttributesWithTerms(array $query = []): array
     {
-        $attributes = $this->getAttributes();
+        $attributes = $this->getAttributes($query);
         foreach ($attributes as &$attribute) {
-            $attribute['terms'] = $this->getTermsForAttribute($attribute['id']);
+            $attribute['terms'] = $this->getTermsForAttribute($attribute['id'], $query);
         }
         return $attributes;
     }
