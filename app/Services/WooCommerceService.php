@@ -1450,6 +1450,11 @@ class WooCommerceService
         ]);
     }
 
+    public function getShippingMethods(): array
+    {
+        return $this->get('shipping_methods');
+    }
+
     public function getCustomers(array $query = []): array
     {
         return $this->get('customers', $query);

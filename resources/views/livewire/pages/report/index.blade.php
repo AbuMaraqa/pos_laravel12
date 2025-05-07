@@ -24,8 +24,9 @@
     <canvas id="lineChart" width="400" height="200"></canvas>
 </div>
 <script>
-    const labels = @json($labels);
-    const values = @json($values);
+    document.addEventListener("livewire:navigated", () => {
+        const labels = @json($labels);
+        const values = @json($values);
 
     const barChart = new Chart(document.getElementById('barChart'), {
         type: 'bar',
@@ -65,9 +66,10 @@
             responsive: true,
             scales: {
                 y: {
-                    beginAtZero: true
+                        beginAtZero: true
+                    }
                 }
             }
-        }
+        });
     });
 </script>

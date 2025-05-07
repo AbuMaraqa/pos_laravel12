@@ -189,6 +189,52 @@ class Index extends Component
         }
     }
 
+    #[On('fetch-shipping-methods-from-api')]
+    public function fetchShippingMethods()
+    {
+        $methods = $this->wooService->getShippingMethods();
+        $this->dispatch('store-shipping-methods', methods: $methods);
+    }
+
+    public function shippingMethods()
+    {
+        return $this->wooService->shippingMethods();
+    }
+
+    public function shippingZones()
+    {
+        return $this->wooService->shippingZones();
+    }
+
+    public function shippingZoneMethods($zoneId)
+    {
+        return $this->wooService->shippingZoneMethods($zoneId);
+    }
+
+    #[On('fetch-shipping-zones-and-methods')]
+    public function fetchShippingZonesAndMethods()
+    {
+        $zones = $this->wooService->shippingZones();
+
+        $methods = [];
+
+        foreach ($zones as $zone) {
+            $zoneMethods = $this->wooService->shippingZoneMethods($zone['id']);
+
+            foreach ($zoneMethods as $method) {
+                $methods[] = [
+                    'id' => $method['id'],
+                    'title' => $method['title'],
+                    'zone_id' => $zone['id'],
+                    'zone_name' => $zone['name'],
+                    'settings' => $method['settings'] ?? [],
+                ];
+            }
+        }
+
+        $this->dispatch('store-shipping-zones', ['zones' => $zones]);
+    }
+
     public function render()
     {
         return view('livewire.pages.pos.index');

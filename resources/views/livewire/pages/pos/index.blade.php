@@ -32,6 +32,15 @@
                 <option value="">جاري التحميل...</option>
             </flux:select>
 
+            <select id="shippingZoneSelect" class="w-full border rounded p-2">
+                <option disabled selected>اختر منطقة الشحن</option>
+            </select>
+
+            <select id="shippingMethodSelect" class="w-full border rounded p-2 mt-2">
+                <option disabled selected>اختر طريقة الشحن</option>
+            </select>
+
+
             <flux:input id="orderNotes" label="ملاحظات إضافية" placeholder="اكتب أي ملاحظة (اختياري)" />
 
             <div class="flex justify-end gap-2">
@@ -270,7 +279,7 @@
         }
 
         // فتح قاعدة البيانات إذا لم تكن مفتوحة
-        const openRequest = indexedDB.open(dbName, 3);
+        const openRequest = indexedDB.open(dbName, 5);
 
         openRequest.onupgradeneeded = function(event) {
             db = event.target.result;
@@ -314,6 +323,17 @@
                 });
             }
 
+            if (!db.objectStoreNames.contains("shippingMethods")) {
+                db.createObjectStore("shippingMethods", {
+                    keyPath: "id"
+                });
+            }
+
+            if (!db.objectStoreNames.contains("shippingZones")) {
+                db.createObjectStore("shippingZones", {
+                    keyPath: "id"
+                });
+            }
         };
 
         openRequest.onsuccess = function(event) {
@@ -364,6 +384,24 @@
             countRequest4.onsuccess = function() {
                 if (countRequest4.result === 0) {
                     Livewire.dispatch('fetch-customers-from-api');
+                }
+            };
+
+            const tx5 = db.transaction("shippingMethods", "readonly");
+            const store5 = tx5.objectStore("shippingMethods");
+            const countRequest5 = store5.count();
+            countRequest5.onsuccess = function() {
+                if (countRequest5.result === 0) {
+                    Livewire.dispatch('fetch-shipping-methods-from-api');
+                }
+            };
+
+            const tx6 = db.transaction("shippingZones", "readonly");
+            const store6 = tx6.objectStore("shippingZones");
+            const countRequest6 = store6.count();
+            countRequest6.onsuccess = function() {
+                if (countRequest6.result === 0) {
+                    Livewire.dispatch('fetch-shipping-zones-and-methods');
                 }
             };
         };
@@ -431,6 +469,36 @@
                 console.log("✅ Customers stored in IndexedDB");
                 renderCustomersDropdown(); // مهم لتحديث القائمة بعد التخزين
             };
+        });
+
+        Livewire.on('store-shipping-methods', (data) => {
+            const tx = db.transaction("shippingMethods", "readwrite");
+            const store = tx.objectStore("shippingMethods");
+            data.methods.forEach(method => store.put(method));
+            tx.oncomplete = () => {
+                console.log("✅ Shipping Methods stored");
+            };
+        });
+
+        Livewire.on('store-shipping-zones', (payload) => {
+            const data = Array.isArray(payload) ? payload[0] : payload;
+
+            if (!data || !Array.isArray(data.zones)) {
+                console.error("❌ البيانات غير صالحة أو zones غير موجودة", data);
+                return;
+            }
+
+            const tx = db.transaction("shippingZones", "readwrite");
+            const store = tx.objectStore("shippingZones");
+
+            data.zones.forEach(zone => {
+                store.put({
+                    id: zone.id,
+                    name: zone.name
+                });
+            });
+
+            tx.oncomplete = () => console.log("✅ Shipping Zones stored in IndexedDB");
         });
 
         Livewire.on('order-success', () => {
@@ -548,6 +616,37 @@
                 loadCustomersDropdown(); // إعادة تحميل القائمة المنسدلة
             };
         });
+
+        Livewire.on('store-shipping-methods', (data) => {
+            const tx = db.transaction("shippingMethods", "readwrite");
+            const store = tx.objectStore("shippingMethods");
+            data.methods.forEach(method => store.put(method));
+            tx.oncomplete = () => {
+                console.log("✅ Shipping Methods stored");
+            };
+        });
+
+        Livewire.on('store-shipping-zones', (payload) => {
+            const data = Array.isArray(payload) ? payload[0] : payload;
+
+            if (!data || !Array.isArray(data.zones)) {
+                console.error("❌ البيانات غير صالحة أو zones غير موجودة", data);
+                return;
+            }
+
+            const tx = db.transaction("shippingZones", "readwrite");
+            const store = tx.objectStore("shippingZones");
+
+            data.zones.forEach(zone => {
+                store.put({
+                    id: zone.id,
+                    name: zone.name
+                });
+            });
+
+            tx.oncomplete = () => console.log("✅ Shipping Zones stored in IndexedDB");
+        });
+
 
         Livewire.on('order-success', () => {
             renderCart();
@@ -842,6 +941,8 @@
                 dropdown.appendChild(option);
             });
 
+            renderShippingMethodsFromIndexedDB();
+            renderShippingZonesFromIndexedDB();
             // عرض المودال
             Flux.modal('confirm-order-modal').show();
         };
@@ -854,6 +955,7 @@
     document.getElementById('confirmOrderSubmitBtn').addEventListener('click', function() {
         const customerId = document.getElementById("customerSelect").value;
         const notes = document.getElementById("orderNotes").value;
+        const shippingMethodId = document.getElementById("shippingMethodSelect")?.value;
 
         const tx = db.transaction("cart", "readonly");
         const store = tx.objectStore("cart");
@@ -871,6 +973,11 @@
                 payment_method_title: 'الدفع عند الاستلام',
                 set_paid: true,
                 customer_note: notes,
+                shipping_lines: [{
+                    method_id: shippingMethodId,
+                    method_title: "Flat Rate",
+                    total: "0"
+                }],
                 line_items: cartItems.map(item => ({
                     product_id: item.id,
                     quantity: item.quantity
@@ -895,6 +1002,80 @@
                 tx2.objectStore("pendingOrders").add(orderData);
                 alert("🚫 لا يوجد اتصال. تم حفظ الطلب مؤقتًا.");
             }
+        };
+    });
+
+
+    function renderShippingMethodsFromIndexedDB() {
+        const tx = db.transaction("shippingMethods", "readonly");
+        const store = tx.objectStore("shippingMethods");
+        const request = store.getAll();
+
+        request.onsuccess = function() {
+            const methods = request.result;
+            const select = document.getElementById("shippingMethodSelect");
+            if (!select) return;
+
+            methods.forEach(method => {
+                const option = document.createElement("option");
+                option.value = method.id;
+                option.textContent = `${method.title} - ${method.settings?.cost?.value ?? 0} ₪`;
+                select.appendChild(option);
+            });
+        };
+    }
+
+
+    function renderShippingZonesFromIndexedDB() {
+        const select = document.getElementById("shippingZoneSelect");
+        if (!select) return;
+
+        const tx = db.transaction("shippingZones", "readonly");
+        const store = tx.objectStore("shippingZones");
+        const request = store.getAll();
+
+        request.onsuccess = function() {
+            const zones = request.result;
+            select.innerHTML = '<option value="">اختر منطقة الشحن</option>';
+
+            zones.forEach(zone => {
+                const option = document.createElement("option");
+                option.value = zone.id;
+                option.textContent = zone.name;
+                select.appendChild(option);
+            });
+        };
+
+        request.onerror = function() {
+            console.error("❌ فشل في تحميل مناطق الشحن");
+        };
+    }
+
+    document.getElementById("shippingZoneSelect").addEventListener("change", function() {
+        const selectedZoneId = parseInt(this.value);
+
+        const tx = db.transaction("shippingMethods", "readonly");
+        const store = tx.objectStore("shippingMethods");
+        const request = store.getAll();
+
+        request.onsuccess = function() {
+            const methods = request.result.filter(method => method.zone_id === selectedZoneId);
+
+            const shippingSelect = document.getElementById("shippingMethodSelect");
+            shippingSelect.innerHTML = '<option value="">اختر طريقة الشحن</option>';
+
+            methods.forEach(method => {
+                const cost = method.settings?.cost?.value ?? 0;
+                const label = `${method.title} (${cost} ₪)`;
+                const option = document.createElement("option");
+                option.value = method.id;
+                option.textContent = label;
+                shippingSelect.appendChild(option);
+            });
+        };
+
+        request.onerror = function() {
+            console.error("❌ فشل في تحميل طرق الشحن");
         };
     });
 </script>
