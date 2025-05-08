@@ -36,6 +36,8 @@
                 <option disabled selected>اختر منطقة الشحن</option>
             </select>
 
+            <div id="shippingZonesContainer" class="space-y-4"></div>
+
             <select id="shippingMethodSelect" class="w-full border rounded p-2 mt-2">
                 <option disabled selected>اختر طريقة الشحن</option>
             </select>
@@ -334,6 +336,15 @@
                     keyPath: "id"
                 });
             }
+
+            if (!db.objectStoreNames.contains("shippingZoneMethods")) {
+                const store = db.createObjectStore("shippingZoneMethods", {
+                    keyPath: "id"
+                });
+                store.createIndex("zone_id", "zone_id", {
+                    unique: false
+                });
+            }
         };
 
         openRequest.onsuccess = function(event) {
@@ -501,6 +512,31 @@
             tx.oncomplete = () => console.log("✅ Shipping Zones stored in IndexedDB");
         });
 
+        Livewire.on('store-shipping-zone-methods', (methods) => {
+            const tx = db.transaction("shippingZoneMethods", "readwrite");
+            const store = tx.objectStore("shippingZoneMethods");
+
+            methods.forEach(method => {
+
+
+                console.log("🚚 method", method);
+
+                method.forEach(m => {
+                    store.put({
+                        id: m.id,
+                        zone_id: m.zone_id,
+                        title: m.title,
+                        cost: m.settings?.cost?.value ?? 0
+                    });
+                });
+            });
+
+            tx.oncomplete = () => {
+                console.log("✅ طرق الشحن لكل منطقة تم تخزينها");
+            };
+        });
+
+
         Livewire.on('order-success', () => {
             renderCart();
             renderProductsFromIndexedDB(currentSearchTerm, selectedCategoryId);
@@ -613,7 +649,6 @@
 
             tx.oncomplete = () => {
                 console.log("✅ تم تخزين العملاء");
-                loadCustomersDropdown(); // إعادة تحميل القائمة المنسدلة
             };
         });
 
@@ -645,6 +680,32 @@
             });
 
             tx.oncomplete = () => console.log("✅ Shipping Zones stored in IndexedDB");
+        });
+
+        Livewire.on('store-shipping-zone-methods', (methods) => {
+            const tx = db.transaction("shippingZoneMethods", "readwrite");
+            const store = tx.objectStore("shippingZoneMethods");
+
+            methods.forEach(method => {
+
+                // if (!method.id || !method.zone_id) {
+                //     console.warn("❌ بيانات غير مكتملة", method);
+                //     return;
+                // }
+                method.forEach(m => {
+                    console.log("🚚 method", m);
+                    store.put({
+                        id: m.id,
+                        zone_id: m.zone_id,
+                        title: m.title,
+                        cost: m.settings?.cost?.value ?? 0
+                    });
+                });
+            });
+
+            tx.oncomplete = () => {
+                console.log("✅ طرق الشحن لكل منطقة تم تخزينها");
+            };
         });
 
 
@@ -943,6 +1004,10 @@
 
             renderShippingMethodsFromIndexedDB();
             renderShippingZonesFromIndexedDB();
+
+            renderShippingZonesSelect();
+            renderCustomersDropdown();
+            renderShippingZonesWithMethods();
             // عرض المودال
             Flux.modal('confirm-order-modal').show();
         };
@@ -1058,6 +1123,8 @@
         const store = tx.objectStore("shippingMethods");
         const request = store.getAll();
 
+        renderShippingMethodsForZone(selectedZoneId);
+
         request.onsuccess = function() {
             const methods = request.result.filter(method => method.zone_id === selectedZoneId);
 
@@ -1078,4 +1145,116 @@
             console.error("❌ فشل في تحميل طرق الشحن");
         };
     });
+
+    function renderShippingMethodsForZone(zoneId) {
+        const tx = db.transaction("shippingZoneMethods", "readonly");
+        const store = tx.objectStore("shippingZoneMethods");
+        const request = store.getAll();
+
+        request.onsuccess = function() {
+            const methods = request.result.filter(method => method.zone_id === zoneId);
+            const select = document.getElementById("shippingMethodSelect");
+
+            if (!select) return;
+
+            select.innerHTML = '<option disabled selected>اختر طريقة الشحن</option>';
+
+            methods.forEach(method => {
+                const option = document.createElement("option");
+                option.value = method.id;
+                option.textContent = `${method.title} - ${method.cost} ₪`;
+                select.appendChild(option);
+            });
+        };
+
+        request.onerror = function() {
+            console.error("❌ فشل في تحميل طرق الشحن من قاعدة البيانات.");
+        };
+    }
+
+    function renderShippingZonesSelect() {
+        const tx = db.transaction("shippingZones", "readonly");
+        const store = tx.objectStore("shippingZones");
+        const request = store.getAll();
+
+        request.onsuccess = function() {
+            const zones = request.result;
+            const select = document.getElementById("shippingZoneSelect");
+
+            if (!select) return;
+
+            select.innerHTML = '<option disabled selected>اختر منطقة الشحن</option>';
+
+            zones.forEach(zone => {
+                const option = document.createElement("option");
+                option.value = zone.id;
+                option.textContent = zone.name;
+                select.appendChild(option);
+            });
+        };
+    }
+
+    function renderShippingZonesWithMethods() {
+    const container = document.getElementById("shippingZonesContainer");
+    if (!container) return;
+
+    const txZones = db.transaction("shippingZones", "readonly");
+    const storeZones = txZones.objectStore("shippingZones");
+    const zonesRequest = storeZones.getAll();
+
+    zonesRequest.onsuccess = function () {
+        const zones = zonesRequest.result;
+
+        const txMethods = db.transaction("shippingZoneMethods", "readonly");
+        const storeMethods = txMethods.objectStore("shippingZoneMethods");
+        const methodsRequest = storeMethods.getAll();
+
+        methodsRequest.onsuccess = function () {
+            const methods = methodsRequest.result;
+
+            container.innerHTML = ''; // تنظيف السابق
+
+            zones.forEach(zone => {
+                // 🔹 قسم لكل منطقة
+                const zoneDiv = document.createElement("div");
+                zoneDiv.classList.add("border", "rounded", "p-4", "shadow");
+
+                const zoneTitle = document.createElement("h3");
+                zoneTitle.classList.add("font-bold", "mb-2", "text-gray-800");
+                zoneTitle.textContent = `📦 ${zone.name}`;
+                zoneDiv.appendChild(zoneTitle);
+
+                const zoneMethods = methods.filter(m => m.zone_id === zone.id);
+                if (zoneMethods.length === 0) {
+                    const noMethods = document.createElement("p");
+                    noMethods.textContent = "لا يوجد طرق شحن لهذه المنطقة.";
+                    zoneDiv.appendChild(noMethods);
+                } else {
+                    zoneMethods.forEach(method => {
+                        const wrapper = document.createElement("div");
+                        wrapper.classList.add("flex", "items-center", "gap-2", "mb-1");
+
+                        const radio = document.createElement("input");
+                        radio.type = "radio";
+                        radio.name = "shippingMethod"; // يجب أن تكون موحدة للاختيار الواحد
+                        radio.value = method.id;
+                        radio.id = `method-${method.id}`;
+
+                        const label = document.createElement("label");
+                        label.setAttribute("for", radio.id);
+                        label.classList.add("text-sm");
+                        label.textContent = `${method.title} - ${method.cost} ₪`;
+
+                        wrapper.appendChild(radio);
+                        wrapper.appendChild(label);
+                        zoneDiv.appendChild(wrapper);
+                    });
+                }
+
+                container.appendChild(zoneDiv);
+            });
+        };
+    };
+}
+
 </script>

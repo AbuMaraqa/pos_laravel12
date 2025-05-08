@@ -123,7 +123,7 @@ class Details extends Component
                 return $item['total'];
             });
 
-        $this->totalAmountAfterDiscount = ( $this->totalAmount - $this->order['discount_total'] ) + $this->order['shipping_total'];
+        $this->totalAmountAfterDiscount = ($this->totalAmount - $this->order['discount_total']) + $this->order['shipping_total'];
     }
 
     public function updatedSearch(): void
@@ -156,46 +156,46 @@ class Details extends Component
     }
 
     public function updateOrder($methodId, $zoneId)
-{
-    // 1. تحميل بيانات الطلب
-    $order = $this->wooService->getOrdersById($this->orderId);
+    {
+        // 1. تحميل بيانات الطلب
+        $order = $this->wooService->getOrdersById($this->orderId);
 
-    if (empty($order['shipping_lines'][0])) {
-        Toaster::error('No shipping line found in this order');
-        return;
-    }
+        if (empty($order['shipping_lines'][0])) {
+            Toaster::error('No shipping line found in this order');
+            return;
+        }
 
-    $shippingLine = $order['shipping_lines'][0];
+        $shippingLine = $order['shipping_lines'][0];
 
-    // 2. جلب وسيلة الشحن من منطقة الشحن
-    $methods = $this->wooService->shippingZoneMethods($zoneId);
-    $method = collect($methods)->firstWhere('id', $methodId);
+        // 2. جلب وسيلة الشحن من منطقة الشحن
+        $methods = $this->wooService->shippingZoneMethods($zoneId);
+        $method = collect($methods)->firstWhere('id', $methodId);
 
-    if (!$method) {
-        Toaster::error('Shipping method not found');
-        return;
-    }
+        if (!$method) {
+            Toaster::error('Shipping method not found');
+            return;
+        }
 
-    // 3. إرسال الطلب بالتعديل
-    $payload = [
-        'shipping_lines' => [
-            [
-                'id' => $shippingLine['id'],
-                'method_id' => $method['id'],
-                'method_title' => $method['title'],
-                'total' => $method['settings']['cost']['value'] ?? '0.00',
+        // 3. إرسال الطلب بالتعديل
+        $payload = [
+            'shipping_lines' => [
+                [
+                    'id' => $shippingLine['id'],
+                    'method_id' => $method['id'],
+                    'method_title' => $method['title'],
+                    'total' => $method['settings']['cost']['value'] ?? '0.00',
+                ]
             ]
-        ]
-    ];
+        ];
 
-    $response = $this->wooService->updateOrder($this->orderId, $payload);
+        $response = $this->wooService->updateOrder($this->orderId, $payload);
 
-    $this->loadOrderDetails($this->orderId);
+        $this->loadOrderDetails($this->orderId);
 
-    Toaster::success('Shipping method updated successfully');
+        Toaster::success('Shipping method updated successfully');
 
-    return $response;
-}
+        return $response;
+    }
 
     public function render()
     {

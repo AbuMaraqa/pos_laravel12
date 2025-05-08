@@ -233,6 +233,7 @@ class Index extends Component
         }
 
         $this->dispatch('store-shipping-zones', ['zones' => $zones]);
+        $this->dispatch('store-shipping-zone-methods', $methods);
     }
 
     public function render()
