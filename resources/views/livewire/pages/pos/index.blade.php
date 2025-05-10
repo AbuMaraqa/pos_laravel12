@@ -32,15 +32,15 @@
                 <option value="">جاري التحميل...</option>
             </flux:select>
 
-            <select id="shippingZoneSelect" class="w-full border rounded p-2">
+            {{-- <select id="shippingZoneSelect" class="w-full border rounded p-2">
                 <option disabled selected>اختر منطقة الشحن</option>
-            </select>
+            </select> --}}
 
             <div id="shippingZonesContainer" class="space-y-4"></div>
 
-            <select id="shippingMethodSelect" class="w-full border rounded p-2 mt-2">
+            {{-- <select id="shippingMethodSelect" class="w-full border rounded p-2 mt-2">
                 <option disabled selected>اختر طريقة الشحن</option>
-            </select>
+            </select> --}}
 
 
             <flux:input id="orderNotes" label="ملاحظات إضافية" placeholder="اكتب أي ملاحظة (اختياري)" />
@@ -359,6 +359,53 @@
                 searchInput.addEventListener('input', function() {
                     currentSearchTerm = this.value;
                     renderProductsFromIndexedDB(currentSearchTerm, selectedCategoryId);
+                });
+
+                // عند الضغط على Enter
+                searchInput.addEventListener('keydown', function(e) {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+
+                        const tx = db.transaction("products", "readonly");
+                        const store = tx.objectStore("products");
+                        const request = store.getAll();
+
+                        request.onsuccess = function() {
+                            const products = request.result;
+                            const term = searchInput.value.trim().toLowerCase();
+
+                            const matched = products.find(item => {
+                                const nameMatch = item.name?.toLowerCase().includes(
+                                    term);
+                                const barcodeMatch = item.id?.toString() === term;
+                                return nameMatch || barcodeMatch;
+                            });
+
+                            if (!matched) {
+                                alert("لا يوجد منتج مطابق");
+                                return;
+                            }
+
+                            if (matched.type === 'simple') {
+                                addToCart(matched);
+                            } else if (matched.type === 'variable') {
+                                const variationProducts = [];
+
+                                let fetched = 0;
+                                matched.variations?.forEach(id => {
+                                    const req = store.get(id);
+                                    req.onsuccess = function() {
+                                        if (req.result) variationProducts.push(req
+                                            .result);
+                                        fetched++;
+                                        if (fetched === matched.variations.length) {
+                                            showVariationsModal(variationProducts);
+                                        }
+                                    };
+                                });
+                            }
+                        };
+                    }
                 });
             }
 
@@ -1287,4 +1334,47 @@
             };
         };
     }
+
+    document.getElementById("syncButton").addEventListener("click", function() {
+
+        if (!db) return alert("قاعدة البيانات غير جاهزة");
+
+        const storesToClear = [
+            "products",
+            "categories",
+            "variations",
+            "cart",
+            "pendingOrders",
+            "customers",
+            "shippingMethods",
+            "shippingZones",
+            "shippingZoneMethods"
+        ];
+
+        const tx = db.transaction(storesToClear, "readwrite");
+
+        storesToClear.forEach(storeName => {
+            const store = tx.objectStore(storeName);
+            store.clear();
+        });
+
+        tx.oncomplete = function() {
+            console.log("✅ تم مسح كل البيانات من IndexedDB");
+
+            // إعادة جلب البيانات من API عبر Livewire
+            Livewire.dispatch('fetch-products-from-api');
+            Livewire.dispatch('fetch-categories-from-api');
+            Livewire.dispatch('fetch-variations-from-api');
+            Livewire.dispatch('fetch-customers-from-api');
+            Livewire.dispatch('fetch-shipping-methods-from-api');
+            Livewire.dispatch('fetch-shipping-zones-and-methods');
+
+            alert("✅ تمت المزامنة بنجاح!");
+        };
+
+        tx.onerror = function() {
+            console.error("❌ فشل في مسح البيانات");
+            alert("حدث خطأ أثناء المزامنة");
+        };
+    });
 </script>
