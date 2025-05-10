@@ -471,14 +471,20 @@
             modal.showModal?.(); // أو استخدم الطريقة المناسبة لإظهار الـ modal
         });
 
-        Livewire.on('store-customers', (data) => {
-            if (!db) return;
+        Livewire.on('store-customers', (payload) => {
             const tx = db.transaction("customers", "readwrite");
             const store = tx.objectStore("customers");
-            data.customers.forEach(c => store.put(c));
+
+            payload.customers.forEach(customer => {
+                store.put({
+                    id: customer.id,
+                    name: customer.first_name + ' ' + customer.last_name
+                });
+            });
+
             tx.oncomplete = () => {
-                console.log("✅ Customers stored in IndexedDB");
-                renderCustomersDropdown(); // مهم لتحديث القائمة بعد التخزين
+                console.log("✅ تم تخزين العملاء");
+                renderCustomersDropdown(); // مهم
             };
         });
 
@@ -635,8 +641,6 @@
         });
 
         Livewire.on('store-customers', (payload) => {
-            if (!db) return;
-
             const tx = db.transaction("customers", "readwrite");
             const store = tx.objectStore("customers");
 
@@ -649,6 +653,7 @@
 
             tx.oncomplete = () => {
                 console.log("✅ تم تخزين العملاء");
+                renderCustomersDropdown(); // مهم
             };
         });
 
@@ -768,6 +773,18 @@
             const container = document.getElementById("cartItemsContainer");
             const totalElement = document.getElementById("cartTotal");
             if (!container || !totalElement) return;
+
+            if (cartItems.length === 0) {
+                container.innerHTML = `
+        <div class="flex flex-col items-center justify-center text-center text-gray-500 py-8 space-y-2">
+            <flux:icon name="shopping-cart" class="text-4xl text-gray-400" />
+            <p class="text-lg font-semibold">السلة فارغة</p>
+            <p class="text-sm text-gray-400">لم تقم بإضافة أي منتجات بعد</p>
+        </div>
+    `;
+                totalElement.textContent = "0.00 ₪";
+                return;
+            }
 
             container.innerHTML = '';
             let total = 0;
@@ -962,19 +979,17 @@
         const store = tx.objectStore("customers");
         const request = store.getAll();
 
-        alert(request);
-
         request.onsuccess = function() {
             const customers = request.result;
             const dropdown = document.getElementById("customerSelect");
-            alert(dropdown);
             if (!dropdown) return;
 
             dropdown.innerHTML = '<option value="">اختر زبون</option>';
+
             customers.forEach(customer => {
                 const option = document.createElement("option");
                 option.value = customer.id;
-                option.textContent = `${customer.first_name ?? ''} ${customer.last_name ?? ''}`;
+                option.textContent = customer.name;
                 dropdown.appendChild(option);
             });
         };
@@ -1020,55 +1035,71 @@
     document.getElementById('confirmOrderSubmitBtn').addEventListener('click', function() {
         const customerId = document.getElementById("customerSelect").value;
         const notes = document.getElementById("orderNotes").value;
-        const shippingMethodId = document.getElementById("shippingMethodSelect")?.value;
+        const selectedMethod = document.querySelector('input[name="shippingMethod"]:checked');
 
-        const tx = db.transaction("cart", "readonly");
-        const store = tx.objectStore("cart");
+        if (!customerId || !selectedMethod) {
+            alert("يرجى اختيار العميل وطريقة الشحن");
+            return;
+        }
 
-        store.getAll().onsuccess = function(event) {
-            const cartItems = event.target.result;
-            if (cartItems.length === 0) {
-                alert("السلة فارغة");
-                return;
-            }
+        const shippingMethodId = selectedMethod.value;
 
-            const orderData = {
-                customer_id: parseInt(customerId),
-                payment_method: 'cod',
-                payment_method_title: 'الدفع عند الاستلام',
-                set_paid: true,
-                customer_note: notes,
-                shipping_lines: [{
-                    method_id: shippingMethodId,
-                    method_title: "Flat Rate",
-                    total: "0"
-                }],
-                line_items: cartItems.map(item => ({
-                    product_id: item.id,
-                    quantity: item.quantity
-                }))
+        const txMethods = db.transaction("shippingZoneMethods", "readonly");
+        const storeMethods = txMethods.objectStore("shippingZoneMethods");
+        const methodRequest = storeMethods.get(parseInt(shippingMethodId));
+
+        methodRequest.onsuccess = function() {
+            const method = methodRequest.result;
+
+            const tx = db.transaction("cart", "readonly");
+            const store = tx.objectStore("cart");
+            const request = store.getAll();
+
+            request.onsuccess = function() {
+                const cartItems = request.result;
+                if (cartItems.length === 0) {
+                    alert("السلة فارغة");
+                    return;
+                }
+
+                const orderData = {
+                    customer_id: parseInt(customerId),
+                    payment_method: 'cod',
+                    payment_method_title: 'الدفع عند الاستلام',
+                    set_paid: true,
+                    customer_note: notes,
+                    shipping_lines: [{
+                        method_id: method.id,
+                        method_title: method.title,
+                        total: method.cost
+                    }],
+                    line_items: cartItems.map(item => ({
+                        product_id: item.id,
+                        quantity: item.quantity
+                    }))
+                };
+
+                if (navigator.onLine) {
+                    Livewire.dispatch('submit-order', {
+                        order: orderData
+                    });
+
+                    Livewire.on('order-success', () => {
+                        renderCart();
+                        renderProductsFromIndexedDB(currentSearchTerm, selectedCategoryId);
+                        renderCategoriesFromIndexedDB();
+                        clearCart();
+                        Flux.modal('confirm-order-modal').close();
+                    });
+                } else {
+                    const tx2 = db.transaction("pendingOrders", "readwrite");
+                    tx2.objectStore("pendingOrders").add(orderData);
+                    alert("🚫 لا يوجد اتصال. تم حفظ الطلب مؤقتًا.");
+                }
             };
-
-            if (navigator.onLine) {
-                Livewire.dispatch('submit-order', {
-                    order: orderData
-                });
-
-                Livewire.on('order-success', () => {
-                    // 👇 إعادة عرض السلة والمنتجات
-                    renderCart();
-                    renderProductsFromIndexedDB(currentSearchTerm, selectedCategoryId);
-                    renderCategoriesFromIndexedDB();
-                    clearCart();
-                });
-                Flux.modal('confirm-order-modal').close();
-            } else {
-                const tx2 = db.transaction("pendingOrders", "readwrite");
-                tx2.objectStore("pendingOrders").add(orderData);
-                alert("🚫 لا يوجد اتصال. تم حفظ الطلب مؤقتًا.");
-            }
         };
     });
+
 
 
     function renderShippingMethodsFromIndexedDB() {
@@ -1195,66 +1226,65 @@
     }
 
     function renderShippingZonesWithMethods() {
-    const container = document.getElementById("shippingZonesContainer");
-    if (!container) return;
+        const container = document.getElementById("shippingZonesContainer");
+        if (!container) return;
 
-    const txZones = db.transaction("shippingZones", "readonly");
-    const storeZones = txZones.objectStore("shippingZones");
-    const zonesRequest = storeZones.getAll();
+        const txZones = db.transaction("shippingZones", "readonly");
+        const storeZones = txZones.objectStore("shippingZones");
+        const zonesRequest = storeZones.getAll();
 
-    zonesRequest.onsuccess = function () {
-        const zones = zonesRequest.result;
+        zonesRequest.onsuccess = function() {
+            const zones = zonesRequest.result;
 
-        const txMethods = db.transaction("shippingZoneMethods", "readonly");
-        const storeMethods = txMethods.objectStore("shippingZoneMethods");
-        const methodsRequest = storeMethods.getAll();
+            const txMethods = db.transaction("shippingZoneMethods", "readonly");
+            const storeMethods = txMethods.objectStore("shippingZoneMethods");
+            const methodsRequest = storeMethods.getAll();
 
-        methodsRequest.onsuccess = function () {
-            const methods = methodsRequest.result;
+            methodsRequest.onsuccess = function() {
+                const methods = methodsRequest.result;
 
-            container.innerHTML = ''; // تنظيف السابق
+                container.innerHTML = ''; // تنظيف السابق
 
-            zones.forEach(zone => {
-                // 🔹 قسم لكل منطقة
-                const zoneDiv = document.createElement("div");
-                zoneDiv.classList.add("border", "rounded", "p-4", "shadow");
+                zones.forEach(zone => {
+                    // 🔹 قسم لكل منطقة
+                    const zoneDiv = document.createElement("div");
+                    zoneDiv.classList.add("border", "rounded", "p-4", "shadow");
 
-                const zoneTitle = document.createElement("h3");
-                zoneTitle.classList.add("font-bold", "mb-2", "text-gray-800");
-                zoneTitle.textContent = `📦 ${zone.name}`;
-                zoneDiv.appendChild(zoneTitle);
+                    const zoneTitle = document.createElement("h3");
+                    zoneTitle.classList.add("font-bold", "mb-2", "text-gray-800");
+                    zoneTitle.textContent = `📦 ${zone.name}`;
+                    zoneDiv.appendChild(zoneTitle);
 
-                const zoneMethods = methods.filter(m => m.zone_id === zone.id);
-                if (zoneMethods.length === 0) {
-                    const noMethods = document.createElement("p");
-                    noMethods.textContent = "لا يوجد طرق شحن لهذه المنطقة.";
-                    zoneDiv.appendChild(noMethods);
-                } else {
-                    zoneMethods.forEach(method => {
-                        const wrapper = document.createElement("div");
-                        wrapper.classList.add("flex", "items-center", "gap-2", "mb-1");
+                    const zoneMethods = methods.filter(m => m.zone_id === zone.id);
+                    if (zoneMethods.length === 0) {
+                        const noMethods = document.createElement("p");
+                        noMethods.textContent = "لا يوجد طرق شحن لهذه المنطقة.";
+                        zoneDiv.appendChild(noMethods);
+                    } else {
+                        zoneMethods.forEach(method => {
+                            const wrapper = document.createElement("div");
+                            wrapper.classList.add("flex", "items-center", "gap-2", "mb-1");
 
-                        const radio = document.createElement("input");
-                        radio.type = "radio";
-                        radio.name = "shippingMethod"; // يجب أن تكون موحدة للاختيار الواحد
-                        radio.value = method.id;
-                        radio.id = `method-${method.id}`;
+                            const radio = document.createElement("input");
+                            radio.type = "radio";
+                            radio.name = "shippingMethod"; // يجب أن تكون موحدة للاختيار الواحد
+                            radio.value = method.id;
+                            radio.id = `method-${method.id}`;
 
-                        const label = document.createElement("label");
-                        label.setAttribute("for", radio.id);
-                        label.classList.add("text-sm");
-                        label.textContent = `${method.title} - ${method.cost} ₪`;
+                            const label = document.createElement("label");
+                            label.setAttribute("for", radio.id);
+                            label.classList.add("text-sm");
+                            label.textContent = `${method.title} - ${method.cost} ₪`;
 
-                        wrapper.appendChild(radio);
-                        wrapper.appendChild(label);
-                        zoneDiv.appendChild(wrapper);
-                    });
-                }
+                            wrapper.appendChild(radio);
+                            wrapper.appendChild(label);
+                            zoneDiv.appendChild(wrapper);
+                        });
+                    }
 
-                container.appendChild(zoneDiv);
-            });
+                    container.appendChild(zoneDiv);
+                });
+            };
         };
-    };
-}
-
+    }
 </script>
