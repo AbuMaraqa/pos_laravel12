@@ -16,6 +16,8 @@ class Index extends Component
 
     public array $customers = [];
 
+    public array $filters = [];
+
     protected WooCommerceService $wooService;
 
     public function boot(WooCommerceService $wooService): void
@@ -28,17 +30,35 @@ class Index extends Component
         $this->name = '';
         $this->last_name = '';
         $this->email = '';
-        $this->customers = $this->customers(); // تحميل أولي للعملاء
+        $this->customers = $this->customers();
 
+        $this->filters = [
+            'first_name' => '',
+            'last_name' => '',
+            'email' => '',
+        ];
     }
+
     #[Computed()]
-    public function customers()
-    {
-        return $this->wooService->getUsers([
-            'per_page' => 100,
+public function customers(): array
+{
+    $email = $this->filters['email'] ?? '';
+    $firstName = $this->filters['first_name'] ?? '';
+    $lastName = $this->filters['last_name'] ?? '';
 
-        ]);
+    $search = '';
+
+    if (!empty($email)) {
+        $search = $email;
+    } elseif (!empty($firstName) || !empty($lastName)) {
+        $search = trim($firstName . ' ' . $lastName);
     }
+
+    return $this->wooService->getUsers([
+        'per_page' => 100,
+        'search' => $search,
+    ]) ?? [];
+}
 
     #[Computed()]
     public function getRoles()
@@ -100,9 +120,16 @@ class Index extends Component
         Toaster::success(__('تم إنشاء العميل بنجاح'));
     }
 
+    public function updated($key): void
+    {
+        if (str_starts_with($key, 'filters.')) {
+            $this->customers = $this->customers();
+        }
+    }
+
     public function render()
     {
-        return view('livewire.pages.user.index',[
+        return view('livewire.pages.user.index', [
             'customers' => $this->customers,
         ]);
     }
