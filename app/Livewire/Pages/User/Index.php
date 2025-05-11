@@ -10,6 +10,11 @@ use Masmerise\Toaster\Toaster;
 class Index extends Component
 {
     public array $roles = [];
+    public string $name;
+    public string $last_name;
+    public string $email;
+
+    public array $customers = [];
 
     protected WooCommerceService $wooService;
 
@@ -18,10 +23,21 @@ class Index extends Component
         $this->wooService = $wooService;
     }
 
+    public function mount()
+    {
+        $this->name = '';
+        $this->last_name = '';
+        $this->email = '';
+        $this->customers = $this->customers(); // تحميل أولي للعملاء
+
+    }
     #[Computed()]
     public function customers()
     {
-        return $this->wooService->getUsers();
+        return $this->wooService->getUsers([
+            'per_page' => 100,
+
+        ]);
     }
 
     #[Computed()]
@@ -67,8 +83,27 @@ class Index extends Component
         Toaster::success(__('تم تحديث الأدوار بنجاح'));
     }
 
+    public function createCustomer()
+    {
+        $data = [
+            'email' => $this->email,
+            'first_name' => $this->name,
+            'last_name' => $this->last_name,
+        ];
+
+        $response = $this->wooService->createUser($data);
+
+        $this->reset(['name', 'last_name', 'email']);
+
+        $this->customers = $this->customers();
+
+        Toaster::success(__('تم إنشاء العميل بنجاح'));
+    }
+
     public function render()
     {
-        return view('livewire.pages.user.index');
+        return view('livewire.pages.user.index',[
+            'customers' => $this->customers,
+        ]);
     }
 }

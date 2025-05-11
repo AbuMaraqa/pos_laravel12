@@ -1,4 +1,23 @@
 <div>
+    <flux:modal.trigger name="edit-profile">
+        <flux:button variant="primary">{{ __('Add Client') }}</flux:button>
+    </flux:modal.trigger>
+
+    <flux:modal name="edit-profile" class="md:w-96">
+        <div class="space-y-6">
+            <flux:input label="First Name" placeholder="First Name" wire:model="name" />
+
+            <flux:input label="Last Name" placeholder="Last Name" wire:model="last_name" />
+
+            <flux:input label="Email" type="email" wire:model="email" />
+
+            <div class="flex">
+                <flux:spacer />
+
+                <flux:button type="submit" variant="primary" wire:click="createCustomer">{{ __('Save') }}</flux:button>
+            </div>
+        </div>
+    </flux:modal>
     <div class="relative overflow-x-auto sm:rounded-lg">
         <table class="w-full text-sm text-left rtl:text-right text-gray-500 dark:text-gray-400">
             <thead class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
@@ -21,7 +40,7 @@
                 </tr>
             </thead>
             <tbody>
-                @foreach ($this->customers as $customer)
+                @foreach ($customers as $customer)
                 <tr class="odd:bg-white odd:dark:bg-gray-900 even:bg-gray-50 even:dark:bg-gray-800 border-b dark:border-gray-700 border-gray-200">
                         <td scope="row" class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white">
                             {{ $customer['id'] }}

@@ -1506,4 +1506,8 @@ class WooCommerceService
         return $response['data'] ?? $response;
     }
 
+    public function createUser($data)
+    {
+        return $this->post('customers', $data);
+    }
 }
