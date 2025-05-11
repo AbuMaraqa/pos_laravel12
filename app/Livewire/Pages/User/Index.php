@@ -16,7 +16,12 @@ class Index extends Component
 
     public array $customers = [];
 
-    public array $filters = [];
+    public array $filters = [
+        'name' => '',
+        'email' => '',
+        'role' => '',
+        'status' => '',
+    ];
 
     protected WooCommerceService $wooService;
 
@@ -31,34 +36,64 @@ class Index extends Component
         $this->last_name = '';
         $this->email = '';
         $this->customers = $this->customers();
-
-        $this->filters = [
-            'first_name' => '',
-            'last_name' => '',
-            'email' => '',
-        ];
     }
 
     #[Computed()]
-public function customers(): array
-{
-    $email = $this->filters['email'] ?? '';
-    $firstName = $this->filters['first_name'] ?? '';
-    $lastName = $this->filters['last_name'] ?? '';
+    public function customers(): array
+    {
+        $query = [
+            'per_page' => 100,
+        ];
 
-    $search = '';
+        // إضافة فلتر الاسم
+        if (!empty($this->filters['name'])) {
+            $query['search'] = $this->filters['name'];
+        }
 
-    if (!empty($email)) {
-        $search = $email;
-    } elseif (!empty($firstName) || !empty($lastName)) {
-        $search = trim($firstName . ' ' . $lastName);
+        // إضافة فلتر البريد الإلكتروني
+        if (!empty($this->filters['email'])) {
+            // استخدام search بدلاً من email لأن WooCommerce API لا يدعم فلتر email مباشرة
+            $query['search'] = $this->filters['email'];
+        }
+
+        // إضافة فلتر الدور
+        if (!empty($this->filters['role'])) {
+            $query['roles'] = $this->filters['role'];
+        }
+
+        // إضافة فلتر الحالة
+        if (!empty($this->filters['status'])) {
+            $query['status'] = $this->filters['status'];
+        }
+
+        try {
+            $response = $this->wooService->getUsers($query);
+            $customers = is_array($response) ? $response : [];
+
+            // إذا كان هناك فلتر بريد إلكتروني، نقوم بتصفية النتائج يدوياً
+            if (!empty($this->filters['email'])) {
+                $customers = array_filter($customers, function($customer) {
+                    return stripos($customer['email'] ?? '', $this->filters['email']) !== false;
+                });
+            }
+
+            // معالجة حالة العميل إذا لم تكن موجودة
+            foreach ($customers as &$customer) {
+                if (!isset($customer['status'])) {
+                    $customer['status'] = 'inactive';
+                }
+                // التأكد من أن roles مصفوفة
+                if (!isset($customer['roles']) || !is_array($customer['roles'])) {
+                    $customer['roles'] = [];
+                }
+            }
+
+            return $customers;
+        } catch (\Exception $e) {
+            logger()->error('Error fetching customers: ' . $e->getMessage());
+            return [];
+        }
     }
-
-    return $this->wooService->getUsers([
-        'per_page' => 100,
-        'search' => $search,
-    ]) ?? [];
-}
 
     #[Computed()]
     public function getRoles()
@@ -96,11 +131,19 @@ public function customers(): array
 
     public function updateCustomerRole($customerId, $role)
     {
-        $response = $this->wooService->updateUser($customerId, [
-            'roles' => [$role],
-        ]);
+        try {
+            $response = $this->wooService->updateUser($customerId, [
+                'roles' => [$role],
+            ]);
 
-        Toaster::success(__('تم تحديث الأدوار بنجاح'));
+            // تحديث البيانات المحلية
+            $this->customers = $this->customers();
+
+            Toaster::success(__('تم تحديث الأدوار بنجاح'));
+        } catch (\Exception $e) {
+            logger()->error('Error updating customer role: ' . $e->getMessage());
+            Toaster::error(__('حدث خطأ أثناء تحديث الدور'));
+        }
     }
 
     public function createCustomer()
@@ -127,10 +170,19 @@ public function customers(): array
         }
     }
 
+    public function resetFilters()
+    {
+        $this->filters = [
+            'name' => '',
+            'email' => '',
+            'role' => '',
+            'status' => '',
+        ];
+        $this->customers = $this->customers();
+    }
+
     public function render()
     {
-        return view('livewire.pages.user.index', [
-            'customers' => $this->customers,
-        ]);
+        return view('livewire.pages.user.index');
     }
 }
