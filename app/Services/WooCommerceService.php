@@ -1459,4 +1459,37 @@ class WooCommerceService
     {
         return $this->get('customers', $query);
     }
+
+    public function getLastPageFromHeaders(): int
+    {
+        $headers = $this->client->getHeaders();
+        $lastPage = 1;
+        if (isset($headers['X-WP-TotalPages'])) {
+            $lastPage = (int)$headers['X-WP-TotalPages'][0];
+        }
+        return $lastPage;
+    }
+
+    public function getCustomersCount()
+    {
+        $response = $this->get('customers', [
+            'per_page' => 1 // لا داعي لجلب 100 عنصر
+        ]);
+
+        // إذا كانت استجابة فيها total => نرجع العدد من الهيدر
+        return is_array($response) && isset($response['total'])
+            ? $response['total']
+            : count($response);
+    }
+
+    public function getProductsCount()
+    {
+        $response = $this->get('products', [
+            'per_page' => 1 // فقط لمعرفة العدد
+        ]);
+
+        return is_array($response) && isset($response['total'])
+            ? $response['total']
+            : count($response);
+    }
 }

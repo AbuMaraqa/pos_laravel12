@@ -126,6 +126,12 @@
 </div>
 
 <script>
+
+    window.onload = function() {
+        const searchInput = document.getElementById('searchInput');
+        searchInput.focus();
+    }
+
     let db;
     const dbName = "POSProductsDB";
     let selectedCategoryId = null;
@@ -384,38 +390,43 @@
                             });
 
                             if (!matched) {
-    alert("لا يوجد منتج مطابق");
-    return;
-}
+                                alert("لا يوجد منتج مطابق");
+                                return;
+                            }
 
-switch (matched.type) {
-    case 'simple':
-        addToCart(matched);
-        break;
+                            switch (matched.type) {
+                                case 'simple':
+                                    addToCart(matched);
+                                    break;
 
-    case 'variable':
-        const variationProducts = [];
-        let fetched = 0;
-        matched.variations?.forEach(id => {
-            const req = store.get(id);
-            req.onsuccess = function() {
-                if (req.result) variationProducts.push(req.result);
-                fetched++;
-                if (fetched === matched.variations.length) {
-                    showVariationsModal(variationProducts);
-                }
-            };
-        });
-        break;
+                                case 'variable':
+                                    const variationProducts = [];
+                                    let fetched = 0;
+                                    matched.variations?.forEach(id => {
+                                        const req = store.get(id);
+                                        req.onsuccess = function() {
+                                            if (req.result) variationProducts.push(
+                                                req.result);
+                                            fetched++;
+                                            if (fetched === matched.variations
+                                                .length) {
+                                                showVariationsModal(
+                                                    variationProducts);
+                                            }
+                                        };
+                                    });
+                                    break;
 
-    case 'variation':
-        addVariationToCart(matched.id);
-        break;
+                                case 'variation':
+                                    addVariationToCart(matched.id);
+                                    break;
 
-    default:
-        alert("نوع المنتج غير مدعوم");
-}
+                                default:
+                                    alert("نوع المنتج غير مدعوم");
+                            }
                         };
+
+                        searchInput.value = '';
                     }
                 });
             }

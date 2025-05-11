@@ -22,7 +22,7 @@ Route::group(
         return redirect()->route('login');
     })->name('home');
 
-    Route::view('dashboard', 'dashboard')
+    Route::get('dashboard', \App\Livewire\Pages\Dashboard::class)
         ->middleware(['auth', 'verified'])
         ->name('dashboard');
 
@@ -47,7 +47,7 @@ Route::group(
     Route::get('/order/index', \App\Livewire\Pages\Order\Index::class)->name('order.index');
     Route::get('/order/{order}/details', \App\Livewire\Pages\Order\Details::class)->name('order.details');
 
-    Route::get('/user/index', \App\Livewire\Pages\User\Index::class)->name('user.index');
+    Route::get('/client/index', \App\Livewire\Pages\User\Index::class)->name('client.index');
 
     Route::get('/report/index', \App\Livewire\Pages\Report\Index::class)->name('report.index');
 

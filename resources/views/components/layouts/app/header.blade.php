@@ -36,8 +36,8 @@
                 <flux:navbar.item icon="clipboard-document-list" :href="route('inventory.index')" :current="request()->routeIs('inventory.index')" wire:navigate>
                     {{ __('Inventories') }}
                 </flux:navbar.item>
-                <flux:navbar.item icon="users" wire:navigate :href="route('user.index')" :current="request()->routeIs('user.index')" wire:navigate>
-                    {{ __('Users') }}
+                <flux:navbar.item icon="users" wire:navigate :href="route('client.index')" :current="request()->routeIs('client.index')" wire:navigate>
+                    {{ __('Clients') }}
                 </flux:navbar.item>
                 <flux:navbar.item icon="document" :href="route('report.index')" :current="request()->routeIs('report.index')" wire:navigate>
                     {{ __('Reports') }}
