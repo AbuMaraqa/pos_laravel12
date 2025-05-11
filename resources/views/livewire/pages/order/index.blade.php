@@ -23,6 +23,7 @@
                 <th class="px-4 py-2 text-start">الحالة</th>
                 <th class="px-4 py-2 text-start">المبلغ</th>
                 <th class="px-4 py-2 text-start">التاريخ</th>
+                <th class="px-4 py-2 text-start">العمليات</th>
             </tr>
         </thead>
         <tbody class="bg-white divide-y divide-gray-200">
@@ -33,6 +34,11 @@
                     <td class="px-4 py-2">{{ $order['status'] }}</td>
                     <td class="px-4 py-2">{{ $order['total'] }} ₪</td>
                     <td class="px-4 py-2">{{ \Carbon\Carbon::parse($order['date_created'])->translatedFormat('Y-m-d') }}</td>
+                    <td class="px-4 py-2">
+                        <flux:button href="{{ route('order.details', $order['id']) }}" variant="outline" size="sm">
+                            <flux:icon name="eye" />
+                        </flux:button>
+                    </td>
                 </tr>
             @empty
                 <tr>
