@@ -12,6 +12,7 @@ class Dashboard extends Component
     public $productsCount;
     public $lowStockProducts;
     public $orderStatuses;
+    public $latestOrders;
 
     protected WooCommerceService $wooService;
 
@@ -25,6 +26,8 @@ class Dashboard extends Component
         $this->getOrdersThisMonth();
         $this->getCustomersCount();
         $this->getProductsCount();
+        $this->getLowStockProducts();
+        $this->getLatestOrders();
     }
 
     public function getOrdersThisMonth()
@@ -48,28 +51,38 @@ class Dashboard extends Component
     }
 
     public function getLowStockProducts()
-{
-    $response = $this->wooService->get('products', ['per_page' => 50]);
+    {
+        $response = $this->wooService->get('products', ['per_page' => 50]);
 
-    $products = $response['data'] ?? $response;
+        $products = $response['data'] ?? $response;
 
-    $this->lowStockProducts = collect($products)
-        ->filter(fn($p) => isset($p['stock_quantity']) && $p['stock_quantity'] <= 5)
-        ->values()
-        ->all();
-}
+        $this->lowStockProducts = collect($products)
+            ->filter(fn($p) => isset($p['stock_quantity']) && $p['stock_quantity'] <= 5)
+            ->values()
+            ->all();
+    }
 
-public function getOrderStatuses()
-{
-    $response = $this->wooService->get('orders', ['per_page' => 100]);
+    public function getOrderStatuses()
+    {
+        $response = $this->wooService->get('orders', ['per_page' => 100]);
 
-    $orders = $response['data'] ?? $response;
+        $orders = $response['data'] ?? $response;
 
-    $this->orderStatuses = collect($orders)
-        ->groupBy('status')
-        ->map(fn($group) => $group->count())
-        ->toArray();
-}
+        $this->orderStatuses = collect($orders)
+            ->groupBy('status')
+            ->map(fn($group) => $group->count())
+            ->toArray();
+    }
+
+    public function getLatestOrders()
+    {
+        $response = $this->wooService->getOrders([
+            'per_page' => 5,
+            'order' => 'desc', // فقط هذا يكفي
+        ]);
+
+        $this->latestOrders = $response['data'] ?? $response;
+    }
 
     public function render()
     {

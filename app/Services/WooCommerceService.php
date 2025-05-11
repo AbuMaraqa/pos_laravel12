@@ -1492,4 +1492,18 @@ class WooCommerceService
             ? $response['total']
             : count($response);
     }
+
+    public function getLowStockProducts()
+    {
+        $response = $this->get('products', [
+            'per_page' => 100,
+            'status' => 'publish',
+            'stock_quantity' => [
+                'lte' => 5
+            ]
+        ]);
+
+        return $response['data'] ?? $response;
+    }
+
 }
