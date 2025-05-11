@@ -364,7 +364,6 @@
                     renderProductsFromIndexedDB(currentSearchTerm, selectedCategoryId);
                 });
 
-                // عند الضغط على Enter
                 searchInput.addEventListener('keydown', function(e) {
                     if (e.key === 'Enter') {
                         e.preventDefault();
@@ -385,28 +384,37 @@
                             });
 
                             if (!matched) {
-                                alert("لا يوجد منتج مطابق");
-                                return;
-                            }
+    alert("لا يوجد منتج مطابق");
+    return;
+}
 
-                            if (matched.type === 'simple') {
-                                addToCart(matched);
-                            } else if (matched.type === 'variable') {
-                                const variationProducts = [];
+switch (matched.type) {
+    case 'simple':
+        addToCart(matched);
+        break;
 
-                                let fetched = 0;
-                                matched.variations?.forEach(id => {
-                                    const req = store.get(id);
-                                    req.onsuccess = function() {
-                                        if (req.result) variationProducts.push(req
-                                            .result);
-                                        fetched++;
-                                        if (fetched === matched.variations.length) {
-                                            showVariationsModal(variationProducts);
-                                        }
-                                    };
-                                });
-                            }
+    case 'variable':
+        const variationProducts = [];
+        let fetched = 0;
+        matched.variations?.forEach(id => {
+            const req = store.get(id);
+            req.onsuccess = function() {
+                if (req.result) variationProducts.push(req.result);
+                fetched++;
+                if (fetched === matched.variations.length) {
+                    showVariationsModal(variationProducts);
+                }
+            };
+        });
+        break;
+
+    case 'variation':
+        addVariationToCart(matched.id);
+        break;
+
+    default:
+        alert("نوع المنتج غير مدعوم");
+}
                         };
                     }
                 });
@@ -624,38 +632,37 @@
             card.className =
                 "bg-white rounded-lg shadow-md p-4 flex flex-col items-center justify-between text-center transition hover:shadow-lg";
 
-                card.innerHTML = `
-    <div class="relative bg-white shadow rounded-lg p-3 flex flex-col items-center justify-between hover:shadow-lg transition-all">
-        <!-- رقم المنتج -->
-        <div class="absolute top-0 left-0 right-0 bg-black bg-opacity-50 text-white text-xs text-center font-bold py-1 z-10">
-            ${item.id ?? ''}
-        </div>
+            card.innerHTML = `
+                <div class="relative bg-white shadow rounded-lg p-3 flex flex-col items-center justify-between hover:shadow-lg transition-all">
+                    <!-- رقم المنتج -->
+                    <div class="absolute top-0 left-0 right-0 bg-black bg-opacity-50 text-white text-xs text-center font-bold py-1 z-10">
+                        ${item.id ?? ''}
+                    </div>
 
-        <!-- صورة المنتج -->
-        <img src="${item.images?.[0]?.src ?? '/images/no-image.png'}"
-             class="w-full h-[180px] object-cover rounded shadow mb-2 border"
-             alt="${item.name ?? 'no image'}" />
+                    <!-- صورة المنتج -->
+                    <img src="${item.images?.[0]?.src ?? '/images/no-image.png'}"
+                        class="w-full h-[180px] object-cover rounded shadow mb-2 border"
+                        alt="${item.name ?? 'no image'}" />
 
-        <!-- الاسم -->
-        <div class="text-sm font-bold text-gray-800 mb-1 text-center truncate">${item.name ?? ''}</div>
+                    <!-- الاسم -->
+                    <div class="text-sm font-bold text-gray-800 mb-1 text-center truncate">${item.name ?? ''}</div>
 
-        <!-- الصفة -->
-        <div class="text-xs text-gray-600 mb-1 text-center">
-            ${item.attributes?.map(a => a.option).join(', ') ?? ''}
-        </div>
+                    <!-- الصفة -->
+                    <div class="text-xs text-gray-600 mb-1 text-center">
+                        ${item.attributes?.map(a => a.option).join(', ') ?? ''}
+                    </div>
 
-        <!-- السعر -->
-        <div class="text-blue-600 font-semibold mb-3">
-            ${item.price ?? '0'} ₪
-        </div>
+                    <!-- السعر -->
+                    <div class="text-blue-600 font-semibold mb-3">
+                        ${item.price ?? '0'} ₪
+                    </div>
 
-        <!-- زر الإضافة -->
-        <flux:button variant="primary" onclick="addVariationToCart(${item.id})">
-            إضافة +
-        </flux:button>
-    </div>
-`;
-
+                    <!-- زر الإضافة -->
+                    <flux:button variant="primary" onclick="addVariationToCart(${item.id})">
+                        إضافة +
+                    </flux:button>
+                </div>
+            `;
 
             grid.appendChild(card);
         });
