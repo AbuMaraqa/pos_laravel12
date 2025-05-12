@@ -52,7 +52,6 @@ class Index extends Component
 
         // إضافة فلتر البريد الإلكتروني
         if (!empty($this->filters['email'])) {
-            // استخدام search بدلاً من email لأن WooCommerce API لا يدعم فلتر email مباشرة
             $query['search'] = $this->filters['email'];
         }
 
@@ -61,14 +60,8 @@ class Index extends Component
             $query['role'] = $this->filters['role'];
         }
 
-        // إضافة فلتر الحالة
-        if (!empty($this->filters['status'])) {
-            $query['status'] = $this->filters['status'];
-        }
-
         try {
             $response = $this->wooService->getCustomers($query);
-
             $customers = is_array($response) && isset($response['data']) ? $response['data'] : $response;
 
             // إذا كان هناك فلتر بريد إلكتروني، نقوم بتصفية النتائج يدوياً
@@ -83,10 +76,16 @@ class Index extends Component
                 if (!isset($customer['status'])) {
                     $customer['status'] = 'inactive';
                 }
-                // التأكد من أن roles مصفوفة
                 if (!isset($customer['roles']) || !is_array($customer['roles'])) {
                     $customer['roles'] = [];
                 }
+            }
+
+            // فلترة يدوية للحالة
+            if (!empty($this->filters['status'])) {
+                $customers = array_filter($customers, function($customer) {
+                    return ($customer['status'] ?? 'inactive') === $this->filters['status'];
+                });
             }
 
             return $customers;
