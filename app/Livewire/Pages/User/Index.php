@@ -58,7 +58,7 @@ class Index extends Component
 
         // إضافة فلتر الدور
         if (!empty($this->filters['role'])) {
-            $query['roles'] = $this->filters['role'];
+            $query['role'] = $this->filters['role'];
         }
 
         // إضافة فلتر الحالة
@@ -67,8 +67,9 @@ class Index extends Component
         }
 
         try {
-            $response = $this->wooService->getUsers($query);
-            $customers = is_array($response) ? $response : [];
+            $response = $this->wooService->getCustomers($query);
+
+            $customers = is_array($response) && isset($response['data']) ? $response['data'] : $response;
 
             // إذا كان هناك فلتر بريد إلكتروني، نقوم بتصفية النتائج يدوياً
             if (!empty($this->filters['email'])) {

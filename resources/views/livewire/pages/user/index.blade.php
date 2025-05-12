@@ -22,21 +22,13 @@
         <div class="bg-white rounded-lg shadow-sm p-4 mb-6">
             <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
                 <div>
-                    <flux:input
-                        wire:model.live.debounce.500ms="filters.name"
-                        placeholder="اسم الزبون"
-                        icon="magnifying-glass"
-                        type="search"
-                    />
+                    <flux:input wire:model.live.debounce.500ms="filters.name" placeholder="اسم الزبون"
+                        icon="magnifying-glass" type="search" />
                 </div>
 
                 <div>
-                    <flux:input
-                        wire:model.live.debounce.500ms="filters.email"
-                        placeholder="البريد الإلكتروني"
-                        icon="envelope"
-                        type="email"
-                    />
+                    <flux:input wire:model.live.debounce.500ms="filters.email" placeholder="البريد الإلكتروني"
+                        icon="envelope" type="email" />
                 </div>
 
                 <div>
@@ -57,40 +49,36 @@
                 </div>
 
                 <div>
-                    <flux:button
-                        wire:click="resetFilters"
-                        variant="primary"
-                        icon="arrow-path"
-                    >
+                    <flux:button wire:click="resetFilters" variant="primary" icon="arrow-path">
                         إعادة تعيين
                     </flux:button>
                 </div>
             </div>
 
-            @if(!empty(array_filter($filters)))
+            @if (!empty(array_filter($filters)))
                 <div class="mt-4 flex flex-wrap gap-2">
-                    @if(!empty($filters['name']))
+                    @if (!empty($filters['name']))
                         <flux:badge color="blue" wire:click="$set('filters.name', '')">
                             الاسم: {{ $filters['name'] }}
                             <flux:icon.x-mark class="w-4 h-4 ml-1" />
                         </flux:badge>
                     @endif
 
-                    @if(!empty($filters['email']))
+                    @if (!empty($filters['email']))
                         <flux:badge color="green" wire:click="$set('filters.email', '')">
                             البريد: {{ $filters['email'] }}
                             <flux:icon.x-mark class="w-4 h-4 ml-1" />
                         </flux:badge>
                     @endif
 
-                    @if(!empty($filters['role']))
+                    @if (!empty($filters['role']))
                         <flux:badge color="purple" wire:click="$set('filters.role', '')">
                             الدور: {{ collect($this->getRoles())->firstWhere('role', $filters['role'])['name'] }}
                             <flux:icon.x-mark class="w-4 h-4 ml-1" />
                         </flux:badge>
                     @endif
 
-                    @if(!empty($filters['status']))
+                    @if (!empty($filters['status']))
                         <flux:badge color="orange" wire:click="$set('filters.status', '')">
                             الحالة: {{ $filters['status'] === 'active' ? 'نشط' : 'غير نشط' }}
                             <flux:icon.x-mark class="w-4 h-4 ml-1" />
@@ -122,29 +110,33 @@
                 </thead>
                 <tbody>
                     @foreach ($this->customers() as $customer)
-                        <tr class="odd:bg-white odd:dark:bg-gray-900 even:bg-gray-50 even:dark:bg-gray-800 border-b dark:border-gray-700">
+                        <tr
+                            class="odd:bg-white odd:dark:bg-gray-900 even:bg-gray-50 even:dark:bg-gray-800 border-b dark:border-gray-700">
                             <td class="px-6 py-4">{{ $customer['id'] }}</td>
                             <td class="px-6 py-4 font-medium text-gray-900">
                                 {{ $customer['first_name'] ?? '' }} {{ $customer['last_name'] ?? '' }}
                             </td>
                             <td class="px-6 py-4">{{ $customer['email'] ?? '—' }}</td>
                             <td class="px-6 py-4">
-                                <select
-                                    wire:change="updateCustomerRole({{ $customer['id'] }}, $event.target.value)"
-                                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
-                                >
+                                @if(!empty($customer['roles']))
+                                    <div class="mb-1 text-xs text-gray-500">
+                                        {{ implode(', ', $customer['roles']) }}
+                                    </div>
+                                @endif
+                                <select wire:change="updateCustomerRole({{ $customer['id'] }}, $event.target.value)"
+                                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
                                     @foreach ($this->getRoles() as $role)
                                         <option
                                             {{ in_array($role['role'], $customer['roles'] ?? []) ? 'selected' : '' }}
-                                            value="{{ $role['role'] }}"
-                                        >
+                                            value="{{ $role['role'] }}">
                                             {{ $role['name'] }}
                                         </option>
                                     @endforeach
                                 </select>
                             </td>
                             <td class="px-6 py-4">
-                                <span class="px-2 py-1 rounded-full text-xs font-medium {{ ($customer['status'] ?? '') === 'active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800' }}">
+                                <span
+                                    class="px-2 py-1 rounded-full text-xs font-medium {{ ($customer['status'] ?? '') === 'active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800' }}">
                                     {{ ($customer['status'] ?? '') === 'active' ? 'نشط' : 'غير نشط' }}
                                 </span>
                             </td>
@@ -155,13 +147,16 @@
                                     </flux:button>
 
                                     <flux:menu>
-                                        <flux:menu.item wire:click="editCustomer({{ $customer['id'] }})" icon="pencil-square">
+                                        <flux:menu.item wire:click="editCustomer({{ $customer['id'] }})"
+                                            icon="pencil-square">
                                             {{ __('Edit') }}
                                         </flux:menu.item>
-                                        <flux:menu.item wire:click="viewCustomerOrders({{ $customer['id'] }})" icon="shopping-cart">
+                                        <flux:menu.item wire:click="viewCustomerOrders({{ $customer['id'] }})"
+                                            icon="shopping-cart">
                                             {{ __('View Orders') }}
                                         </flux:menu.item>
-                                        <flux:menu.item variant="danger" wire:click="deleteCustomer({{ $customer['id'] }})" icon="trash">
+                                        <flux:menu.item variant="danger"
+                                            wire:click="deleteCustomer({{ $customer['id'] }})" icon="trash">
                                             {{ __('Delete') }}
                                         </flux:menu.item>
                                     </flux:menu>

@@ -126,7 +126,6 @@
 </div>
 
 <script>
-
     window.onload = function() {
         const searchInput = document.getElementById('searchInput');
         searchInput.focus();
@@ -364,6 +363,7 @@
             renderCart();
 
             const searchInput = document.getElementById('searchInput');
+
             if (searchInput) {
                 searchInput.addEventListener('input', function() {
                     currentSearchTerm = this.value;
@@ -374,13 +374,14 @@
                     if (e.key === 'Enter') {
                         e.preventDefault();
 
+                        const term = searchInput.value.trim().toLowerCase(); // اجلب المصطلح مباشرة
+
                         const tx = db.transaction("products", "readonly");
                         const store = tx.objectStore("products");
                         const request = store.getAll();
 
                         request.onsuccess = function() {
                             const products = request.result;
-                            const term = searchInput.value.trim().toLowerCase();
 
                             const matched = products.find(item => {
                                 const nameMatch = item.name?.toLowerCase().includes(
@@ -394,42 +395,30 @@
                                 return;
                             }
 
-                            switch (matched.type) {
-                                case 'simple':
-                                    addToCart(matched);
-                                    break;
+                            // أعد تنفيذ شرط التحقق بناءً على نوع المنتج
+                            if (matched.type === 'simple') {
+                                addToCart(matched);
+                            } else if (matched.type === 'variable') {
+                                const variationProducts = [];
 
-                                case 'variable':
-                                    const variationProducts = [];
-                                    let fetched = 0;
-                                    matched.variations?.forEach(id => {
-                                        const req = store.get(id);
-                                        req.onsuccess = function() {
-                                            if (req.result) variationProducts.push(
-                                                req.result);
-                                            fetched++;
-                                            if (fetched === matched.variations
-                                                .length) {
-                                                showVariationsModal(
-                                                    variationProducts);
-                                            }
-                                        };
-                                    });
-                                    break;
-
-                                case 'variation':
-                                    addVariationToCart(matched.id);
-                                    break;
-
-                                default:
-                                    alert("نوع المنتج غير مدعوم");
+                                let fetched = 0;
+                                matched.variations?.forEach(id => {
+                                    const req = store.get(id);
+                                    req.onsuccess = function() {
+                                        if (req.result) variationProducts.push(req
+                                            .result);
+                                        fetched++;
+                                        if (fetched === matched.variations.length) {
+                                            showVariationsModal(variationProducts);
+                                        }
+                                    };
+                                });
                             }
                         };
-
-                        searchInput.value = '';
                     }
                 });
             }
+
 
             const tx = db.transaction("products", "readonly");
             const store = tx.objectStore("products");
