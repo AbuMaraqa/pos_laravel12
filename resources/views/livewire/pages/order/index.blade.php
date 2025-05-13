@@ -3,9 +3,9 @@
     <div class="grid grid-cols-5 gap-4 mb-4">
         <flux:input wire:model.live.debounce.500ms="filters.customer_name" placeholder="اسم الزبون" />
         <flux:input wire:model.live.debounce.500ms="filters.order_number" placeholder="رقم الطلبية" />
-        <flux:input type="date" wire:model="filters.date_from" />
-        <flux:input type="date" wire:model="filters.date_to" />
-        <flux:select wire:model="filters.status">
+        <flux:input type="date" wire:model.live.debounce.500ms="filters.date_from" />
+        <flux:input type="date" wire:model.live.debounce.500ms="filters.date_to" />
+        <flux:select wire:model.live.debounce.500ms="filters.status">
             <option value="">كل الحالات</option>
             <option value="pending">قيد الانتظار</option>
             <option value="processing">جاري المعالجة</option>

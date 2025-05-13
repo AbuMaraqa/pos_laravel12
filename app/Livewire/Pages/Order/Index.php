@@ -43,7 +43,7 @@ class Index extends Component
             'before' => $this->filters['date_to'] ? Carbon::parse($this->filters['date_to'])->endOfDay()->toIso8601String() : null,
             'status' => $this->filters['status'] ?: 'any',
             'per_page' => $this->perPage,
-            'page' => $this->getPage(),
+            'page' => $this->page,
         ];
 
         $query = array_filter($query);
