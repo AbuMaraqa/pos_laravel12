@@ -73,7 +73,11 @@
                 <tbody>
                     @forelse ($latestOrders as $order)
                         <tr class="bg-gray-50 dark:bg-neutral-800 rounded-xl shadow-sm">
-                            <td class="p-3 font-semibold">#{{ $order['id'] }}</td>
+                            <td class="p-3 font-semibold">
+                                <a href="{{ route('order.details', $order['id']) }}" class="text-blue-500 hover:text-blue-600">
+                                    #{{ $order['id'] }}
+                                </a>
+                            </td>
                             <td class="p-3">
                                 {{ ($order['billing']['first_name'] ?? '') . ' ' . ($order['billing']['last_name'] ?? '') }}
                             </td>

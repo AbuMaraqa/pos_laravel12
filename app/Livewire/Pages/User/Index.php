@@ -152,6 +152,8 @@ class Index extends Component
             'email' => $this->email,
             'first_name' => $this->name,
             'last_name' => $this->last_name,
+            'roles' => ['customer'],
+            'status' => 'active',
         ];
 
         $response = $this->wooService->createUser($data);
