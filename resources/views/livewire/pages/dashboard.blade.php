@@ -59,7 +59,7 @@
 
     {{-- آخر الطلبات --}}
     <div class="bg-white dark:bg-neutral-900 p-6 rounded-2xl border border-neutral-200 dark:border-neutral-700 shadow">
-        <h2 class="text-xl font-semibold mb-4 text-gray-800 dark:text-white">🕓 آخر الطلبات</h2>
+        <h2 class="text-xl font-semibold mb-4 text-gray-800 dark:text-white flex items-center gap-2"><flux:icon name="clock" /> <span>آخر الطلبات</span></h2>
         <div class="overflow-x-auto">
             <table class="min-w-full text-sm text-left border-separate border-spacing-y-2">
                 <thead class="text-gray-500 dark:text-gray-400">
@@ -101,7 +101,7 @@
 
     {{-- المنتجات منخفضة المخزون --}}
     <div class="bg-white dark:bg-neutral-900 p-6 rounded-2xl border border-red-300 dark:border-red-700 shadow">
-        <h2 class="text-xl font-semibold text-red-600 dark:text-red-400 mb-4">⚠️ أصناف شارفت على الانتهاء</h2>
+        <h2 class="text-xl font-semibold text-red-600 dark:text-red-400 mb-4 flex items-center gap-2"><flux:icon name="exclamation-triangle" /> <span>أصناف شارفت على الانتهاء</span></h2>
         <ul class="space-y-2">
             @forelse ($lowStockProducts as $product)
                 <li
