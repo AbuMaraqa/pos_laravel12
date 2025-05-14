@@ -55,6 +55,8 @@ class Add extends Component
 
     public array $selectedCategories = [];
 
+    public $receivedVariations = [];
+
     protected WooCommerceService $wooService;
 
     public function boot(WooCommerceService $wooService): void
@@ -193,6 +195,7 @@ class Add extends Component
         if ($this->isSaving) return;
 
         try {
+
             // التحقق من الحقول المشتركة لجميع أنواع المنتجات
             $this->validate([
                 'productName' => 'required|string|min:3',
@@ -222,6 +225,7 @@ class Add extends Component
                 case 'variable':
                     // طلب آخر تحديث للمتغيرات قبل الحفظ
                     $this->dispatch('requestLatestVariations')->to('variation-manager');
+
                     return; // ننتظر الرد من مدير المتغيرات
                     break;
 
@@ -318,7 +322,7 @@ class Add extends Component
                                     'option' => $options[0],
                                 ];
                             }
-                            dd($this->variations);
+                            ;
                         } else {
                             logger()->warning('تم تجاهل الخاصية لأنها لا تحتوي على خيارات', [
                                 'attribute_id' => $attribute['id'],
@@ -692,6 +696,12 @@ class Add extends Component
             unset($this->galleryImages[$index]);
             $this->galleryImages = array_values($this->galleryImages);
         }
+    }
+
+    #[On('variationsSentToParent')]
+    public function handleVariationsFromChild($data)
+    {
+        $this->receivedVariations = $data['variations'] ?? [];
     }
 
     public function render()

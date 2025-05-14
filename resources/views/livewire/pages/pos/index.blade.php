@@ -1398,8 +1398,8 @@
                             radio.value = method.id;
                             radio.id = `method-${method.id}`;
                             radio.addEventListener("change", () => {
-    updateOrderTotalInModal();
-});
+                                updateOrderTotalInModal();
+                            });
 
 
                             const label = document.createElement("label");

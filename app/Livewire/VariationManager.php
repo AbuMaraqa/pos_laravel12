@@ -319,13 +319,21 @@ class VariationManager extends Component
                 session()->flash('error', 'لم يتم اختيار أي خصائص للمتغيرات. الرجاء اختيار خصائص أولاً.');
             }
 
+            // أرسل المتغيرات للأب
+            $this->sendVariationsToParent();
+
         } catch (\Exception $e) {
-            logger()->error('Error generating variations', [
+            logger()->error('خطأ في توليد المتغيرات', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
             session()->flash('error', 'حدث خطأ أثناء توليد المتغيرات: ' . $e->getMessage());
         }
+    }
+
+    public function sendVariationsToParent()
+    {
+        $this->dispatch('variationsSentToParent', ['variations' => $this->variations]);
     }
 
     public function updated($propertyName)
@@ -420,7 +428,7 @@ class VariationManager extends Component
             ];
 
             // إرسال الحدث إلى المكون الرئيسي
-            $this->dispatch('latestVariationsSent', $data)->to('pages.product.edit');
+            $this->dispatch('latestVariationsSent', $data)->to('pages.product.add');
 
             logger()->info('تم إرسال المتغيرات بنجاح', [
                 'variation_count' => count($this->variations),
