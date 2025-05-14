@@ -31,6 +31,13 @@
         <div class="space-y-6">
             <h2 class="text-xl font-bold text-center">تأكيد الطلب</h2>
 
+            <div class="mt-4 p-4 bg-gray-50 rounded text-center space-y-1 text-sm font-semibold text-gray-700">
+                <p id="subTotalDisplay">المجموع قبل التوصيل: 0 ₪</p>
+                <p id="shippingCostDisplay">قيمة التوصيل: 0 ₪</p>
+                <p id="finalTotalDisplay" class="text-lg font-bold text-black">المجموع الكلي: 0 ₪</p>
+            </div>
+
+
             <flux:select id="customerSelect" label="اختر العميل">
                 <option value="">جاري التحميل...</option>
             </flux:select>
@@ -59,6 +66,20 @@
         </div>
     </flux:modal>
 
+
+    <flux:modal name="add-customer-modal">
+        <div class="space-y-4">
+            <h3 class="text-lg font-bold">إضافة زبون جديد</h3>
+
+            <input id="newCustomerName" type="text" placeholder="اسم الزبون"
+                class="w-full border rounded px-3 py-2" />
+
+            <div class="flex justify-end gap-2">
+                <flux:button variant="danger" onclick="Flux.modal('add-customer-modal').close()">إلغاء</flux:button>
+                <flux:button variant="primary" onclick="addNewCustomer()">حفظ</flux:button>
+            </div>
+        </div>
+    </flux:modal>
 
     <div class="grid gap-4 grid-cols-6">
         <div class="col-span-4">
@@ -135,7 +156,7 @@
     const dbName = "POSProductsDB";
     let selectedCategoryId = null;
     let currentSearchTerm = '';
-
+    let cart = [];
 
     document.addEventListener('livewire:init', () => {
         Livewire.on('add-simple-to-cart', (data) => {
@@ -606,6 +627,8 @@
             renderProductsFromIndexedDB(currentSearchTerm, selectedCategoryId);
             renderCategoriesFromIndexedDB();
             clearCart();
+
+            Flux.modal('confirm-order-modal').close();
         });
     });
 
@@ -1074,6 +1097,19 @@
                 option.textContent = customer.name;
                 dropdown.appendChild(option);
             });
+
+            // ✅ أضف هنا بعد إنشاء العناصر
+            const addOption = document.createElement("option");
+            addOption.value = "add_new_customer";
+            addOption.textContent = "+ إضافة زبون جديد";
+            dropdown.appendChild(addOption);
+
+            dropdown.addEventListener('change', function() {
+                if (this.value === "add_new_customer") {
+                    this.value = "";
+                    Flux.modal('add-customer-modal').show();
+                }
+            });
         };
     }
 
@@ -1105,6 +1141,11 @@
             renderShippingZonesSelect();
             renderCustomersDropdown();
             renderShippingZonesWithMethods();
+
+
+            setTimeout(() => {
+                updateOrderTotalInModal();
+            }, 300)
             // عرض المودال
             Flux.modal('confirm-order-modal').show();
         };
@@ -1114,73 +1155,77 @@
         };
     });
 
-    document.getElementById('confirmOrderSubmitBtn').addEventListener('click', function() {
-        const customerId = document.getElementById("customerSelect").value;
-        const notes = document.getElementById("orderNotes").value;
-        const selectedMethod = document.querySelector('input[name="shippingMethod"]:checked');
+    document.addEventListener("DOMContentLoaded", function() {
+        document.getElementById('confirmOrderSubmitBtn').addEventListener('click', function() {
+            const customerId = document.getElementById("customerSelect").value;
+            const notes = document.getElementById("orderNotes").value;
+            const selectedMethod = document.querySelector('input[name="shippingMethod"]:checked');
 
-        if (!customerId || !selectedMethod) {
-            alert("يرجى اختيار العميل وطريقة الشحن");
-            return;
-        }
+            if (!customerId || !selectedMethod) {
+                alert("يرجى اختيار العميل وطريقة الشحن");
+                return;
+            }
 
-        const shippingMethodId = selectedMethod.value;
+            const shippingMethodId = selectedMethod.value;
 
-        const txMethods = db.transaction("shippingZoneMethods", "readonly");
-        const storeMethods = txMethods.objectStore("shippingZoneMethods");
-        const methodRequest = storeMethods.get(parseInt(shippingMethodId));
+            const txMethods = db.transaction("shippingZoneMethods", "readonly");
+            const storeMethods = txMethods.objectStore("shippingZoneMethods");
+            const methodRequest = storeMethods.get(parseInt(shippingMethodId));
 
-        methodRequest.onsuccess = function() {
-            const method = methodRequest.result;
+            methodRequest.onsuccess = function() {
+                const method = methodRequest.result;
 
-            const tx = db.transaction("cart", "readonly");
-            const store = tx.objectStore("cart");
-            const request = store.getAll();
+                const tx = db.transaction("cart", "readonly");
+                const store = tx.objectStore("cart");
+                const request = store.getAll();
 
-            request.onsuccess = function() {
-                const cartItems = request.result;
-                if (cartItems.length === 0) {
-                    alert("السلة فارغة");
-                    return;
-                }
+                request.onsuccess = function() {
+                    const cartItems = request.result;
+                    if (cartItems.length === 0) {
+                        alert("السلة فارغة");
+                        return;
+                    }
 
-                const orderData = {
-                    customer_id: parseInt(customerId),
-                    payment_method: 'cod',
-                    payment_method_title: 'الدفع عند الاستلام',
-                    set_paid: true,
-                    customer_note: notes,
-                    shipping_lines: [{
-                        method_id: method.id,
-                        method_title: method.title,
-                        total: method.cost
-                    }],
-                    line_items: cartItems.map(item => ({
-                        product_id: item.id,
-                        quantity: item.quantity
-                    }))
+                    const orderData = {
+                        customer_id: parseInt(customerId),
+                        payment_method: 'cod',
+                        payment_method_title: 'الدفع عند الاستلام',
+                        set_paid: true,
+                        customer_note: notes,
+                        shipping_lines: [{
+                            method_id: method.id,
+                            method_title: method.title,
+                            total: method.cost
+                        }],
+                        line_items: cartItems.map(item => ({
+                            product_id: item.id,
+                            quantity: item.quantity
+                        }))
+                    };
+
+                    if (navigator.onLine) {
+                        Livewire.dispatch('submit-order', {
+                            order: orderData
+                        });
+
+                        Livewire.on('order-success', () => {
+                            renderCart();
+                            renderProductsFromIndexedDB(currentSearchTerm,
+                                selectedCategoryId);
+                            renderCategoriesFromIndexedDB();
+                            clearCart();
+                            // Flux.modal('confirm-order-modal').close();
+                        });
+                    } else {
+                        const tx2 = db.transaction("pendingOrders", "readwrite");
+                        tx2.objectStore("pendingOrders").add(orderData);
+                        alert("🚫 لا يوجد اتصال. تم حفظ الطلب مؤقتًا.");
+                    }
                 };
-
-                if (navigator.onLine) {
-                    Livewire.dispatch('submit-order', {
-                        order: orderData
-                    });
-
-                    Livewire.on('order-success', () => {
-                        renderCart();
-                        renderProductsFromIndexedDB(currentSearchTerm, selectedCategoryId);
-                        renderCategoriesFromIndexedDB();
-                        clearCart();
-                        Flux.modal('confirm-order-modal').close();
-                    });
-                } else {
-                    const tx2 = db.transaction("pendingOrders", "readwrite");
-                    tx2.objectStore("pendingOrders").add(orderData);
-                    alert("🚫 لا يوجد اتصال. تم حفظ الطلب مؤقتًا.");
-                }
             };
-        };
+        });
     });
+
 
 
 
@@ -1352,6 +1397,10 @@
                             radio.name = "shippingMethod"; // يجب أن تكون موحدة للاختيار الواحد
                             radio.value = method.id;
                             radio.id = `method-${method.id}`;
+                            radio.addEventListener("change", () => {
+    updateOrderTotalInModal();
+});
+
 
                             const label = document.createElement("label");
                             label.setAttribute("for", radio.id);
@@ -1412,4 +1461,150 @@
             alert("حدث خطأ أثناء المزامنة");
         };
     });
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const dropdown = document.getElementById("customerSelect");
+
+        if (dropdown) {
+            dropdown.addEventListener("change", function() {
+                if (this.value === "add_new_customer") {
+                    this.value = ''; // يرجع لاختيار افتراضي
+                    Flux.modal("add-customer-modal").show(); // افتح المودال
+                }
+            });
+        }
+    });
+
+    Livewire.on('customer-added', (customer) => {
+        const tx = db.transaction("customers", "readwrite");
+        const store = tx.objectStore("customers");
+        store.put(customer);
+
+        tx.oncomplete = () => {
+            renderCustomersDropdown();
+            setTimeout(() => {
+                const dropdown = document.getElementById("customerSelect");
+                dropdown.value = customer.id;
+            }, 100);
+        };
+    });
+
+    document.addEventListener("DOMContentLoaded", function() {
+        const customerSelect = document.getElementById("customerSelect");
+
+        if (!customerSelect) return;
+
+        customerSelect.addEventListener('change', function() {
+            if (this.value === "add_new_customer") {
+                this.value = "";
+                Flux.modal('add-customer-modal').show();
+            }
+        });
+    });
+
+    // function waitForCustomerSelectAndAttachListener() {
+    //     const interval = setInterval(() => {
+    //         const customerSelect = document.getElementById("customerSelect");
+
+    //         if (customerSelect) {
+    //             clearInterval(interval); // أوقف الفحص
+
+    //             customerSelect.addEventListener('change', function() {
+    //                 if (this.value === "add_new_customer") {
+    //                     this.value = "";
+    //                     Flux.modal('add-customer-modal').show();
+    //                 }
+    //             });
+    //         }
+    //     }, 300); // فحص كل 300 مللي ثانية
+    // }
+
+    // // استدعِ هذا بعد renderCustomersDropdown()
+    // waitForCustomerSelectAndAttachListener();
+
+
+    function addNewCustomer() {
+        const nameInput = document.getElementById("newCustomerName");
+        const name = nameInput.value.trim();
+
+        if (!name) {
+            alert("يرجى إدخال اسم الزبون");
+            return;
+        }
+
+        const tx = db.transaction("customers", "readwrite");
+        const store = tx.objectStore("customers");
+
+        const newCustomer = {
+            id: Date.now(), // أو استخدم autoIncrement إذا كان مفعلاً
+            name: name
+        };
+
+        store.add(newCustomer);
+
+        tx.oncomplete = () => {
+            // ✅ أغلق المودال
+            Flux.modal('add-customer-modal').close();
+
+            // ✅ أعد تحميل القائمة
+            renderCustomersDropdown();
+
+            // ✅ اختر الزبون الجديد تلقائيًا بعد وقت بسيط
+            setTimeout(() => {
+                const dropdown = document.getElementById("customerSelect");
+                if (dropdown) {
+                    dropdown.value = newCustomer.id;
+                }
+            }, 300);
+        };
+
+        tx.onerror = () => {
+            alert("حدث خطأ أثناء إضافة الزبون");
+        };
+    }
+
+    function calculateCartTotal(cart) {
+        return cart.reduce((total, item) => {
+            return total + (parseFloat(item.price) * (item.qty ?? 1));
+        }, 0);
+    }
+
+    function updateOrderTotalInModal() {
+        const cartTx = db.transaction("cart", "readonly");
+        const cartStore = cartTx.objectStore("cart");
+        const cartRequest = cartStore.getAll();
+
+        cartRequest.onsuccess = function() {
+            const cartItems = cartRequest.result;
+            const subTotal = cartItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+
+            const selectedMethod = document.querySelector('input[name="shippingMethod"]:checked');
+            let shippingCost = 0;
+
+            if (selectedMethod) {
+                const shippingMethodId = parseInt(selectedMethod.value);
+                const shippingTx = db.transaction("shippingZoneMethods", "readonly");
+                const shippingStore = shippingTx.objectStore("shippingZoneMethods");
+                const shippingReq = shippingStore.get(shippingMethodId);
+
+                shippingReq.onsuccess = function() {
+                    const method = shippingReq.result;
+                    shippingCost = parseFloat(method?.cost ?? 0);
+                    updateTotalDisplays(subTotal, shippingCost);
+                };
+            } else {
+                updateTotalDisplays(subTotal, shippingCost);
+            }
+        };
+    }
+
+    function updateTotalDisplays(subTotal, shippingCost) {
+        const subTotalDisplay = document.getElementById("subTotalDisplay");
+        const shippingDisplay = document.getElementById("shippingCostDisplay");
+        const finalDisplay = document.getElementById("finalTotalDisplay");
+
+        if (subTotalDisplay) subTotalDisplay.textContent = `المجموع قبل التوصيل: ${subTotal.toFixed(2)} ₪`;
+        if (shippingDisplay) shippingDisplay.textContent = `قيمة التوصيل: ${shippingCost.toFixed(2)} ₪`;
+        if (finalDisplay) finalDisplay.textContent = `المجموع الكلي: ${(subTotal + shippingCost).toFixed(2)} ₪`;
+    }
 </script>
