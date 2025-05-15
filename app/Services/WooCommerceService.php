@@ -291,15 +291,6 @@ class WooCommerceService
         return $this->put('orders/' . $id, $query);
     }
 
-/*************  ✨ Windsurf Command ⭐  *************/
-    /**
-     * Creates a new order.
-     *
-     * @param array $query The request query payload. Should contain the order data.
-     *
-     * @return array The order data as returned from the API.
-     */
-/*******  cf20600f-1231-4433-b9bf-b5b6085b17d8  *******/
     public function createOrder($query = []): array
     {
         return $this->post('orders', $query);

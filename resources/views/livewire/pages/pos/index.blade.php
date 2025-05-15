@@ -633,66 +633,57 @@
     });
 
     function showVariationsModal(variations) {
-        const modal = Flux.modal('variations-modal');
-        const container = document.getElementById("variationsTableBody"); // يمكن تغيير الاسم لاحقًا لو لزم
-        if (!container) return;
+    const modal = Flux.modal('variations-modal');
+    const container = document.getElementById("variationsTableBody");
+    if (!container) return;
 
-        container.innerHTML = '';
+    container.innerHTML = '';
 
-        if (variations.length === 0) {
-            const message = document.createElement("div");
-            message.className = "text-center text-gray-500 py-4";
-            message.textContent = "لا يوجد متغيرات متاحة";
-            container.appendChild(message);
-            return;
-        }
-
-        const grid = document.createElement("div");
-        grid.className = "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 p-4";
-
-        variations.forEach(item => {
-            const card = document.createElement("div");
-            card.className =
-                "bg-white rounded-lg shadow-md p-4 flex flex-col items-center justify-between text-center transition hover:shadow-lg";
-
-            card.innerHTML = `
-                <div class="relative bg-white shadow rounded-lg p-3 flex flex-col items-center justify-between hover:shadow-lg transition-all">
-                    <!-- رقم المنتج -->
-                    <div class="absolute top-0 left-0 right-0 bg-black bg-opacity-50 text-white text-xs text-center font-bold py-1 z-10">
-                        ${item.id ?? ''}
-                    </div>
-
-                    <!-- صورة المنتج -->
-                    <img src="${item.images?.[0]?.src ?? '/images/no-image.png'}"
-                        class="w-full h-[180px] object-cover rounded shadow mb-2 border"
-                        alt="${item.name ?? 'no image'}" />
-
-                    <!-- الاسم -->
-                    <div class="text-sm font-bold text-gray-800 mb-1 text-center truncate">${item.name ?? ''}</div>
-
-                    <!-- الصفة -->
-                    <div class="text-xs text-gray-600 mb-1 text-center">
-                        ${item.attributes?.map(a => a.option).join(', ') ?? ''}
-                    </div>
-
-                    <!-- السعر -->
-                    <div class="text-blue-600 font-semibold mb-3">
-                        ${item.price ?? '0'} ₪
-                    </div>
-
-                    <!-- زر الإضافة -->
-                    <flux:button variant="primary" onclick="addVariationToCart(${item.id})">
-                        إضافة +
-                    </flux:button>
-                </div>
-            `;
-
-            grid.appendChild(card);
-        });
-
-        container.appendChild(grid);
-        modal.show();
+    if (variations.length === 0) {
+        const message = document.createElement("div");
+        message.className = "text-center text-gray-500 py-4";
+        message.textContent = "لا يوجد متغيرات متاحة";
+        container.appendChild(message);
+        return;
     }
+
+    const grid = document.createElement("div");
+    grid.className = "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 p-4";
+
+    variations.forEach(item => {
+        const card = document.createElement("div");
+        card.className = "relative bg-white rounded-lg shadow-md overflow-hidden cursor-pointer hover:shadow-xl transition-all";
+        card.onclick = () => addVariationToCart(item.id); // ✅ الضغط على الكارد كامل
+
+        card.innerHTML = `
+            <!-- الشريط العلوي لرقم المتغير -->
+            <p class="font-bold text-sm text-center absolute bg-black text-white top-0 left-0 right-0 z-10 opacity-50 py-1">
+                ${item.id ?? ''}
+            </p>
+
+            <!-- صورة المنتج -->
+            <img src="${item.images?.[0]?.src ?? '/images/no-image.png'}" alt="${item.name ?? ''}"
+                class="w-full object-cover" style="max-height: 200px; min-height: 200px;">
+
+            <!-- السعر -->
+            <p class="font-bold text-md bg-black text-white p-1 rounded-md text-center absolute z-10 opacity-70"
+                style="bottom: 40px; left: 5px; min-width: 50px;">
+                ${item.price ?? ''} ₪
+            </p>
+
+            <!-- الاسم -->
+            <div class="bg-gray-200 p-2">
+                <p class="font-bold text-sm text-center truncate">${item.name ?? ''}</p>
+            </div>
+        `;
+
+        grid.appendChild(card);
+    });
+
+    container.appendChild(grid);
+    modal.show();
+}
+
 
 
     document.addEventListener('livewire:init', () => {
