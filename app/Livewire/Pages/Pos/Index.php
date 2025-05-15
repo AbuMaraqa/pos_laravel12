@@ -181,7 +181,24 @@ class Index extends Component
         $orderData = $order ?? [];
 
         try {
+            // ✅ إذا كان هناك customer_id نضيف بيانات billing
+            if (!empty($orderData['customer_id'])) {
+                $customer = $this->wooService->getUserById($orderData['customer_id']);
+
+                $orderData['billing'] = [
+                    'first_name' => $customer['first_name'] ?? '',
+                    'last_name'  => $customer['last_name'] ?? '',
+                    'email'      => $customer['email'] ?? '',
+                    'phone'      => $customer['billing']['phone'] ?? '',
+                    'address_1'  => $customer['billing']['address_1'] ?? '',
+                    'city'       => $customer['billing']['city'] ?? '',
+                    'country'    => $customer['billing']['country'] ?? 'PS',
+                ];
+            }
+
+            // إرسال الطلب بعد دمج بيانات العميل
             $order = $this->wooService->createOrder($orderData);
+
             $this->dispatch('order-success');
         } catch (\Exception $e) {
             logger()->error('Order creation failed', ['error' => $e->getMessage()]);
