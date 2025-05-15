@@ -28,6 +28,7 @@ class Dashboard extends Component
         $this->getProductsCount();
         $this->getLowStockProducts();
         $this->getLatestOrders();
+        $this->getOrderStatuses();
     }
 
     public function getOrdersThisMonth()

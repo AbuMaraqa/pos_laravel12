@@ -123,5 +123,19 @@
     "Add To Cart": "إضافة إلى السلة",
 
     "Clients": "العملاء",
-    "Add Client": "إضافة عميل"
+    "Add Client": "إضافة عميل",
+
+    "Completed": "مكتمل",
+    "Pending": "قيد الانتظار",
+    "Processing": "قيد المعالجة",
+    "On hold": "معلق",
+    "Cancelled": "ملغي",
+    "Refunded": "مسترد",
+    "Failed": "فشل",
+    "Draft": "مسودة",
+    "Pending Payment": "قيد الانتظار",
+    "Pending Fulfillment": "قيد الانتظار",
+    "Pending Shipment": "قيد الانتظار",
+    "Pending Refund": "قيد الانتظار",
+    "Pending Review": "قيد المراجعة"
 }
