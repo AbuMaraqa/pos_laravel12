@@ -1,13 +1,14 @@
 <div class="container mx-auto p-4 max-w-5xl">
     <div class="flex justify-between items-center mb-6">
-        <h1 class="text-2xl font-bold">{{ __('Client Profile') }}</h1>
+        <h1 class="text-2xl font-bold">{{ __('Client Profile') }} _ {{ $customer['first_name'] . ' ' . $customer['last_name'] }}</h1>
         <div class="flex gap-2">
             {{-- <button
                 class="inline-flex items-center justify-center rounded-md text-sm font-medium px-3 py-2 border border-gray-200 shadow-sm bg-white hover:bg-gray-50">
                 <i class="ri-edit-line mr-2 h-4 w-4"></i>
                 Edit Profile
             </button> --}}
-            <flux:button variant="primary">
+
+            <flux:button href="{{ route('client.edit', $customer['id']) }}" wire:navigate variant="primary">
                 {{ __('Edit Profile') }}
             </flux:button>
             <div class="relative">

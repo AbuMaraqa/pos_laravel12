@@ -237,7 +237,8 @@ class WooCommerceService
         return $this->get('products', $query);
     }
 
-    public function deleteProductById($id): array
+/*************  ✨ Windsurf Command ⭐  *************/
+/*******  44b5cbc6-0057-44ce-8184-da095224846f  *******/    public function deleteProductById($id): array
     {
         return $this->delete('products/' . $id);
     }

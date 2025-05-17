@@ -4,6 +4,15 @@
         <div class="border-b border-gray-200 p-5">
             <h1 class="text-xl font-bold text-gray-900">{{ __('Edit Profile') }} ( {{ $data['first_name'] ?? '' }} {{ $data['last_name'] ?? '' }} )</h1>
             <p class="text-sm text-gray-500 mt-1">{{ __('Update your client information') }}</p>
+            <flux:button
+                variant="primary"
+                wire:navigate
+                href="{{ route('client.profile', $customer['id']) }}"
+                icon="arrow-left"
+                size="sm"
+                class="mt-4">
+                {{ __('Back to Profile') }}
+            </flux:button>
         </div>
 
         <!-- Form -->
