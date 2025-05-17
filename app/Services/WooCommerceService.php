@@ -688,6 +688,12 @@ class WooCommerceService
         }
     }
 
+    public function getCustomerById($id)
+    {
+        $response = $this->client->get('customers/' . $id);
+        return json_decode($response->getBody()->getContents(), true);
+    }
+
     public function updateOrderStatus($id, $status)
     {
         return $this->put("orders/{$id}", [

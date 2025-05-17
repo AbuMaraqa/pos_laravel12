@@ -48,6 +48,7 @@ Route::group(
     Route::get('/order/{order}/details', \App\Livewire\Pages\Order\Details::class)->name('order.details');
 
     Route::get('/client/index', \App\Livewire\Pages\User\Index::class)->name('client.index');
+    Route::get('/client/{id}/profile', \App\Livewire\Pages\User\Profile::class)->name('client.profile');
 
     Route::get('/report/index', \App\Livewire\Pages\Report\Index::class)->name('report.index');
 

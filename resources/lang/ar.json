@@ -137,5 +137,37 @@
     "Pending Fulfillment": "قيد الانتظار",
     "Pending Shipment": "قيد الانتظار",
     "Pending Refund": "قيد الانتظار",
-    "Pending Review": "قيد المراجعة"
+    "Pending Review": "قيد المراجعة",
+
+    "View": "عرض",
+    "Edit": "تعديل",
+    "Save": "حفظ",
+    "Cancel": "إلغاء",
+    "Close": "إغلاق",
+    "Search": "بحث",
+
+    "Personal Information": "المعلومات الشخصية",
+    "Client Profile": "ملف العميل",
+    "Edit Profile": "تعديل الملف الشخصي",
+    "Email": "البريد الإلكتروني",
+    "Phone": "الهاتف",
+    "Address": "العنوان",
+    "City": "المدينة",
+    "State": "الولاية",
+    "Country": "الدولة",
+    "Zip": "الرمز البريدي",
+    "Add Address": "إضافة عنوان",
+    "Edit Address": "تعديل العنوان",
+    "Delete Address": "حذف العنوان",
+    "Default": "افتراضي",
+    "Default Address": "العنوان الافتراضي",
+    "Birthday": "عيد الميلاد",
+    "Company": "الشركة",
+    "Timezone": "المنطقة الزمنية",
+    "Palestine": "فلسطين",
+    "Last 30 days": "آخر 30 يومًا",
+
+    "No Phone Number": "لا يوجد رقم هاتف",
+    "No Address": "لا يوجد عنوان",
+    "No Company": "لا توجد شركة"
 }

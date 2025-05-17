@@ -151,9 +151,9 @@
                                             icon="pencil-square">
                                             {{ __('Edit') }}
                                         </flux:menu.item>
-                                        <flux:menu.item wire:click="viewCustomerOrders({{ $customer['id'] }})"
-                                            icon="shopping-cart">
-                                            {{ __('View Orders') }}
+                                        <flux:menu.item wire:navigate href="{{ route('client.profile', $customer['id']) }}"
+                                            icon="eye">
+                                            {{ __('View') }}
                                         </flux:menu.item>
                                         <flux:menu.item variant="danger"
                                             wire:click="deleteCustomer({{ $customer['id'] }})" icon="trash">
