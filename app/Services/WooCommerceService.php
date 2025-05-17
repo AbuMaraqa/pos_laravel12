@@ -296,6 +296,11 @@ class WooCommerceService
         return $this->get('orders', array_merge($query, ['customer' => $customerId]));
     }
 
+    public function updateCustomer($id, $query = []): array
+    {
+        return $this->put('customers/' . $id, $query);
+    }
+
     public function createOrder($query = []): array
     {
         return $this->post('orders', $query);

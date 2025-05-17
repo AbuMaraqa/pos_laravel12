@@ -147,7 +147,8 @@
                                     </flux:button>
 
                                     <flux:menu>
-                                        <flux:menu.item wire:click="editCustomer({{ $customer['id'] }})"
+                                        <flux:menu.item href="{{ route('client.edit', $customer['id']) }}"
+                                            wire:navigate
                                             icon="pencil-square">
                                             {{ __('Edit') }}
                                         </flux:menu.item>

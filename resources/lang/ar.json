@@ -142,6 +142,7 @@
     "View": "عرض",
     "Edit": "تعديل",
     "Save": "حفظ",
+    "Update": "تحديث",
     "Cancel": "إلغاء",
     "Close": "إغلاق",
     "Search": "بحث",
@@ -166,8 +167,22 @@
     "Timezone": "المنطقة الزمنية",
     "Palestine": "فلسطين",
     "Last 30 days": "آخر 30 يومًا",
+    "username": "اسم المستخدم",
+    "First Name": "الاسم الأول",
+    "Enter First Name": "أدخل الاسم الأول",
+    "Enter Email": "أدخل البريد الإلكتروني",
+    "Username": "اسم المستخدم",
+    "Enter Username": "أدخل اسم المستخدم",
+    "Last Name": "اسم العائلة",
+    "Enter Last Name": "أدخل اسم العائلة",
+
+    "Customer updated successfully": "تم تحديث العميل بنجاح",
+    "Client created successfully": "تم إنشاء العميل بنجاح",
+    "Client deleted successfully": "تم حذف العميل بنجاح",
 
     "No Phone Number": "لا يوجد رقم هاتف",
     "No Address": "لا يوجد عنوان",
-    "No Company": "لا توجد شركة"
+    "No Company": "لا توجد شركة",
+
+    "Update your client information": "تحديث معلومات العميل"
 }
