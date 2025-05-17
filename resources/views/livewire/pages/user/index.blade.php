@@ -114,7 +114,7 @@
                             class="odd:bg-white odd:dark:bg-gray-900 even:bg-gray-50 even:dark:bg-gray-800 border-b dark:border-gray-700">
                             <td class="px-6 py-4">{{ $customer['id'] }}</td>
                             <td class="px-6 py-4 font-medium text-gray-900">
-                                {{ $customer['first_name'] ?? '' }} {{ $customer['last_name'] ?? '' }}
+                                <a wire:navigate href="{{ route('client.profile', $customer['id']) }}">{{ $customer['first_name'] ?? '' }} {{ $customer['last_name'] ?? '' }}</a>
                             </td>
                             <td class="px-6 py-4">{{ $customer['email'] ?? '—' }}</td>
                             <td class="px-6 py-4">
