@@ -73,8 +73,20 @@
 {{--                </flux:tooltip>--}}
 {{--            </flux:navbar>--}}
 
+
+
+            <div>
+                <flux:dropdown>
+                <flux:button size="sm" icon:trailing="bell"></flux:button>
+
+                <flux:menu>
+
+                </flux:menu>
+            </flux:dropdown>
+            </div>
+
             <flux:dropdown>
-                <flux:button icon:trailing="language"></flux:button>
+                <flux:button size="sm" icon:trailing="language"></flux:button>
 
                 <flux:menu>
                         @foreach(LaravelLocalization::getSupportedLocales() as $localeCode => $properties)
