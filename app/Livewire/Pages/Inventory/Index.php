@@ -2,6 +2,9 @@
 
 namespace App\Livewire\Pages\Inventory;
 
+use App\Enums\InventoryType;
+use App\Models\Inventory;
+use App\Models\Store;
 use App\Services\WooCommerceService;
 use Livewire\Component;
 use Exception;
@@ -15,6 +18,8 @@ class Index extends Component
     public $success = '';
     protected $woocommerce;
     public $pendingProducts = [];
+    public $stores;
+    public $storeId = null;
 
     public function boot()
     {
@@ -25,6 +30,12 @@ class Index extends Component
             Toaster::error('خطأ في الاتصال بالمتجر');
             logger()->error('WooCommerce Service Error: ' . $e->getMessage());
         }
+    }
+
+    public function mount()
+    {
+        $this->scannedProducts = [];
+        $this->stores = Store::all();
     }
 
     public function saveQuantities()
@@ -92,6 +103,14 @@ class Index extends Component
                     ]);
 
                     $response = $this->woocommerce->put($endpoint, $updateData);
+
+                    Inventory::create([
+                        'product_id' => $productId,
+                        'quantity' => $requestedQuantity,
+                        'store_id' => $this->storeId,
+                        'user_id' => auth()->user()->id,
+                        'type' => InventoryType::INPUT
+                    ]);
 
                     logger()->info('Update response:', [
                         'product_id' => $productId,

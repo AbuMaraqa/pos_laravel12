@@ -42,9 +42,15 @@
                 <flux:navbar.item icon="document" :href="route('report.index')" :current="request()->routeIs('report.index')" wire:navigate>
                     {{ __('Reports') }}
                 </flux:navbar.item>
-                <flux:navbar.item icon="cog-6-tooth" :href="route('dashboard')" :current="request()->routeIs('')" wire:navigate>
+                <flux:dropdown class="max-lg:hidden">
+                    <flux:navbar.item icon="cog-6-tooth">{{ __('Settings') }}</flux:navbar.item>
+                    <flux:navmenu>
+                        <flux:navmenu.item wire:navigate href="{{ route('store.index') }}">{{ __('Stores') }}</flux:navmenu.item>
+                    </flux:navmenu>
+                </flux:dropdown>
+                {{-- <flux:navbar.item icon="cog-6-tooth" :href="route('dashboard')" :current="request()->routeIs('')" wire:navigate>
                     {{ __('Settings') }}
-                </flux:navbar.item>
+                </flux:navbar.item> --}}
             </flux:navbar>
 
             <flux:spacer />
@@ -178,6 +184,6 @@
         @filepondScripts
 
 
-        <script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
+        <script src="https://cdn.quilljs.com/1.3.6/quil-l.js"></script>
     </body>
 </html>

@@ -185,5 +185,9 @@
     "No Address": "لا يوجد عنوان",
     "No Company": "لا توجد شركة",
 
-    "Update your client information": "تحديث معلومات العميل"
+    "Update your client information": "تحديث معلومات العميل",
+
+    "Add Store": "إضافة متجر",
+    "Store Name": "اسم المتجر",
+    "Notes": "ملاحظات"
 }
