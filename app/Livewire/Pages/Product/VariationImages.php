@@ -51,7 +51,10 @@ class VariationImages extends Component
     #[Computed()]
     public function getVariationProduct()
     {
-        return $this->wooService->getProductVariations($this->productId);
+        return $this->wooService->getProductVariations($this->productId , [
+            'per_page' => 100,
+            'page' => 1,
+        ]);
     }
 
     public function uploadImage($file) {}

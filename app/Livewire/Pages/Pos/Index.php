@@ -2,6 +2,8 @@
 
 namespace App\Livewire\Pages\Pos;
 
+use App\Enums\InventoryType;
+use App\Models\Inventory;
 use App\Services\WooCommerceService;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\On;
@@ -198,6 +200,17 @@ class Index extends Component
 
             // إرسال الطلب بعد دمج بيانات العميل
             $order = $this->wooService->createOrder($orderData);
+dd($orderData);
+            foreach($orderData as $item) {
+                Inventory::create([
+                    'store_id' => 1,
+                    'product_id' => $item['id'],
+                    'quantity' => $item['qty'],
+                    'type' => InventoryType::OUTPUT,
+                    'user_id' => auth()->user()->id,
+                ]);
+
+            }
 
             $this->dispatch('order-success');
         } catch (\Exception $e) {

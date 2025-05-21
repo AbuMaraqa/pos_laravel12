@@ -32,6 +32,40 @@ class Index extends Component
         Toaster::success('Store created successfully');
     }
 
+    public function edit($id){
+        $this->data = Store::find($id)->toArray();
+
+        $this->modal('edit-store')->show();
+    }
+
+    public function update(){
+        $this->validate([
+            'data.name' => 'required',
+            'data.address' => 'nullable',
+            'data.notes' => 'nullable',
+        ]);
+
+        $store = Store::find($this->data['id']);
+
+        $store->update($this->data);
+
+        $this->stores = Store::all();
+
+        $this->modal('edit-store')->close();
+
+        Toaster::success('Store updated successfully');
+    }
+
+    public function delete($id){
+        $store = Store::find($id);
+
+        $store->delete();
+
+        $this->stores = Store::all();
+
+        Toaster::success('Store deleted successfully');
+    }
+
     public function render()
     {
         return view('livewire.pages.store.index');

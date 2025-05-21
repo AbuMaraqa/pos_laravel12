@@ -187,7 +187,11 @@
 
     "Update your client information": "تحديث معلومات العميل",
 
+    "Stores": "المتاجر",
     "Add Store": "إضافة متجر",
     "Store Name": "اسم المتجر",
-    "Notes": "ملاحظات"
+    "Notes": "ملاحظات",
+    "Edit Store": "تعديل المتجر",
+    "Update Store": "تحديث المتجر",
+    "Store created successfully": "تم إنشاء المتجر بنجاح"
 }

@@ -933,9 +933,10 @@ class WooCommerceService
         ]);
     }
 
-    public function getProductVariations($productId)
+    public function getProductVariations($productId , $query = []): array
     {
-        return $this->get("products/{$productId}/variations");
+        // جلب المتغيرات للمنتج المحدد
+        return $this->get("products/{$productId}/variations", $query);
     }
 
     public function updateVariationMrbpRole($variationId, $roleId, $value)
