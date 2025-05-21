@@ -200,12 +200,12 @@ class Index extends Component
 
             // إرسال الطلب بعد دمج بيانات العميل
             $order = $this->wooService->createOrder($orderData);
-dd($orderData);
-            foreach($orderData as $item) {
+
+            foreach($orderData['line_items'] as $item) {
                 Inventory::create([
                     'store_id' => 1,
-                    'product_id' => $item['id'],
-                    'quantity' => $item['qty'],
+                    'product_id' => $item['product_id'],
+                    'quantity' => $item['quantity'],
                     'type' => InventoryType::OUTPUT,
                     'user_id' => auth()->user()->id,
                 ]);
