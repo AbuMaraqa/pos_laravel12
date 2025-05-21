@@ -34,7 +34,7 @@
             <div class="mt-4 p-4 bg-gray-50 rounded text-center space-y-1 text-sm font-semibold text-gray-700">
                 <p id="subTotalDisplay">المجموع قبل التوصيل: 0 ₪</p>
                 <p id="shippingCostDisplay">قيمة التوصيل: 0 ₪</p>
-                <p id="finalTotalDisplay" class="text-lg font-bold text-black">المجموع الكلي: 0 ₪</p>
+                <p id="finalTotalDisplay" style="font-size: 60px" class="text-lg font-bold text-black">0 ₪</p>
             </div>
 
 
@@ -1596,6 +1596,6 @@
 
         if (subTotalDisplay) subTotalDisplay.textContent = `المجموع قبل التوصيل: ${subTotal.toFixed(2)} ₪`;
         if (shippingDisplay) shippingDisplay.textContent = `قيمة التوصيل: ${shippingCost.toFixed(2)} ₪`;
-        if (finalDisplay) finalDisplay.textContent = `المجموع الكلي: ${(subTotal + shippingCost).toFixed(2)} ₪`;
+        if (finalDisplay) finalDisplay.textContent = ` ${(subTotal + shippingCost).toFixed(2)} ₪`;
     }
 </script>

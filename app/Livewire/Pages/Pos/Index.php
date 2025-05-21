@@ -209,7 +209,6 @@ class Index extends Component
                     'type' => InventoryType::OUTPUT,
                     'user_id' => auth()->user()->id,
                 ]);
-
             }
 
             $this->dispatch('order-success');
