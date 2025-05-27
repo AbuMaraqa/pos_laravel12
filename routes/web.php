@@ -57,6 +57,8 @@ Route::group(
         Route::get('/pos/index', \App\Livewire\Pages\Pos\Index::class)->name('pos.index');
 
         Route::get('/store/index', \App\Livewire\Pages\Store\Index::class)->name('store.index');
+
+        Route::get('/settings/index', \App\Livewire\Pages\Settings\Index::class)->name('settings.index');
     }
 );
 

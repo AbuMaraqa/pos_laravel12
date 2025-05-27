@@ -46,6 +46,7 @@
                     <flux:navbar.item icon="cog-6-tooth">{{ __('Settings') }}</flux:navbar.item>
                     <flux:navmenu>
                         <flux:navmenu.item wire:navigate href="{{ route('store.index') }}">{{ __('Stores') }}</flux:navmenu.item>
+                        <flux:navmenu.item wire:navigate href="{{ route('settings.index') }}">{{ __('General Setting') }}</flux:navmenu.item>
                     </flux:navmenu>
                 </flux:dropdown>
                 {{-- <flux:navbar.item icon="cog-6-tooth" :href="route('dashboard')" :current="request()->routeIs('')" wire:navigate>

@@ -59,8 +59,7 @@ class Index extends Component
 
     public function updatedReportType()
     {
-        dd('asd')
-;        $this->loadReportData();
+        $this->loadReportData();
     }
 
     public function render()
