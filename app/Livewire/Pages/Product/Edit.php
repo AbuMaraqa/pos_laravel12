@@ -194,7 +194,6 @@ class Edit extends Component
             ]);
 
             session()->flash('success', 'تم توليد ' . count($this->variations) . ' متغير بنجاح');
-
         } catch (\Exception $e) {
             Log::error('خطأ في توليد المتغيرات', [
                 'error' => $e->getMessage(),
@@ -286,7 +285,6 @@ class Edit extends Component
             $this->allStockQuantity = '';
 
             session()->flash('success', 'تم تطبيق الأسعار على ' . $updatedCount . ' متغير');
-
         } catch (\Exception $e) {
             Log::error('خطأ في تطبيق الأسعار الجماعية', [
                 'error' => $e->getMessage()
@@ -402,6 +400,7 @@ class Edit extends Component
 
             // ✅ تحميل المتغيرات
             $existingVariations = $this->wooService->getVariationsByProductId($this->productId);
+
             $this->variations = [];
 
             foreach ($existingVariations as $variation) {
@@ -424,6 +423,23 @@ class Edit extends Component
                     $options[] = $value ?? '';
                 }
 
+                // استخراج role_values من meta_data
+                $roleValues = [];
+                if (!empty($variation['meta_data'])) {
+                    foreach ($variation['meta_data'] as $meta) {
+                        if ($meta['key'] === 'mrbp_role' && is_array($meta['value'])) {
+                            foreach ($meta['value'] as $roleEntry) {
+                                if (is_array($roleEntry)) {
+                                    $roleKey = array_key_first($roleEntry);
+                                    if ($roleKey) {
+                                        $roleValues[$roleKey] = $roleEntry['mrbp_regular_price'] ?? '';
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 $this->variations[] = [
                     'id' => $variation['id'] ?? null,
                     'options' => $options,
@@ -433,8 +449,10 @@ class Edit extends Component
                     'description' => $variation['description'] ?? '',
                     'sku' => $variation['sku'] ?? '',
                     'image' => $variation['image']['src'] ?? null,
+                    'role_values' => $roleValues, // جديد: تسعير حسب الدور
                 ];
             }
+
 
             // تسجيل بيانات المتغيرات للتشخيص
             \Illuminate\Support\Facades\Log::info('Loaded product variations', [
@@ -568,8 +586,7 @@ class Edit extends Component
     {
         try {
             if ($this->productType === 'variable') {
-                $this->dispatch('requestLatestVariations')->to('variation-manager');
-                session()->flash('info', 'طلب تحديث المتغيرات...');
+                $this->dispatch('requestLatestVariations', ['page' => 'edit'])->to('variation-manager');
                 // لا نقوم بإستدعاء save() هنا، لأن handleVariationsUpdate ستقوم بذلك
             } else {
                 $this->save();
@@ -582,6 +599,14 @@ class Edit extends Component
                 'trace' => $e->getTraceAsString()
             ]);
         }
+    }
+
+    #[On('variationsReady')]
+    public function handleVariationsReady($variations)
+    {
+        $this->variations = $variations;
+
+        $this->save(); // الآن يمكن الحفظ بعد الانتهاء من إعداد المتغيرات
     }
 
     public function prepareAttributes()
@@ -765,8 +790,6 @@ class Edit extends Component
                 'product_data' => $productData
             ]);
 
-            // dd($productData);
-
             // تحديث المنتج
             $updatedProduct = $this->wooService->updateProduct($this->productId, $productData);
 
@@ -853,7 +876,6 @@ class Edit extends Component
             Toaster::success('تم تحديث المنتج بنجاح');
             session()->flash('success', 'تم تعديل المنتج بنجاح');
             return redirect()->route('product.index');
-
         } catch (\Exception $e) {
             // تسجيل الخطأ بشكل مفصل
             Log::error('خطأ في تحديث المنتج', [
