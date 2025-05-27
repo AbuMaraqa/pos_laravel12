@@ -19,7 +19,7 @@ class SettingsSeeder extends Seeder
         }
 
         $settings->site_name = 'Site Name';
-        $settings->logo_uuid = null;
+        $settings->logo = null;
 
         $settings->save();
     }
