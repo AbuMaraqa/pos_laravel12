@@ -224,7 +224,7 @@ class Add extends Component
 
                 case 'variable':
                     // طلب آخر تحديث للمتغيرات قبل الحفظ
-                    $this->dispatch('requestLatestVariations')->to('variation-manager');
+                    $this->dispatch('requestLatestVariations' , ['page' => 'add'])->to('variation-manager');
 
                     return; // ننتظر الرد من مدير المتغيرات
                     break;
@@ -253,6 +253,7 @@ class Add extends Component
             }
 
             $this->isSaving = true;
+
             $this->saveProduct();
 
         } catch (\Exception $e) {
