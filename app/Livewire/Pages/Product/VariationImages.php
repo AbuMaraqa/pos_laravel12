@@ -15,11 +15,13 @@ class VariationImages extends Component
     public $productId;
     public $file;
     public $variation;
+    public $variations = [];
     public array $variationsImage = [];
     public $mainImage;
     public $galleryImages = [];
     public $mainImageUpload;
     public $galleryUploads = [];
+    public $selectedVariationIds = []; // تغيير اسم المتغير
 
     protected WooCommerceService $wooService;
 
@@ -39,19 +41,22 @@ class VariationImages extends Component
         // صور الجاليري (كل الصور ما عدا الرئيسية)
         $this->galleryImages = [];
         if (!empty($product['images'])) {
-            // dd($product['images']);
             foreach ($product['images'] as $index => $img) {
                 if ($index > 0) {
                     $this->galleryImages[] = $img['src'];
                 }
             }
         }
+
+        // تهيئة المصفوفات
+        $this->selectedVariationIds = [];
+        $this->variationsImage = [];
     }
 
     #[Computed()]
     public function getVariationProduct()
     {
-        return $this->wooService->getProductVariations($this->productId , [
+        return $this->wooService->getProductVariations($this->productId, [
             'per_page' => 100,
             'page' => 1,
         ]);
@@ -63,21 +68,49 @@ class VariationImages extends Component
     {
         if ($value) {
             try {
-                // Upload the image to WordPress
                 $uploadedImage = $this->wooService->uploadImage($value);
 
-                // Update the variation with the new image
-                $this->wooService->updateProductVariation($this->productId, $key, [
-                    'image' => [
-                        'id' => $uploadedImage['id'],
-                        'src' => $uploadedImage['src']
-                    ]
-                ]);
-                Toaster::success('تم رفع صورة المتغير بنجاح');
+                // تحديث لكل المتغيرات المحددة
+                foreach ($this->selectedVariationIds as $variationId) {
+                    $this->wooService->updateProductVariation($this->productId, $variationId, [
+                        'image' => [
+                            'id' => $uploadedImage['id'],
+                            'src' => $uploadedImage['src']
+                        ]
+                    ]);
+                }
+
+                Toaster::success('تم تحديث صورة ' . count($this->selectedVariationIds) . ' متغير بنجاح');
+
+                // تفريغ الصورة بعد الرفع
                 $this->variationsImage[$key] = null;
             } catch (\Exception $e) {
-                Toaster::error('حدث خطأ أثناء رفع صورة المتغير: ' . $e->getMessage());
+                Toaster::error('حدث خطأ أثناء تحديث صور المتغيرات: ' . $e->getMessage());
             }
+        }
+    }
+
+
+    // دالة للتعامل مع العناصر المحددة
+    public function processSelectedVariations()
+    {
+        if (!empty($this->selectedVariationIds)) {
+            try {
+                foreach ($this->selectedVariationIds as $variationId) {
+                    // هنا يمكنك إضافة العمليات التي تريد تنفيذها على العناصر المحددة
+                    // مثال: حذف صور المتغيرات المحددة
+                    $this->wooService->updateProductVariation($this->productId, $variationId, [
+                        'image' => null
+                    ]);
+                }
+
+                Toaster::success('تم تنفيذ العملية على ' . count($this->selectedVariationIds) . ' عنصر بنجاح');
+                $this->selectedVariationIds = []; // إعادة تعيين التحديد
+            } catch (\Exception $e) {
+                Toaster::error('حدث خطأ أثناء تنفيذ العملية: ' . $e->getMessage());
+            }
+        } else {
+            Toaster::info('لم يتم تحديد أي عنصر');
         }
     }
 
