@@ -223,8 +223,6 @@
         </div>
     </div>
 
-    <pre>
-    {{ json_encode($receivedVariations, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) }}
-    </pre>
+
 
 </div>
