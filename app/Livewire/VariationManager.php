@@ -47,10 +47,14 @@ class VariationManager extends Component
     public function loadAttributes()
     {
         try {
-            $this->loadedAttributes = $this->wooService->getAttributes();
+            $this->loadedAttributes = $this->wooService->getAttributes([
+                'per_page' => 100
+            ]);
 
             foreach ($this->loadedAttributes as $attribute) {
-                $this->attributeTerms[$attribute['id']] = $this->wooService->getTermsForAttribute($attribute['id']);
+                $this->attributeTerms[$attribute['id']] = $this->wooService->getTermsForAttribute($attribute['id'] , [
+                    'per_page' => 100
+                ]);
             }
         } catch (\Exception $e) {
             Log::error('خطأ في تحميل الخصائص: ' . $e->getMessage());
@@ -77,6 +81,13 @@ class VariationManager extends Component
         ])->to($targetComponent);
     }
 
+/*************  ✨ Windsurf Command ⭐  *************/
+    /**
+     * توليد مجموعات المتغيرات من الخصائص المحددة
+     *
+     * @return void
+     */
+/*******  05fc9aa1-e6f3-4f4a-b244-bc1bf130f2bd  *******/
     public function generateVariations()
     {
         try {
