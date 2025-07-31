@@ -42,7 +42,8 @@
         <button x-show="showAttributesTab" @click="openTab = 4" :class="{ 'border-b-2 border-blue-500': openTab === 4 }"
             class="py-2 px-4 text-sm font-semibold focus:outline-none relative">
             {{ __('Attributes') }}
-            <span x-show="showAttributesTab && openTab !== 4" class="absolute top-0 right-0 -mt-1 -mr-1 px-2 py-1 text-xs font-bold text-white bg-red-500 rounded-full">!</span>
+            <span x-show="showAttributesTab && openTab !== 4"
+                class="absolute top-0 right-0 -mt-1 -mr-1 px-2 py-1 text-xs font-bold text-white bg-red-500 rounded-full">!</span>
         </button>
 
         <button @click="openTab = 5" :class="{ 'border-b-2 border-blue-500': openTab === 5 }"
@@ -83,11 +84,8 @@
         <!-- محتوى التبويب الثاني -->
         <div x-show="openTab === 2" x-transition>
             <div class="mb-3">
-                <flux:checkbox
-                    x-model="isStockManagementEnabled"
-                    wire:model.live="isStockManagementEnabled"
-                    value="Stock management"
-                    label="{{ __('Stock management') }}"
+                <flux:checkbox x-model="isStockManagementEnabled" wire:model.live="isStockManagementEnabled"
+                    value="Stock management" label="{{ __('Stock management') }}"
                     description="{{ __('Track stock quantity for this product.') }}" />
             </div>
 
@@ -107,7 +105,8 @@
                     <p class="text-xs text-gray-500 mt-1">Current value: {{ $allowBackorders }}</p>
                 </div>
                 <div class="mb-3">
-                    <flux:input wire:model.live="lowStockThreshold" type="number" label="عدد المنتجات المتبقية لوضع حالة مخزون المنتج كـ منخفض المخزون" />
+                    <flux:input wire:model.live="lowStockThreshold" type="number"
+                        label="عدد المنتجات المتبقية لوضع حالة مخزون المنتج كـ منخفض المخزون" />
                     <!-- Debug value -->
                     <p class="text-xs text-gray-500 mt-1">Current value: {{ $lowStockThreshold }}</p>
                 </div>
@@ -150,10 +149,8 @@
                 <li>أدخل سعر وكمية لكل متغير في الجدول الذي سيظهر</li>
               </ol>
             </div> --}}
-            <livewire:variation-manager
-                :productId="$productId"
-                :key="'variation-manager-'.$productId"
-            />
+            <livewire:variation-manager :productId="$productId" :variations="$variations ?? []" :attributeMap="$attributeMap ?? []" :selectedAttributes="$selectedAttributes ?? []"
+                :key="'variation-manager-' . $productId . '-' . md5(serialize($variations ?? []))" />
         </div>
 
         <div x-show="openTab === 5" x-transition>

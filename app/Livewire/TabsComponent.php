@@ -24,11 +24,15 @@ class TabsComponent extends Component
     public $terms;
     public $mrbpData = [];
     public $productId;
-    // protected $listeners  = ['productTypeChanged'];
+
+    // ✅ إضافة البيانات المطلوبة للمتغيرات
+    public $variations = [];
+    public $attributeMap = [];
+    public $selectedAttributes = [];
 
     protected WooCommerceService $wooService;
 
-    public function mount($productType, $regularPrice = null, $salePrice = null, $sku = null, $productId = null)
+    public function mount($productType, $regularPrice = null, $salePrice = null, $sku = null, $productId = null, $variations = [], $attributeMap = [], $selectedAttributes = [])
     {
         $this->productType = $productType;
         $this->localRegularPrice = $regularPrice;
@@ -37,12 +41,20 @@ class TabsComponent extends Component
         $this->showAttributesTab = ($productType === 'variable');
         $this->productId = $productId;
 
-        \Illuminate\Support\Facades\Log::info('TabsComponent mounted', [
+        // ✅ استقبال بيانات المتغيرات
+        $this->variations = $variations;
+        $this->attributeMap = $attributeMap;
+        $this->selectedAttributes = $selectedAttributes;
+
+        \Illuminate\Support\Facades\Log::info('TabsComponent mounted with variation data', [
             'productType' => $productType,
             'regularPrice' => $regularPrice,
             'salePrice' => $salePrice,
             'sku' => $sku,
-            'productId' => $productId
+            'productId' => $productId,
+            'variations_count' => count($variations),
+            'attributeMap_count' => count($attributeMap),
+            'selectedAttributes_count' => count($selectedAttributes)
         ]);
 
         // إذا كان المنتج موجود، نجلب البيانات من Edit Component
@@ -127,6 +139,18 @@ class TabsComponent extends Component
         $this->lowStockThreshold = $data['lowStockThreshold'] ?? null;
     }
 
+    // ✅ استقبال تحديثات المتغيرات من VariationManager
+    #[On('variationsUpdated')]
+    public function handleVariationsUpdated($data)
+    {
+        $this->variations = $data['variations'] ?? [];
+        $this->attributeMap = $data['attributeMap'] ?? [];
+
+        // إرسال التحديثات للمكون الرئيسي
+        $this->dispatch('variationsUpdated', $data)->to('pages.product.edit');
+        $this->dispatch('variationsUpdated', $data)->to('pages.product.add');
+    }
+
     #[Computed()]
     public function getRoles(){
         return $this->wooService->getRoles();
@@ -135,7 +159,10 @@ class TabsComponent extends Component
     public function render()
     {
         return view('livewire.tabs-component', [
-            'showAttributesTab' => $this->showAttributesTab
+            'showAttributesTab' => $this->showAttributesTab,
+            'variations' => $this->variations,
+            'attributeMap' => $this->attributeMap,
+            'selectedAttributes' => $this->selectedAttributes
         ]);
     }
 

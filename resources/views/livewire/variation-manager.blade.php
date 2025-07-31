@@ -1,74 +1,111 @@
-{{--<div>--}}
-{{--    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">--}}
-{{--        @foreach ($productAttributes as $attr)--}}
-{{--            <div class="p-4 border rounded shadow-md bg-white">--}}
-{{--                <h3 class="font-semibold text-xl mb-2">{{ $attr['name'] }}</h3>--}}
-
-{{--                <div class="flex flex-col gap-1">--}}
-{{--                    @foreach ($attributeTerms[$attr['id']] ?? [] as $term)--}}
-{{--                        <label class="inline-flex items-center space-x-2">--}}
-{{--                            <input--}}
-{{--                                type="checkbox"--}}
-{{--                                wire:model="selectedAttributes.{{ $attr['id'] }}"--}}
-{{--                                value="{{ $term['id'] }}"--}}
-{{--                                class="form-checkbox"--}}
-{{--                            >--}}
-{{--                            <span>{{ $term['name'] }}</span>--}}
-{{--                        </label>--}}
-{{--                    @endforeach--}}
-{{--                </div>--}}
-{{--            </div>--}}
-{{--        @endforeach--}}
-{{--    </div>--}}
-
-{{--    <div class="mt-6 flex items-center space-x-4 rtl:space-x-reverse">--}}
-{{--        <flux:button--}}
-{{--            wire:click="generateVariations"--}}
-{{--            wire:loading.attr="disabled"--}}
-{{--            wire:target="generateVariations"--}}
-{{--            loading--}}
-{{--            type="button"--}}
-{{--            class="btn btn-success"--}}
-{{--        >--}}
-{{--            توليد المتغيرات--}}
-{{--        </flux:button>--}}
-{{--    </div>--}}
-
-{{--    @if (count($variations))--}}
-{{--        <div class="mt-8">--}}
-{{--            <h3 class="text-lg font-semibold mb-4">المتغيرات الناتجة:</h3>--}}
-{{--            <div class="overflow-x-auto bg-white shadow-md rounded-lg">--}}
-{{--                <table class="min-w-full divide-y divide-gray-200 text-sm text-right">--}}
-{{--                    <thead class="bg-gray-100">--}}
-{{--                    <tr>--}}
-{{--                        @foreach ($attributeMap as $label)--}}
-{{--                            <th class="px-4 py-2 font-medium text-gray-700 whitespace-nowrap">--}}
-{{--                                {{ $label }}--}}
-{{--                            </th>--}}
-{{--                        @endforeach--}}
-{{--                    </tr>--}}
-{{--                    </thead>--}}
-{{--                    <tbody class="divide-y divide-gray-100">--}}
-{{--                    @foreach ($variations as $variation)--}}
-{{--                        <tr>--}}
-{{--                            @foreach ($variation['options'] as $option)--}}
-{{--                                <td class="px-4 py-2 text-gray-800 whitespace-nowrap">--}}
-{{--                                    {{ $option }}--}}
-{{--                                </td>--}}
-{{--                            @endforeach--}}
-{{--                        </tr>--}}
-{{--                    @endforeach--}}
-{{--                    </tbody>--}}
-{{--                </table>--}}
-{{--            </div>--}}
-{{--        </div>--}}
-{{--    @endif--}}
-{{--</div>--}}
 <div>
+    {{-- ✅ معلومات التشخيص المحسنة --}}
+    @if(app()->environment('local'))
+        <div class="mb-4 p-4 bg-gray-100 border rounded">
+            <h4 class="font-bold text-sm mb-2">معلومات التشخيص:</h4>
+            <div class="text-xs space-y-1">
+                <div><strong>Product ID:</strong> {{ $productId ?? 'null' }}</div>
+                <div><strong>Loaded Attributes:</strong> {{ count($loadedAttributes) }}</div>
+                <div><strong>Variations:</strong> {{ count($variations) }}</div>
+                <div><strong>Attribute Map:</strong> {{ count($attributeMap) }}</div>
+                <div><strong>Selected Attributes:</strong> {{ count($selectedAttributes) }}</div>
+
+                {{-- عرض Attribute Map بالتفصيل --}}
+                @if(!empty($attributeMap))
+                    <div><strong>Attribute Map Details:</strong></div>
+                    <div class="bg-white p-2 rounded mt-1">
+                        @foreach($attributeMap as $idx => $attr)
+                            <div class="text-xs mb-1">
+                                {{ $idx }}: ID={{ $attr['id'] ?? 'null' }}, Name="{{ $attr['name'] ?? 'null' }}"
+                            </div>
+                        @endforeach
+                    </div>
+                @endif
+
+                @if(!empty($variations) && count($variations) > 0)
+                    <div><strong>Sample Variation (Options Focus):</strong></div>
+                    <div class="bg-white p-2 rounded mt-1">
+                        @if(isset($variations[0]['options']))
+                            <div><strong>Options:</strong> {{ json_encode($variations[0]['options']) }}</div>
+                        @else
+                            <div class="text-red-600">❌ No options found in variation!</div>
+                        @endif
+                        <div><strong>Stock:</strong> "{{ $variations[0]['stock_quantity'] ?? 'not_set' }}"</div>
+                        <div><strong>Price:</strong> "{{ $variations[0]['regular_price'] ?? 'not_set' }}"</div>
+                    </div>
+
+                    <div><strong>All Variations Options:</strong></div>
+                    <div class="bg-white p-2 rounded mt-1 max-h-32 overflow-y-auto">
+                        @foreach($variations as $idx => $var)
+                            <div class="text-xs">
+                                Variation {{ $idx }}:
+                                @if(!empty($var['options']))
+                                    {{ implode(' | ', $var['options']) }}
+                                @else
+                                    <span class="text-red-600">Empty options</span>
+                                @endif
+                            </div>
+                        @endforeach
+                    </div>
+                @endif
+
+                @if(!empty($selectedAttributes))
+                    <div><strong>Selected Attributes Details:</strong></div>
+                    <div class="bg-white p-2 rounded mt-1">
+                        @foreach($selectedAttributes as $attrId => $terms)
+                            <div class="mb-2">
+                                <strong>Attribute {{ $attrId }}:</strong>
+                                @if(is_array($terms))
+                                    <div class="ml-4">
+                                        @foreach($terms as $termId => $value)
+                                            <div class="text-xs">
+                                                Term {{ $termId }}:
+                                                <span class="@if($value) text-green-600 @else text-red-600 @endif">
+                                                    {{ $value ? 'TRUE ✓' : 'FALSE ✗' }}
+                                                </span>
+                                                ({{ gettype($value) }})
+                                            </div>
+                                        @endforeach
+                                    </div>
+                                @else
+                                    <span class="text-orange-600">Not an array: {{ json_encode($terms) }}</span>
+                                @endif
+                            </div>
+                        @endforeach
+                    </div>
+                @else
+                    <div class="text-red-600"><strong>⚠️ Selected Attributes is EMPTY!</strong></div>
+                    @if(!empty($attributeMap))
+                        <div class="text-orange-600">But Attribute Map exists: {{ json_encode($attributeMap) }}</div>
+                    @endif
+                @endif
+            </div>
+        </div>
+    @endif
+
+    {{-- عرض رسالة إذا لم تكن هناك بيانات --}}
+    @if(empty($variations) && empty($attributeMap) && $productId)
+        <div class="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded">
+            <div class="flex items-center">
+                <svg class="w-5 h-5 text-yellow-400 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+                </svg>
+                <div>
+                    <p class="text-yellow-800 font-medium">لا توجد متغيرات محملة</p>
+                    <p class="text-yellow-700 text-sm">إما أن المنتج لا يحتوي على متغيرات، أو هناك مشكلة في تحميل البيانات</p>
+                </div>
+            </div>
+        </div>
+    @endif
+
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-6">
-        @foreach ($loadedAttributes as $attribute)
+        @forelse ($loadedAttributes as $attribute)
             <div class="p-4 border rounded shadow-md bg-white">
-                <h3 class="font-semibold text-xl mb-2">{{ $attribute['name'] }} <span class="text-sm text-gray-500">({{ count($attributeTerms[$attribute['id']] ?? []) }})</span></h3>
+                <h3 class="font-semibold text-xl mb-2">
+                    {{ $attribute['name'] }}
+                    <span class="text-sm text-gray-500">({{ count($attributeTerms[$attribute['id']] ?? []) }})</span>
+                </h3>
+
                 <div class="flex flex-wrap gap-2">
                     @php
                         $hasSelectedTerms = false;
@@ -80,8 +117,6 @@
                             }
                         }
                     @endphp
-
-
 
                     @foreach ($attributeTerms[$attribute['id']] ?? [] as $term)
                         <label class="inline-flex items-center p-2 border rounded-md hover:bg-gray-50 cursor-pointer
@@ -119,7 +154,15 @@
                     @endif
                 </div>
             </div>
-        @endforeach
+        @empty
+            <div class="col-span-full p-6 bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg text-center">
+                <svg class="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
+                    <path d="M8 14v20c0 4.418 7.163 8 16 8 1.381 0 2.721-.087 4-.252M8 14c0 4.418 7.163 8 16 8s16-3.582 16-8M8 14c0-4.418 7.163-8 16-8s16 3.582 16 8m0 0v14m-16-4c0 4.418 7.163 8 16 8 1.381 0 2.721-.087 4-.252" />
+                </svg>
+                <h3 class="mt-2 text-sm font-medium text-gray-900">لم يتم تحميل الخصائص</h3>
+                <p class="mt-1 text-sm text-gray-500">تحقق من الاتصال بقاعدة البيانات أو إعدادات WooCommerce</p>
+            </div>
+        @endforelse
     </div>
 
     {{-- Flash Messages --}}
@@ -158,23 +201,7 @@
 
     @if (count($variations))
         <div class="mt-8">
-            <h3 class="text-lg font-semibold mb-4">المتغيرات الناتجة:</h3>
-
-            {{-- Bulk Update Fields --}}
-            {{-- <div class="mb-4 grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div>
-                    <label class="block text-sm font-medium text-gray-700">السعر للكل</label>
-                    <input type="number" wire:model.live="allRegularPrice" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500">
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700">سعر الخصم للكل</label>
-                    <input type="number" wire:model.live="allSalePrice" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500">
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700">الكمية للكل</label>
-                    <input type="number" wire:model.live="allStockQuantity" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500">
-                </div>
-            </div> --}}
+            <h3 class="text-lg font-semibold mb-4">المتغيرات الناتجة: ({{ count($variations) }})</h3>
 
             <div class="overflow-x-auto bg-white shadow-md rounded-lg">
                 <table class="min-w-full divide-y divide-gray-200">
@@ -194,54 +221,84 @@
                                 <div><input type="number" wire:model.live="allSalePrice" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500" placeholder="سعر الخصم للكل"></div>
                             </th>
                             <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                <span>{{ __('الكمية') }}</span>
-                                <div><input type="number" wire:model.live="allStockQuantity" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500" placeholder="الكمية للكل"></div>
+                                <div class="flex flex-col">
+                                    <span>{{ __('الكمية') }}</span>
+                                    <input
+                                        type="number"
+                                        wire:model.live="allStockQuantity"
+                                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 text-xs"
+                                        placeholder="الكمية للكل"
+                                        step="1"
+                                        min="0"
+                                    >
+                                </div>
                             </th>
                             <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{{ __('الوصف') }}</th>
                         </tr>
                     </thead>
                     <tbody class="bg-white divide-y divide-gray-200">
                         @foreach($variations as $index => $variation)
-                            <tr>
+                            <tr class="@if(empty($variation['regular_price'])) bg-red-50 @else bg-white @endif">
                                 @foreach($variation['options'] as $option)
-                                    <td class="px-6 py-4 whitespace-nowrap">{{ $option }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm">{{ $option }}</td>
                                 @endforeach
                                 <td class="px-6 py-4 whitespace-nowrap">
                                     <input
                                         type="number"
-                                        wire:model="variations.{{ $index }}.regular_price"
+                                        wire:model.live="variations.{{ $index }}.regular_price"
                                         step="0.01"
                                         min="0"
-                                        class="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 bg-yellow-100"
-                                        placeholder="السعر"
+                                        class="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 text-sm
+                                            @if(empty($variation['regular_price'])) border-red-300 bg-red-50 @else bg-white border-green-300 @endif"
+                                        placeholder="السعر *"
+                                        required
                                     >
+                                    @if(empty($variation['regular_price']))
+                                        <p class="text-xs text-red-500 mt-1">مطلوب</p>
+                                    @endif
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap">
                                     <input
                                         type="number"
-                                        wire:model="variations.{{ $index }}.sale_price"
+                                        wire:model.live="variations.{{ $index }}.sale_price"
                                         step="0.01"
                                         min="0"
-                                        class="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 bg-yellow-100"
+                                        class="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 bg-yellow-50 text-sm"
                                         placeholder="سعر الخصم"
                                     >
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap">
+                                    @php
+                                        $stockValue = '';
+                                        if (isset($variation['stock_quantity'])) {
+                                            $stockValue = $variation['stock_quantity'];
+                                            // التأكد من أن القيمة ليست null
+                                            if (is_null($stockValue)) {
+                                                $stockValue = '';
+                                            }
+                                        }
+                                    @endphp
                                     <input
                                         type="number"
-                                        wire:model="variations.{{ $index }}.stock_quantity"
+                                        wire:model.live="variations.{{ $index }}.stock_quantity"
                                         step="1"
                                         min="0"
-                                        class="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 bg-yellow-100"
+                                        class="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 bg-blue-50 text-sm"
                                         placeholder="الكمية"
                                     >
+                                    <div class="text-xs text-gray-500 mt-1">
+                                        <div>من المصفوفة: "{{ $variation['stock_quantity'] ?? 'غير موجود' }}"</div>
+                                        <div>النوع: {{ gettype($variation['stock_quantity'] ?? null) }}</div>
+                                        <div>Livewire Value: {{ $variations[$index]['stock_quantity'] ?? 'غير موجود' }}</div>
+                                    </div>
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap">
                                     <input
                                         type="text"
-                                        wire:model="variations.{{ $index }}.description"
-                                        class="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 bg-yellow-100"
+                                        wire:model.live="variations.{{ $index }}.description"
+                                        class="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 text-sm"
                                         placeholder="الوصف"
+                                        value="{{ $variation['description'] ?? '' }}"
                                     >
                                 </td>
                             </tr>
@@ -251,51 +308,4 @@
             </div>
         </div>
     @endif
-
-    {{-- Debug information --}}
-
-{{--    <div class="mb-4">
-        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">الخصائص</label>
-        <div class="space-y-2">
-            @foreach($loadedAttributes as $attribute)
-                <div class="flex items-center">
-                    <input type="checkbox"
-                           wire:model="selectedAttributes.{{ $attribute['id'] }}"
-                           value="1"
-                           id="attribute_{{ $attribute['id'] }}"
-                           class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded dark:border-gray-600 dark:bg-gray-700">
-                    <label for="attribute_{{ $attribute['id'] }}" class="ml-2 block text-sm text-gray-900 dark:text-gray-300">
-                        {{ $attribute['name'] }}
-                    </label>
-                </div>
-                @if(isset($attributeTerms[$attribute['id']]))
-                    <div class="ml-4">
-                        @foreach($attributeTerms[$attribute['id']] as $term)
-                            <div class="flex items-center">
-                                <input type="checkbox"
-                                       wire:model="selectedAttributes.{{ $attribute['id'] }}.{{ $term['id'] }}"
-                                       value="1"
-                                       id="term_{{ $term['id'] }}"
-                                       class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded dark:border-gray-600 dark:bg-gray-700">
-                                <label for="term_{{ $term['id'] }}" class="ml-2 block text-sm text-gray-900 dark:text-gray-300">
-                                    {{ $term['name'] }}
-                                </label>
-                            </div>
-                        @endforeach
-                    </div>
-                @endif
-            @endforeach
-        </div>
-    </div> --}}
-
-{{--    <pre class="text-xs bg-gray-100 p-2 mt-4 rounded">--}}
-{{--    {{ json_encode($selectedAttributes, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) }}--}}
-{{--</pre>--}}
-
 </div>
-{{-- Remove any error messages --}}
-@if(!empty($errors))
-    {{-- This section is removed to disable validation errors --}}
-@endif
-
-

@@ -116,33 +116,56 @@
                         <flux:textarea wire:model="productDescription" label="{{ __('Product Description') }}"/>
                     </div>
                 </div>
+
                 <div class="col-span-1 max-w p-6 bg-white border border-gray-200 rounded-lg shadow-sm dark:bg-gray-900 dark:border-gray-700">
                     <div class="mb-3">
+                        {{-- ✅ تمرير جميع البيانات المطلوبة --}}
                         <livewire:tabs-component
                             :productId="$productId"
                             :productType="$productType"
                             :regular-price="$regularPrice"
                             :sale-price="$salePrice"
                             :sku="$sku"
-                            :key="'tabs-'.$productId"
+                            :variations="$variations"
+                            :attributeMap="$attributeMap"
+                            :selectedAttributes="$selectedAttributes"
+                            :key="'tabs-edit-'.$productId.'-'.count($variations)"
                         />
                     </div>
                 </div>
+
                 <div class="col-span-1 max-w p-6 bg-white border border-gray-200 rounded-lg shadow-sm dark:bg-gray-900 dark:border-gray-700">
                     <div class="mb-3">
                         <flux:heading size="xl">{{ __('Save Changes') }}</flux:heading>
                     </div>
                     <div class="mb-3">
-                        <flux:button wire:click="syncBeforeSave" wire:loading.remove wire:loading.attr="disabled" wire:target="syncBeforeSave" class="btn btn-primary">
-                            {{ __('Update Product') }}
+                        <flux:button
+                            wire:click="syncBeforeSave"
+                            wire:loading.attr="disabled"
+                            wire:target="syncBeforeSave"
+                            class="btn btn-primary"
+                        >
+                            <span wire:loading.remove wire:target="syncBeforeSave">
+                                {{ __('Update Product') }}
+                            </span>
+                            <span wire:loading wire:target="syncBeforeSave">
+                                {{ __('Updating...') }}
+                            </span>
                         </flux:button>
-                        <span wire:loading wire:target="syncBeforeSave" class="text-sm text-gray-500">
-                            {{ __('Updating...') }}
-                        </span>
+
+                        @if($productType === 'variable')
+                            <div class="mt-2 text-sm text-gray-600">
+                                <span>{{ __('Variations:') }} {{ count($variations) }}</span>
+                                @if(!empty($attributeMap))
+                                    <span class="ml-2">{{ __('Attributes:') }} {{ count($attributeMap) }}</span>
+                                @endif
+                            </div>
+                        @endif
                     </div>
                 </div>
             </div>
         </div>
+
         <div class="col-span-1">
             <div class="grid grid-cols-1 gap-4">
                 <div class="col-span-1 max-w p-6 bg-white border border-gray-200 rounded-lg shadow-sm dark:bg-gray-800 dark:border-gray-700">
@@ -150,25 +173,26 @@
                         <flux:heading size="xl">{{ __('Featured Image') }}</flux:heading>
                     </div>
                     <div class="mb-4">
-                        {{-- @if($featuredImage)
-                            <div class="relative">
-                                <img src="{{ $featuredImage }}" alt="Featured Image" class="w-full h-48 object-cover rounded-lg mb-2">
+                        @if($featuredImage)
+                            <div class="relative mb-4">
+                                <img src="{{ $featuredImage }}" alt="Featured Image" class="w-full h-48 object-cover rounded-lg">
                                 <button wire:click="removeFeaturedImage" type="button" class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1">
                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
                                     </svg>
                                 </button>
                             </div>
-                        @endif --}}
+                        @endif
                         <x-filepond::upload wire:model="file" />
                     </div>
                 </div>
+
                 <div class="col-span-1 max-w p-6 bg-white border border-gray-200 rounded-lg shadow-sm dark:bg-gray-800 dark:border-gray-700">
                     <div class="mb-3">
                         <flux:heading size="xl">{{ __('Gallery Images') }}</flux:heading>
                     </div>
                     <div class="mb-4">
-                        {{-- @if(!empty($galleryImages))
+                        @if(!empty($galleryImages))
                             <div class="grid grid-cols-3 gap-2 mb-2">
                                 @foreach($galleryImages as $index => $image)
                                     <div class="relative">
@@ -181,10 +205,11 @@
                                     </div>
                                 @endforeach
                             </div>
-                        @endif --}}
+                        @endif
                         <x-filepond::upload multiple wire:model="files" />
                     </div>
                 </div>
+
                 <div class="col-span-1 max-w p-6 bg-white border border-gray-200 rounded-lg shadow-sm dark:bg-gray-800 dark:border-gray-700">
                     <div class="mb-3">
                         <flux:heading size="xl">{{ __('Categories') }}</flux:heading>
@@ -206,16 +231,4 @@
             </div>
         </div>
     </div>
-
-    {{-- @if (session()->has('success'))
-        <div class="fixed bottom-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg">
-            {{ session('success') }}
-        </div>
-    @endif
-
-    @if (session()->has('error'))
-        <div class="fixed bottom-4 right-4 bg-red-500 text-white px-6 py-3 rounded-lg shadow-lg">
-            {{ session('error') }}
-        </div>
-    @endif --}}
 </div>
