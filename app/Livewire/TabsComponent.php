@@ -41,7 +41,7 @@ class TabsComponent extends Component
         $this->showAttributesTab = ($productType === 'variable');
         $this->productId = $productId;
 
-        // ✅ استقبال بيانات المتغيرات
+        // ✅ استقبال بيانات المتغيرات مع تسجيل مفصل
         $this->variations = $variations;
         $this->attributeMap = $attributeMap;
         $this->selectedAttributes = $selectedAttributes;
@@ -54,7 +54,8 @@ class TabsComponent extends Component
             'productId' => $productId,
             'variations_count' => count($variations),
             'attributeMap_count' => count($attributeMap),
-            'selectedAttributes_count' => count($selectedAttributes)
+            'selectedAttributes_count' => count($selectedAttributes),
+            'selectedAttributes_detail' => $selectedAttributes
         ]);
 
         // إذا كان المنتج موجود، نجلب البيانات من Edit Component
@@ -66,6 +67,19 @@ class TabsComponent extends Component
     public function boot(WooCommerceService $wooService): void
     {
         $this->wooService = $wooService;
+    }
+
+    #[On('requestAttributeData')]
+    public function requestAttributeDataFromEdit()
+    {
+        // طلب البيانات من Edit component
+        $this->dispatch('sendAttributesToVariationManager')->to('pages.product.edit');
+    }
+
+    #[On('sendAttributesToVariationManager')]
+    public function handleSendAttributesToVariationManager()
+    {
+        $this->sendAttributesToVariationManager();
     }
 
     #[On('productTypeChanged')]
@@ -149,6 +163,23 @@ class TabsComponent extends Component
         // إرسال التحديثات للمكون الرئيسي
         $this->dispatch('variationsUpdated', $data)->to('pages.product.edit');
         $this->dispatch('variationsUpdated', $data)->to('pages.product.add');
+    }
+
+    // ✅ استقبال تحديثات الخصائص المحددة
+    #[On('attributesSelected')]
+    public function handleAttributesSelected($data)
+    {
+        if (isset($data['selectedAttributes'])) {
+            $this->selectedAttributes = $data['selectedAttributes'];
+
+            \Illuminate\Support\Facades\Log::info('TabsComponent received attributes update', [
+                'selectedAttributes' => $this->selectedAttributes
+            ]);
+
+            // إرسال التحديثات للمكون الرئيسي
+            $this->dispatch('attributesSelected', $data)->to('pages.product.edit');
+            $this->dispatch('attributesSelected', $data)->to('pages.product.add');
+        }
     }
 
     #[Computed()]

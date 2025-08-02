@@ -127,22 +127,39 @@ class Edit extends Component
                             'name' => $systemAttribute['name']
                         ];
 
-                        // تحديد القيم المحددة
-                        $this->selectedAttributes[$attributeId] = [];
+                        // ✅ تحسين تحديد القيم المحددة - نحفظ IDs المحددة فقط
+                        $selectedTermIds = [];
+
                         if (!empty($attribute['options'])) {
                             foreach ($this->attributeTerms[$attributeId] as $term) {
                                 if (in_array($term['name'], $attribute['options'])) {
-                                    $this->selectedAttributes[$attributeId][$term['id']] = true;
+                                    $selectedTermIds[] = $term['id'];
                                 }
                             }
+                        }
+
+                        // حفظ IDs المحددة كمصفوفة بسيطة
+                        if (!empty($selectedTermIds)) {
+                            $this->selectedAttributes[$attributeId] = $selectedTermIds;
                         }
                     }
                 }
             }
         }
 
+        // تسجيل للتشخيص
+        Log::info('Selected attributes loaded:', [
+            'selectedAttributes' => $this->selectedAttributes,
+            'attributeMap' => $this->attributeMap
+        ]);
+
         // تحميل المتغيرات
         $this->loadProductVariations();
+
+        // ✅ إرسال البيانات لـ VariationManager بعد التحميل
+        $this->dispatch('updateSelectedAttributes', [
+            'selectedAttributes' => $this->selectedAttributes
+        ])->to('variation-manager');
     }
 
     protected function loadProductVariations()
@@ -246,6 +263,20 @@ class Edit extends Component
         if ($mrbpData) {
             $this->mrbpData = $mrbpData;
         }
+    }
+
+    // ✅ إضافة listener للحصول على إعدادات المخزون
+    #[On('getProductStockSettings')]
+    public function sendStockSettings()
+    {
+        $this->dispatch('updateStockSettings', [
+            'isStockManagementEnabled' => $this->isStockManagementEnabled,
+            'stockQuantity' => $this->stockQuantity,
+            'stockStatus' => $this->stockStatus,
+            'soldIndividually' => $this->soldIndividually,
+            'allowBackorders' => $this->allowBackorders,
+            'lowStockThreshold' => $this->lowStockThreshold,
+        ])->to('tabs-component');
     }
 
     #[On('updateMultipleFieldsFromTabs')]
@@ -469,6 +500,17 @@ class Edit extends Component
             'salePrice' => $this->salePrice,
             'sku' => $this->sku
         ])->to('tabs-component');
+    }
+
+    public function removeFeaturedImage()
+    {
+        $this->featuredImage = null;
+    }
+
+    public function removeGalleryImage($index)
+    {
+        unset($this->galleryImages[$index]);
+        $this->galleryImages = array_values($this->galleryImages);
     }
 
     public function render()

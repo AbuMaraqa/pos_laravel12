@@ -35,13 +35,53 @@ class VariationManager extends Component
     public function mount($productId = null, $variations = [], $attributeMap = [], $selectedAttributes = [])
     {
         $this->productId = $productId;
-
-        // ✅ نسخ البيانات للخصائص المحلية
         $this->variations = $variations;
         $this->attributeMap = $attributeMap;
         $this->selectedAttributes = $selectedAttributes;
 
+        Log::info('VariationManager mounted', [
+            'productId' => $productId,
+            'variations_count' => count($variations),
+            'attributeMap_count' => count($attributeMap),
+            'selectedAttributes_count' => count($selectedAttributes),
+            'selectedAttributes' => $selectedAttributes
+        ]);
+
         $this->loadAttributes();
+    }
+
+    /**
+     * معالجة selectedAttributes المرسلة من Edit component
+     */
+    private function processSelectedAttributes($selectedAttributes)
+    {
+        $processed = [];
+
+        if (empty($selectedAttributes)) {
+            return $processed;
+        }
+
+        // إذا كانت البيانات من Edit component (مصفوفة term IDs)
+        foreach ($selectedAttributes as $attributeId => $termIds) {
+            $processed[$attributeId] = [];
+
+            if (is_array($termIds)) {
+                // إذا كانت مصفوفة من IDs (من Edit)
+                if (array_is_list($termIds)) {
+                    // تهيئة جميع المصطلحات بـ false
+                    if (isset($this->attributeTerms[$attributeId])) {
+                        foreach ($this->attributeTerms[$attributeId] as $term) {
+                            $processed[$attributeId][$term['id']] = in_array($term['id'], $termIds);
+                        }
+                    }
+                } else {
+                    // إذا كانت مصفوفة key => boolean (من VariationManager)
+                    $processed[$attributeId] = $termIds;
+                }
+            }
+        }
+
+        return $processed;
     }
 
     public function loadAttributes()
@@ -56,9 +96,36 @@ class VariationManager extends Component
                     'per_page' => 100
                 ]);
             }
+
+            // ✅ بعد تحميل المصطلحات، نعيد معالجة selectedAttributes
+            if (!empty($this->selectedAttributes)) {
+                $this->selectedAttributes = $this->processSelectedAttributes($this->selectedAttributes);
+            }
+
+            Log::info('Attributes loaded', [
+                'loadedAttributes_count' => count($this->loadedAttributes),
+                'attributeTerms' => array_map(fn($terms) => count($terms), $this->attributeTerms),
+                'final_selectedAttributes' => $this->selectedAttributes
+            ]);
+
         } catch (\Exception $e) {
             Log::error('خطأ في تحميل الخصائص: ' . $e->getMessage());
             session()->flash('error', 'فشل في تحميل الخصائص');
+        }
+    }
+
+    // ✅ إضافة listener لاستقبال تحديثات من Edit component
+    #[On('updateSelectedAttributes')]
+    public function updateSelectedAttributesFromEdit($data)
+    {
+        Log::info('Received selectedAttributes update from Edit', $data);
+
+        if (isset($data['selectedAttributes'])) {
+            $this->selectedAttributes = $this->processSelectedAttributes($data['selectedAttributes']);
+
+            Log::info('Updated selectedAttributes in VariationManager', [
+                'new_selectedAttributes' => $this->selectedAttributes
+            ]);
         }
     }
 
@@ -81,13 +148,6 @@ class VariationManager extends Component
         ])->to($targetComponent);
     }
 
-/*************  ✨ Windsurf Command ⭐  *************/
-    /**
-     * توليد مجموعات المتغيرات من الخصائص المحددة
-     *
-     * @return void
-     */
-/*******  05fc9aa1-e6f3-4f4a-b244-bc1bf130f2bd  *******/
     public function generateVariations()
     {
         try {
@@ -294,6 +354,93 @@ class VariationManager extends Component
             'attributeMap' => $this->attributeMap
         ])->to($targetComponent);
     }
+
+    #[On('forceUpdateSelectedAttributes')]
+    public function forceUpdateSelectedAttributes($data)
+    {
+        Log::info('Force update received', $data);
+
+        $this->selectedAttributes = $data['selectedAttributes'] ?? [];
+        $this->attributeMap = $data['attributeMap'] ?? [];
+        $this->variations = $data['variations'] ?? [];
+
+        Log::info('VariationManager force updated', [
+            'selectedAttributes' => $this->selectedAttributes,
+            'attributeMap' => $this->attributeMap,
+            'variations_count' => count($this->variations)
+        ]);
+
+        // إعادة رسم المكون
+        $this->render();
+    }
+    public function sendAttributesToVariationManager()
+    {
+        // إرسال البيانات للـ VariationManager بعد التأكد من تحميلها
+        $this->dispatch('forceUpdateSelectedAttributes', [
+            'selectedAttributes' => $this->selectedAttributes,
+            'attributeMap' => $this->attributeMap,
+            'variations' => $this->variations
+        ])->to('variation-manager');
+
+        Log::info('Sent attributes to VariationManager', [
+            'selectedAttributes' => $this->selectedAttributes,
+            'attributeMap' => $this->attributeMap
+        ]);
+    }
+
+// تعديل دالة loadVariableProductData
+    protected function loadVariableProductData($product)
+    {
+        $this->attributeMap = [];
+        $this->selectedAttributes = [];
+
+        // معالجة خصائص المنتج
+        if (!empty($product['attributes'])) {
+            foreach ($product['attributes'] as $attribute) {
+                if (isset($attribute['id'])) {
+                    $attributeId = $attribute['id'];
+
+                    // إيجاد الخاصية في النظام
+                    $systemAttribute = collect($this->productAttributes)->firstWhere('id', $attributeId);
+
+                    if ($systemAttribute) {
+                        $this->attributeMap[] = [
+                            'id' => $attributeId,
+                            'name' => $systemAttribute['name']
+                        ];
+
+                        // حفظ IDs المحددة كمصفوفة boolean للـ VariationManager
+                        $this->selectedAttributes[$attributeId] = [];
+
+                        // تهيئة جميع المصطلحات بـ false
+                        foreach ($this->attributeTerms[$attributeId] as $term) {
+                            $this->selectedAttributes[$attributeId][$term['id']] = false;
+                        }
+
+                        // تحديد المصطلحات المحددة بـ true
+                        if (!empty($attribute['options'])) {
+                            foreach ($this->attributeTerms[$attributeId] as $term) {
+                                if (in_array($term['name'], $attribute['options'])) {
+                                    $this->selectedAttributes[$attributeId][$term['id']] = true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // تحميل المتغيرات
+        $this->loadProductVariations();
+
+        Log::info('Variable product data loaded', [
+            'selectedAttributes' => $this->selectedAttributes,
+            'attributeMap' => $this->attributeMap,
+            'variations_count' => count($this->variations)
+        ]);
+    }
+
+
 
     public function render()
     {

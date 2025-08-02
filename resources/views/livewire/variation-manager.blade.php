@@ -2,68 +2,29 @@
     {{-- ✅ معلومات التشخيص المحسنة --}}
     @if(app()->environment('local'))
         <div class="mb-4 p-4 bg-gray-100 border rounded">
-            <h4 class="font-bold text-sm mb-2">معلومات التشخيص:</h4>
+            <h4 class="font-bold text-sm mb-2">معلومات التشخيص المحسنة:</h4>
             <div class="text-xs space-y-1">
                 <div><strong>Product ID:</strong> {{ $productId ?? 'null' }}</div>
                 <div><strong>Loaded Attributes:</strong> {{ count($loadedAttributes) }}</div>
                 <div><strong>Variations:</strong> {{ count($variations) }}</div>
                 <div><strong>Attribute Map:</strong> {{ count($attributeMap) }}</div>
-                <div><strong>Selected Attributes:</strong> {{ count($selectedAttributes) }}</div>
+                <div><strong>Selected Attributes Keys:</strong> {{ count($selectedAttributes) }}</div>
 
-                {{-- عرض Attribute Map بالتفصيل --}}
-                @if(!empty($attributeMap))
-                    <div><strong>Attribute Map Details:</strong></div>
-                    <div class="bg-white p-2 rounded mt-1">
-                        @foreach($attributeMap as $idx => $attr)
-                            <div class="text-xs mb-1">
-                                {{ $idx }}: ID={{ $attr['id'] ?? 'null' }}, Name="{{ $attr['name'] ?? 'null' }}"
-                            </div>
-                        @endforeach
-                    </div>
-                @endif
-
-                @if(!empty($variations) && count($variations) > 0)
-                    <div><strong>Sample Variation (Options Focus):</strong></div>
-                    <div class="bg-white p-2 rounded mt-1">
-                        @if(isset($variations[0]['options']))
-                            <div><strong>Options:</strong> {{ json_encode($variations[0]['options']) }}</div>
-                        @else
-                            <div class="text-red-600">❌ No options found in variation!</div>
-                        @endif
-                        <div><strong>Stock:</strong> "{{ $variations[0]['stock_quantity'] ?? 'not_set' }}"</div>
-                        <div><strong>Price:</strong> "{{ $variations[0]['regular_price'] ?? 'not_set' }}"</div>
-                    </div>
-
-                    <div><strong>All Variations Options:</strong></div>
-                    <div class="bg-white p-2 rounded mt-1 max-h-32 overflow-y-auto">
-                        @foreach($variations as $idx => $var)
-                            <div class="text-xs">
-                                Variation {{ $idx }}:
-                                @if(!empty($var['options']))
-                                    {{ implode(' | ', $var['options']) }}
-                                @else
-                                    <span class="text-red-600">Empty options</span>
-                                @endif
-                            </div>
-                        @endforeach
-                    </div>
-                @endif
-
+                {{-- عرض Selected Attributes بالتفصيل --}}
                 @if(!empty($selectedAttributes))
-                    <div><strong>Selected Attributes Details:</strong></div>
-                    <div class="bg-white p-2 rounded mt-1">
+                    <div><strong>Selected Attributes Details (Component):</strong></div>
+                    <div class="bg-white p-2 rounded mt-1 max-h-48 overflow-y-auto">
                         @foreach($selectedAttributes as $attrId => $terms)
-                            <div class="mb-2">
+                            <div class="mb-2 border-b pb-2">
                                 <strong>Attribute {{ $attrId }}:</strong>
                                 @if(is_array($terms))
                                     <div class="ml-4">
                                         @foreach($terms as $termId => $value)
                                             <div class="text-xs">
                                                 Term {{ $termId }}:
-                                                <span class="@if($value) text-green-600 @else text-red-600 @endif">
-                                                    {{ $value ? 'TRUE ✓' : 'FALSE ✗' }}
-                                                </span>
-                                                ({{ gettype($value) }})
+                                                <span class="@if($value) text-green-600 font-bold @else text-gray-400 @endif">
+                                                {{ $value ? 'TRUE ✓' : 'FALSE ✗' }}
+                                            </span>
                                             </div>
                                         @endforeach
                                     </div>
@@ -74,15 +35,34 @@
                         @endforeach
                     </div>
                 @else
-                    <div class="text-red-600"><strong>⚠️ Selected Attributes is EMPTY!</strong></div>
-                    @if(!empty($attributeMap))
-                        <div class="text-orange-600">But Attribute Map exists: {{ json_encode($attributeMap) }}</div>
-                    @endif
+                    <div class="text-red-600"><strong>⚠️ Selected Attributes is EMPTY in Component!</strong></div>
+                @endif
+
+                {{-- عرض حالة التحديد الفعلية في النموذج --}}
+                @if(!empty($loadedAttributes))
+                    <div><strong>Form Selection Status:</strong></div>
+                    <div class="bg-white p-2 rounded mt-1">
+                        @foreach($loadedAttributes as $attribute)
+                            <div class="mb-1">
+                                <strong>{{ $attribute['name'] }} (ID: {{ $attribute['id'] }}):</strong>
+                                @if(isset($selectedAttributes[$attribute['id']]) && is_array($selectedAttributes[$attribute['id']]))
+                                    @php
+                                        $selectedCount = count(array_filter($selectedAttributes[$attribute['id']]));
+                                        $totalCount = count($selectedAttributes[$attribute['id']]);
+                                    @endphp
+                                    <span class="@if($selectedCount > 0) text-green-600 @else text-red-600 @endif">
+                                    {{ $selectedCount }}/{{ $totalCount }} selected
+                                </span>
+                                @else
+                                    <span class="text-red-600">No data</span>
+                                @endif
+                            </div>
+                        @endforeach
+                    </div>
                 @endif
             </div>
         </div>
     @endif
-
     {{-- عرض رسالة إذا لم تكن هناك بيانات --}}
     @if(empty($variations) && empty($attributeMap) && $productId)
         <div class="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded">
