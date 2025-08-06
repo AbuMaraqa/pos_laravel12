@@ -1315,44 +1315,30 @@ class WooCommerceService
         }
 
         // --- تعديل هنا لمعالجة stock_quantity كـ integer أو null ---
+        $stockQuantity = null;
         if (isset($variation['stock_quantity'])) {
-            // إذا كانت القيمة رقمية، حولها إلى integer
             if (is_numeric($variation['stock_quantity'])) {
-                $cleanData['stock_quantity'] = (int)$variation['stock_quantity'];
+                $stockQuantity = (int)$variation['stock_quantity'];
+            } else if ($variation['stock_quantity'] === '') {
+                $stockQuantity = null; // Keep null for empty string if not managed
+            } else if (is_null($variation['stock_quantity'])) {
+                $stockQuantity = null;
+            } else {
+                $stockQuantity = $variation['stock_quantity']; // Fallback for unexpected types
             }
-            // إذا كانت موجودة ولكنها فارغة (سلسلة نصية فارغة)، اجعلها null
-            else if ($variation['stock_quantity'] === '') {
-                $cleanData['stock_quantity'] = null;
-            }
-            // إذا كانت null، اجعلها null
-            else if (is_null($variation['stock_quantity'])) {
-                $cleanData['stock_quantity'] = null;
-            }
-            // لأي حالات أخرى غير متوقعة، استخدم القيمة كما هي (للتصحيح أو حالات خاصة)
-            else {
-                $cleanData['stock_quantity'] = $variation['stock_quantity'];
-            }
-        } else {
-            // إذا لم تكن موجودة (لم يتم تعيينها)، اجعلها null
-            $cleanData['stock_quantity'] = null;
         }
 
-        // --- منطق جديد: ضمان أن stock_quantity هو 0 إذا كان manage_stock صحيحًا وكان null/فارغًا ---
-        // هذا حل شائع لـ WooCommerce API حيث قد يتم تجاهل الكمية null
-        // عندما يكون manage_stock صحيحًا للمتغير.
-        // نفترض أن manage_stock يتم إرساله كـ true للمتغيرات التي يتم إدارة مخزونها.
-        // يمكن إضافة 'manage_stock' => true إلى $cleanedVariation في Edit.php->prepareVariationsForSync()
-        // إذا لم يكن موجودًا بالفعل.
+        // Crucial: If stock is managed, send 0 instead of null for empty quantities
+        // This is often required by WooCommerce API
+        // Check if 'manage_stock' is explicitly true in the variation data being sent
+        // (assuming it's passed correctly from prepareVariationsForSync)
         if (isset($variation['manage_stock']) && $variation['manage_stock'] === true) {
-            if (!isset($cleanData['stock_quantity']) || is_null($cleanData['stock_quantity'])) {
-                $cleanData['stock_quantity'] = 0; // إرسال 0 إذا كان المخزون يُدار وكانت الكمية null/فارغة
-                Log::info('Sanitized stock_quantity to 0 because manage_stock is true and quantity was null/empty.', [
-                    'original_value' => $variation['stock_quantity'] ?? 'not_set',
-                    'cleaned_value' => $cleanData['stock_quantity']
-                ]);
+            if (is_null($stockQuantity)) { // If it's null (empty input) and managed, send 0
+                $stockQuantity = 0;
             }
         }
-        // --- نهاية المنطق الجديد ---
+        $cleanData['stock_quantity'] = $stockQuantity;
+        // --- نهاية التعديل ---
 
         // --- باقي الحقول كما هي ---
         if (isset($variation['sku'])) {
