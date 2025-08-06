@@ -328,6 +328,10 @@ class Edit extends Component
                     $systemAttribute = collect($this->productAttributes)->firstWhere('id', $attributeId);
 
                     if ($systemAttribute) {
+                        Log::info("تم العثور على الخاصية في النظام:", [
+                            'system_attribute' => $systemAttribute
+                        ]);
+
                         $this->attributeMap[] = [
                             'id' => $attributeId,
                             'name' => $systemAttribute['name']
@@ -444,21 +448,30 @@ class Edit extends Component
                     ]);
                 }
 
-                // تحسين معالجة stock_quantity
-                $stockQuantity = '';
+                // --- تعديل هنا لمعالجة stock_quantity كـ integer أو null ---
+                $stockQuantity = null; // القيمة الافتراضية null
                 if (isset($variation['stock_quantity'])) {
-                    $stockQuantity = $variation['stock_quantity'];
-                    if (is_null($stockQuantity)) {
-                        $stockQuantity = '';
+                    // إذا كانت القيمة موجودة ورقمية، حولها إلى integer
+                    if (is_numeric($variation['stock_quantity'])) {
+                        $stockQuantity = (int)$variation['stock_quantity'];
+                    }
+                    // إذا كانت موجودة ولكنها ليست رقمية (مثل سلسلة نصية فارغة)، اجعلها null
+                    else if ($variation['stock_quantity'] === '') {
+                        $stockQuantity = null;
+                    }
+                    // إذا كانت أي شيء آخر، استخدم القيمة كما هي (للتصحيح أو حالات خاصة)
+                    else {
+                        $stockQuantity = $variation['stock_quantity'];
                     }
                 }
+                // --- نهاية التعديل ---
 
                 $variationData = [
                     'id' => $variation['id'] ?? null,
                     'options' => $options,
                     'regular_price' => $variation['regular_price'] ?? '',
                     'sale_price' => $variation['sale_price'] ?? '',
-                    'stock_quantity' => $stockQuantity,
+                    'stock_quantity' => $stockQuantity, // ستكون الآن integer أو null
                     'description' => $variation['description'] ?? '',
                     'sku' => $variation['sku'] ?? '',
                 ];

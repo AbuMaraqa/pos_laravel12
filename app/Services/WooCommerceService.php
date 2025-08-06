@@ -6,6 +6,7 @@ use App\Models\Subscription;
 use GuzzleHttp\Client;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Curl;
+use Illuminate\Support\Facades\Log; // تأكد من استيراد Log
 
 class WooCommerceService
 {
@@ -237,8 +238,7 @@ class WooCommerceService
         return $this->get('products', $query);
     }
 
-/*************  ✨ Windsurf Command ⭐  *************/
-/*******  44b5cbc6-0057-44ce-8184-da095224846f  *******/    public function deleteProductById($id): array
+    public function deleteProductById($id): array
     {
         return $this->delete('products/' . $id);
     }
@@ -259,15 +259,19 @@ class WooCommerceService
             $response = $this->get("products/{$productId}/variations", [
                 'per_page' => 100, // Get up to 100 variations
                 'status' => 'publish'
-            ])['data'];
-
-            // Log the response for debugging
-            logger()->info('Retrieved variations for product', [
-                'productId' => $productId,
-                'count' => count($response)
             ]);
 
-            return $response;
+            // التحقق مما إذا كانت الاستجابة مصفوفة ارتباطية تحتوي على مفتاح 'data'
+            // هذا يتعامل مع الحالة التي تقوم فيها دالة get() بتغليف البيانات الفعلية
+            $variations = is_array($response) && isset($response['data']) ? $response['data'] : $response;
+
+            // تسجيل الاستجابة لأغراض التصحيح
+            logger()->info('Retrieved variations for product', [
+                'productId' => $productId,
+                'count' => count($variations)
+            ]);
+
+            return $variations;
         } catch (\Exception $e) {
             logger()->error('Failed to get variations', [
                 'productId' => $productId,
@@ -309,7 +313,8 @@ class WooCommerceService
 
     public function getAttributes(array $query = []): array
     {
-        return $this->get('products/attributes', $query)['data'];
+        $response = $this->get('products/attributes', $query);
+        return $response['data'] ?? [];
     }
 
     public function getVariationById($id): array
@@ -368,17 +373,31 @@ class WooCommerceService
 
     public function getTermsForAttribute($attributeId, array $query = []): array
     {
-        return $this->get("products/attributes/{$attributeId}/terms", $query)['data'];
+        $response = $this->get("products/attributes/{$attributeId}/terms", $query);
+        return $response['data'] ?? [];
     }
 
     public function getAttributeById($id): array
     {
-        return $this->get("products/attributes/{$id}");
+        $response = $this->get("products/attributes/{$id}");
+        return $response['data'] ?? [];
+    }
+
+    public function getAttribute($attributeId): array
+    {
+        try {
+            $response = $this->get("products/attributes/{$attributeId}");
+            return $response;
+        } catch (\Exception $e) {
+            Log::error("Failed to get attribute {$attributeId}: " . $e->getMessage());
+            return [];
+        }
     }
 
     public function getTermsByAttributeId($attributeId, array $query = []): array
     {
-        return $this->get("products/attributes/{$attributeId}/terms", $query);
+        $response = $this->get("products/attributes/{$attributeId}/terms", $query);
+        return $response['data'] ?? [];
     }
 
     public function deleteTerm($attributeId, $termId, array $query = []): array
@@ -395,12 +414,8 @@ class WooCommerceService
             ]);
 
             return $this->put("products/{$productId}", $data);
-        } catch (\Exception $e) {
-            logger()->error('Failed to update product', [
-                'productId' => $productId,
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
+        } catch (\GuzzleHttp\Exception\RequestException $e) {
+            logger()->error('WooCommerce PUT Error: ' . $e->getMessage());
             throw $e;
         }
     }
@@ -1297,9 +1312,29 @@ class WooCommerceService
             $cleanData['regular_price'] = (string)$variation['regular_price'];
         }
 
+        // --- تعديل هنا لمعالجة stock_quantity كـ integer أو null ---
         if (isset($variation['stock_quantity'])) {
-            $cleanData['stock_quantity'] = (int)$variation['stock_quantity'];
+            // إذا كانت القيمة رقمية، حولها إلى integer
+            if (is_numeric($variation['stock_quantity'])) {
+                $cleanData['stock_quantity'] = (int)$variation['stock_quantity'];
+            }
+            // إذا كانت موجودة ولكنها فارغة (سلسلة نصية فارغة)، اجعلها null
+            else if ($variation['stock_quantity'] === '') {
+                $cleanData['stock_quantity'] = null;
+            }
+            // إذا كانت null، اجعلها null
+            else if (is_null($variation['stock_quantity'])) {
+                $cleanData['stock_quantity'] = null;
+            }
+            // لأي حالات أخرى غير متوقعة، استخدم القيمة كما هي (للتصحيح)
+            else {
+                $cleanData['stock_quantity'] = $variation['stock_quantity'];
+            }
+        } else {
+            // إذا لم تكن موجودة (لم يتم تعيينها)، اجعلها null
+            $cleanData['stock_quantity'] = null;
         }
+        // --- نهاية التعديل ---
 
         if (isset($variation['sku'])) {
             $cleanData['sku'] = (string)$variation['sku'];

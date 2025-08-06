@@ -293,7 +293,7 @@ class VariationManager extends Component
             }
         }
 
-        if (empty($validVariations)) {
+        if (empty($validVariations)) { // تم تصحيح اسم المتغير هنا
             session()->flash('error', 'لا توجد متغيرات صالحة للحفظ. يرجى التأكد من إدخال الأسعار.');
             return;
         }
@@ -326,7 +326,7 @@ class VariationManager extends Component
     {
         if (!empty($value) && is_numeric($value)) {
             foreach ($this->variations as $index => $variation) {
-                $this->variations[$index]['regular_price'] = $value;
+                $this->variations[$index]['regular_price'] = (string)$value; // تأكد من أنها string لـ WC API
             }
             $this->notifyParentOfUpdate();
         }
@@ -336,7 +336,7 @@ class VariationManager extends Component
     {
         if (!empty($value) && is_numeric($value)) {
             foreach ($this->variations as $index => $variation) {
-                $this->variations[$index]['sale_price'] = $value;
+                $this->variations[$index]['sale_price'] = (string)$value; // تأكد من أنها string لـ WC API
             }
             $this->notifyParentOfUpdate();
         }
@@ -344,13 +344,36 @@ class VariationManager extends Component
 
     public function updatedAllStockQuantity($value)
     {
-        if (!empty($value) && is_numeric($value)) {
-            foreach ($this->variations as $index => $variation) {
-                $this->variations[$index]['stock_quantity'] = $value;
-            }
+        // تحويل القيمة إلى عدد صحيح بشكل صريح، أو null إذا كانت فارغة
+        $cleanedValue = (empty($value) && $value !== 0 && $value !== '0') ? null : (int)$value;
+
+        foreach ($this->variations as $index => $variation) {
+            $this->variations[$index]['stock_quantity'] = $cleanedValue;
+        }
+        $this->notifyParentOfUpdate();
+    }
+
+    /**
+     * دالة لمعالجة تحديث الكمية لكل متغير على حدة
+     * وتضمن تحويلها إلى عدد صحيح.
+     */
+    public function syncStockQuantity($value, $index)
+    {
+        // تحويل القيمة إلى عدد صحيح بشكل صريح، أو null إذا كانت فارغة
+        $cleanedValue = (empty($value) && $value !== 0 && $value !== '0') ? null : (int)$value;
+
+        if (isset($this->variations[$index])) {
+            $this->variations[$index]['stock_quantity'] = $cleanedValue;
+            Log::info('Individual stock quantity updated', [
+                'index' => $index,
+                'value' => $value,
+                'cleaned_value' => $cleanedValue,
+                'type_after_sync' => gettype($this->variations[$index]['stock_quantity'])
+            ]);
             $this->notifyParentOfUpdate();
         }
     }
+
 
     public function updatedVariations($value, $name)
     {
@@ -360,6 +383,9 @@ class VariationManager extends Component
             'value' => $value,
             'all_variations' => $this->variations
         ]);
+
+        // لا يتم تحويل stock_quantity هنا، بل يتم الاعتماد على syncStockQuantity
+        // للحقول الفردية وعلى updatedAllStockQuantity للحقول الجماعية.
 
         $this->notifyParentOfUpdate();
     }
