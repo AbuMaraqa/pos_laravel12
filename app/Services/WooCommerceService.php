@@ -1199,7 +1199,8 @@ class WooCommerceService
                         if (!$roleEntryExists) {
                             // إنشاء قيمة جديدة بالتنسيق المباشر
                             $newRoleValues[] = [
-                                $roleId => ucfirst($roleId),
+                                'id' => $roleId, // إضافة ID للدور
+                                'name' => ucfirst($roleId),
                                 'mrbp_regular_price' => $value,
                                 'mrbp_sale_price' => $value,
                                 'mrbp_make_empty_price' => ""
@@ -1218,7 +1219,8 @@ class WooCommerceService
                     'key' => 'mrbp_role',
                     'value' => [
                         [
-                            $roleId => ucfirst($roleId),
+                            'id' => $roleId, // إضافة ID للدور
+                            'name' => ucfirst($roleId),
                             'mrbp_regular_price' => $value,
                             'mrbp_sale_price' => $value,
                             'mrbp_make_empty_price' => ""
@@ -1326,7 +1328,7 @@ class WooCommerceService
             else if (is_null($variation['stock_quantity'])) {
                 $cleanData['stock_quantity'] = null;
             }
-            // لأي حالات أخرى غير متوقعة، استخدم القيمة كما هي (للتصحيح)
+            // لأي حالات أخرى غير متوقعة، استخدم القيمة كما هي (للتصحيح أو حالات خاصة)
             else {
                 $cleanData['stock_quantity'] = $variation['stock_quantity'];
             }
@@ -1334,8 +1336,25 @@ class WooCommerceService
             // إذا لم تكن موجودة (لم يتم تعيينها)، اجعلها null
             $cleanData['stock_quantity'] = null;
         }
-        // --- نهاية التعديل ---
 
+        // --- منطق جديد: ضمان أن stock_quantity هو 0 إذا كان manage_stock صحيحًا وكان null/فارغًا ---
+        // هذا حل شائع لـ WooCommerce API حيث قد يتم تجاهل الكمية null
+        // عندما يكون manage_stock صحيحًا للمتغير.
+        // نفترض أن manage_stock يتم إرساله كـ true للمتغيرات التي يتم إدارة مخزونها.
+        // يمكن إضافة 'manage_stock' => true إلى $cleanedVariation في Edit.php->prepareVariationsForSync()
+        // إذا لم يكن موجودًا بالفعل.
+        if (isset($variation['manage_stock']) && $variation['manage_stock'] === true) {
+            if (!isset($cleanData['stock_quantity']) || is_null($cleanData['stock_quantity'])) {
+                $cleanData['stock_quantity'] = 0; // إرسال 0 إذا كان المخزون يُدار وكانت الكمية null/فارغة
+                Log::info('Sanitized stock_quantity to 0 because manage_stock is true and quantity was null/empty.', [
+                    'original_value' => $variation['stock_quantity'] ?? 'not_set',
+                    'cleaned_value' => $cleanData['stock_quantity']
+                ]);
+            }
+        }
+        // --- نهاية المنطق الجديد ---
+
+        // --- باقي الحقول كما هي ---
         if (isset($variation['sku'])) {
             $cleanData['sku'] = (string)$variation['sku'];
         }

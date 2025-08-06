@@ -1145,9 +1145,19 @@ class Edit extends Component
 
             // تنظيف الكمية
             $stockQuantity = null;
+            // إذا كانت القيمة موجودة وليست فارغة (سلسلة نصية فارغة)، حولها إلى int
             if (isset($variation['stock_quantity']) && $variation['stock_quantity'] !== '') {
                 $stockQuantity = (int) $variation['stock_quantity'];
             }
+            // إذا كانت القيمة 0 (كرقم أو كنص)، يجب أن تظل 0
+            else if (isset($variation['stock_quantity']) && ($variation['stock_quantity'] === 0 || $variation['stock_quantity'] === '0')) {
+                $stockQuantity = 0;
+            }
+            // في أي حالة أخرى (null، أو غير موجودة، أو فارغة)، تكون null
+            else {
+                $stockQuantity = null;
+            }
+
 
             $cleanedVariation = [
                 'id' => $variation['id'] ?? null,
