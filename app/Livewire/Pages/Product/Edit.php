@@ -40,6 +40,10 @@ class Edit extends Component
     public $lowStockThreshold;
     public $allowBackorders;
 
+    // حالات التحديث والحفظ
+    public $isRefreshing = false;
+    public $isSaving = false;
+
     protected WooCommerceService $wooService;
 
     public function boot(WooCommerceService $wooService)
@@ -54,13 +58,208 @@ class Edit extends Component
         $this->loadProduct();
     }
 
+    /**
+     * جلب جميع الخصائص من WooCommerce مع التحديث
+     */
     public function fetchProductAttributes()
     {
-        $this->productAttributes = $this->wooService->getAttributes();
+        try {
+            $this->isRefreshing = true;
 
-        foreach ($this->productAttributes as $attr) {
-            $attributeId = $attr['id'];
-            $this->attributeTerms[$attributeId] = $this->wooService->getTermsForAttribute($attributeId);
+            Log::info('بدء جلب الخصائص من WooCommerce');
+
+            // جلب البيانات من API
+            $response = $this->wooService->getAttributes();
+
+            // تشخيص هيكل البيانات المستلمة
+            Log::info('هيكل البيانات المستلمة:', [
+                'response_keys' => array_keys($response),
+                'has_data_key' => isset($response['data']),
+                'response_type' => gettype($response)
+            ]);
+
+            // استخراج البيانات من مفتاح "data" أو استخدام البيانات مباشرة
+            if (isset($response['data']) && is_array($response['data'])) {
+                $this->productAttributes = $response['data'];
+            } else {
+                $this->productAttributes = $response;
+            }
+
+            Log::info('تم جلب الخصائص:', [
+                'attributes_count' => count($this->productAttributes),
+                'first_attribute' => $this->productAttributes[0] ?? null
+            ]);
+
+            // جلب المصطلحات لكل خاصية
+            $this->attributeTerms = [];
+            foreach ($this->productAttributes as $attr) {
+                if (!isset($attr['id'])) {
+                    Log::warning('تجاهل خاصية بدون ID:', $attr);
+                    continue;
+                }
+
+                try {
+                    $termsResponse = $this->wooService->getTermsForAttribute($attr['id']);
+
+                    // تشخيص هيكل المصطلحات
+                    Log::info("هيكل مصطلحات الخاصية {$attr['id']}:", [
+                        'response_keys' => is_array($termsResponse) ? array_keys($termsResponse) : 'not_array',
+                        'has_data_key' => isset($termsResponse['data'])
+                    ]);
+
+                    // استخراج المصطلحات
+                    if (isset($termsResponse['data']) && is_array($termsResponse['data'])) {
+                        $this->attributeTerms[$attr['id']] = $termsResponse['data'];
+                    } else {
+                        $this->attributeTerms[$attr['id']] = $termsResponse;
+                    }
+
+                    Log::info("تم جلب مصطلحات الخاصية {$attr['name']}:", [
+                        'attribute_id' => $attr['id'],
+                        'terms_count' => count($this->attributeTerms[$attr['id']]),
+                        'sample_term' => $this->attributeTerms[$attr['id']][0] ?? null
+                    ]);
+                } catch (\Exception $e) {
+                    Log::error("فشل في جلب مصطلحات الخاصية {$attr['id']}:", [
+                        'error' => $e->getMessage()
+                    ]);
+                    $this->attributeTerms[$attr['id']] = [];
+                }
+            }
+
+            $this->isRefreshing = false;
+
+            // إذا لم تكن هذه المرة الأولى (في mount)، أظهر رسالة نجاح
+            if (!empty($this->productName)) {
+                Toaster::success('تم تحديث الخصائص والمصطلحات بنجاح');
+            }
+
+            Log::info('انتهاء جلب الخصائص:', [
+                'total_attributes' => count($this->productAttributes),
+                'attributes_with_terms' => count($this->attributeTerms)
+            ]);
+
+        } catch (\Exception $e) {
+            $this->isRefreshing = false;
+            Log::error('خطأ في جلب الخصائص: ' . $e->getMessage());
+            $this->productAttributes = [];
+            $this->attributeTerms = [];
+
+            // إذا لم تكن هذه المرة الأولى، أظهر رسالة خطأ
+            if (!empty($this->productName)) {
+                Toaster::error('حدث خطأ في تحديث الخصائص: ' . $e->getMessage());
+            }
+        }
+    }
+
+    /**
+     * تحديث شامل للخصائص والمصطلحات والمتغيرات
+     */
+    public function refreshAll()
+    {
+        try {
+            Log::info('=== بدء التحديث الشامل ===', [
+                'product_id' => $this->productId,
+                'product_type' => $this->productType
+            ]);
+
+            // 1. تحديث الخصائص والمصطلحات أولاً
+            $this->fetchProductAttributes();
+
+            // 2. إعادة تحميل بيانات المنتج مع المتغيرات (بعد تحديث الخصائص)
+            $this->loadProduct();
+
+            // 3. إرسال التحديث للمكونات الفرعية
+            $this->dispatch('attributesRefreshed', [
+                'productAttributes' => $this->productAttributes,
+                'attributeTerms' => $this->attributeTerms
+            ]);
+
+            // 4. إذا كان المنتج متغير، أرسل التحديث للـ VariationManager
+            if ($this->productType === 'variable') {
+                $this->dispatch('updateSelectedAttributes', [
+                    'selectedAttributes' => $this->selectedAttributes
+                ])->to('variation-manager');
+
+                $this->dispatch('variationsGenerated', [
+                    'variations' => $this->variations,
+                    'attributeMap' => $this->attributeMap
+                ])->to('variation-manager');
+
+                Log::info('تم إرسال تحديث المتغيرات:', [
+                    'variations_count' => count($this->variations),
+                    'attributeMap_count' => count($this->attributeMap),
+                    'selectedAttributes' => array_keys($this->selectedAttributes)
+                ]);
+            }
+
+            Toaster::success('✅ تم التحديث الشامل بنجاح');
+
+            Log::info('=== انتهاء التحديث الشامل بنجاح ===');
+
+        } catch (\Exception $e) {
+            Log::error('خطأ في التحديث الشامل: ' . $e->getMessage());
+            Toaster::error('❌ فشل التحديث: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * تحديث خاصية معينة ومصطلحاتها
+     */
+    public function refreshAttribute($attributeId)
+    {
+        try {
+            Log::info("بدء تحديث الخاصية: {$attributeId}");
+
+            // تحديث مصطلحات الخاصية المحددة
+            $terms = $this->wooService->getTermsForAttribute($attributeId);
+            $this->attributeTerms[$attributeId] = $terms['data'] ?? $terms;
+
+            // البحث عن الخاصية في القائمة وتحديثها
+            $attributeIndex = collect($this->productAttributes)->search(function ($attr) use ($attributeId) {
+                return $attr['id'] == $attributeId;
+            });
+
+            if ($attributeIndex !== false) {
+                $updatedAttribute = $this->wooService->getAttribute($attributeId);
+                if ($updatedAttribute) {
+                    $this->productAttributes[$attributeIndex] = $updatedAttribute;
+                }
+            }
+
+            Toaster::success('تم تحديث الخاصية بنجاح');
+
+            Log::info("انتهاء تحديث الخاصية {$attributeId}:", [
+                'terms_count' => count($this->attributeTerms[$attributeId])
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error("خطأ في تحديث الخاصية {$attributeId}: " . $e->getMessage());
+            Toaster::error('فشل تحديث الخاصية');
+        }
+    }
+
+    /**
+     * إعادة تحميل بيانات المنتج من WooCommerce
+     */
+    public function reloadProduct()
+    {
+        try {
+            $this->isRefreshing = true;
+
+            Log::info('إعادة تحميل بيانات المنتج من WooCommerce:', [
+                'product_id' => $this->productId
+            ]);
+
+            $this->loadProduct();
+
+            $this->isRefreshing = false;
+            Toaster::success('تم تحديث بيانات المنتج بنجاح');
+
+        } catch (\Exception $e) {
+            $this->isRefreshing = false;
+            Log::error('خطأ في إعادة تحميل المنتج: ' . $e->getMessage());
+            Toaster::error('فشل في تحديث بيانات المنتج');
         }
     }
 
@@ -109,6 +308,11 @@ class Edit extends Component
 
     protected function loadVariableProductData($product)
     {
+        Log::info('=== بدء تحميل بيانات المنتج المتغير ===', [
+            'product_attributes' => $product['attributes'] ?? [],
+            'system_attributes_count' => count($this->productAttributes)
+        ]);
+
         $this->attributeMap = [];
         $this->selectedAttributes = [];
 
@@ -117,6 +321,8 @@ class Edit extends Component
             foreach ($product['attributes'] as $attribute) {
                 if (isset($attribute['id'])) {
                     $attributeId = $attribute['id'];
+
+                    Log::info("معالجة الخاصية ID: {$attributeId}");
 
                     // إيجاد الخاصية في النظام
                     $systemAttribute = collect($this->productAttributes)->firstWhere('id', $attributeId);
@@ -127,28 +333,50 @@ class Edit extends Component
                             'name' => $systemAttribute['name']
                         ];
 
-                        // ✅ تحسين تحديد القيم المحددة - نحفظ IDs المحددة فقط
+                        // تحسين تحديد القيم المحددة
                         $selectedTermIds = [];
 
-                        if (!empty($attribute['options'])) {
+                        if (!empty($attribute['options']) && isset($this->attributeTerms[$attributeId])) {
+                            Log::info("مقارنة الخيارات:", [
+                                'product_options' => $attribute['options'],
+                                'available_terms' => $this->attributeTerms[$attributeId]
+                            ]);
+
                             foreach ($this->attributeTerms[$attributeId] as $term) {
                                 if (in_array($term['name'], $attribute['options'])) {
                                     $selectedTermIds[] = $term['id'];
+                                    Log::info("تم العثور على تطابق:", [
+                                        'term_name' => $term['name'],
+                                        'term_id' => $term['id']
+                                    ]);
                                 }
                             }
                         }
 
-                        // حفظ IDs المحددة كمصفوفة بسيطة
+                        // حفظ IDs المحددة بطريقة صحيحة للـ UI
                         if (!empty($selectedTermIds)) {
-                            $this->selectedAttributes[$attributeId] = $selectedTermIds;
+                            // تحويل إلى format checkbox (id => true)
+                            $checkboxFormat = [];
+                            foreach ($selectedTermIds as $termId) {
+                                $checkboxFormat[$termId] = true;
+                            }
+                            $this->selectedAttributes[$attributeId] = $checkboxFormat;
                         }
+
+                        Log::info("تم حفظ الخاصية:", [
+                            'attribute_id' => $attributeId,
+                            'selected_terms' => $selectedTermIds,
+                            'checkbox_format' => $this->selectedAttributes[$attributeId] ?? []
+                        ]);
+                    } else {
+                        Log::warning("لم يتم العثور على الخاصية في النظام ID: {$attributeId}");
                     }
                 }
             }
         }
 
         // تسجيل للتشخيص
-        Log::info('Selected attributes loaded:', [
+        Log::info('=== انتهاء تحميل بيانات المنتج المتغير ===', [
             'selectedAttributes' => $this->selectedAttributes,
             'attributeMap' => $this->attributeMap
         ]);
@@ -156,7 +384,7 @@ class Edit extends Component
         // تحميل المتغيرات
         $this->loadProductVariations();
 
-        // ✅ إرسال البيانات لـ VariationManager بعد التحميل
+        // إرسال البيانات لـ VariationManager بعد التحميل
         $this->dispatch('updateSelectedAttributes', [
             'selectedAttributes' => $this->selectedAttributes
         ])->to('variation-manager');
@@ -183,7 +411,7 @@ class Edit extends Component
                     'current_attributeMap' => $this->attributeMap
                 ]);
 
-                // ✅ ترتيب القيم حسب attributeMap مع تسجيل مفصل
+                // ترتيب القيم حسب attributeMap مع تسجيل مفصل
                 foreach ($this->attributeMap as $attr) {
                     $value = null;
                     $attributeId = $attr['id'];
@@ -216,7 +444,7 @@ class Edit extends Component
                     ]);
                 }
 
-                // ✅ تحسين معالجة stock_quantity
+                // تحسين معالجة stock_quantity
                 $stockQuantity = '';
                 if (isset($variation['stock_quantity'])) {
                     $stockQuantity = $variation['stock_quantity'];
@@ -265,7 +493,7 @@ class Edit extends Component
         }
     }
 
-    // ✅ إضافة listener للحصول على إعدادات المخزون
+    // إضافة listener للحصول على إعدادات المخزون
     #[On('getProductStockSettings')]
     public function sendStockSettings()
     {
@@ -299,12 +527,53 @@ class Edit extends Component
         $this->mrbpData = $data['data'];
     }
 
-    // ✅ استقبال تحديثات المتغيرات من VariationManager
     #[On('variationsUpdated')]
     public function handleVariationsUpdated($data)
     {
-        $this->variations = $data['variations'] ?? [];
-        $this->attributeMap = $data['attributeMap'] ?? [];
+        Log::info('=== استلام تحديث المتغيرات ===', [
+            'received_data' => array_keys($data)
+        ]);
+
+        if (isset($data['variations'])) {
+            $this->variations = $data['variations'];
+            Log::info('تم تحديث المتغيرات:', [
+                'variations_count' => count($this->variations)
+            ]);
+        }
+
+        if (isset($data['attributeMap'])) {
+            $this->attributeMap = $data['attributeMap'];
+            Log::info('تم تحديث خريطة الخصائص:', [
+                'attributeMap_count' => count($this->attributeMap)
+            ]);
+        }
+
+        // التأكد من تزامن selectedAttributes مع attributeMap
+        $this->syncSelectedAttributesWithMap();
+    }
+
+    /**
+     * مزامنة selectedAttributes مع attributeMap
+     */
+    private function syncSelectedAttributesWithMap()
+    {
+        if (empty($this->attributeMap)) {
+            return;
+        }
+
+        $syncedAttributes = [];
+        foreach ($this->attributeMap as $attr) {
+            $attributeId = $attr['id'];
+            if (isset($this->selectedAttributes[$attributeId])) {
+                $syncedAttributes[$attributeId] = $this->selectedAttributes[$attributeId];
+            }
+        }
+
+        $this->selectedAttributes = $syncedAttributes;
+
+        Log::info('تم مزامنة الخصائص المحددة:', [
+            'synced_attributes' => array_keys($this->selectedAttributes)
+        ]);
     }
 
     #[On('latestVariationsSent')]
@@ -319,17 +588,192 @@ class Edit extends Component
     #[On('attributesSelected')]
     public function handleAttributesSelected($data)
     {
+        Log::info('=== استلام تحديث الخصائص المحددة ===', [
+            'received_data' => $data
+        ]);
+
         if (isset($data['selectedAttributes'])) {
             $this->selectedAttributes = $data['selectedAttributes'];
+
+            // تم إزالة استدعاء regenerateVariationsFromAttributes() من هنا
+            // لأن VariationManager هو المسؤول عن توليد المتغيرات وإرسالها مباشرة.
+
+            Log::info('تم تحديث الخصائص المحددة:', [
+                'selectedAttributes' => $this->selectedAttributes
+            ]);
         }
+    }
+
+    /**
+     * إعادة توليد المتغيرات بناءً على الخصائص المحددة
+     * هذه الدالة لم تعد تُستدعى مباشرة من handleAttributesSelected
+     * ولكنها موجودة إذا كانت هناك حاجة لاستخدامها داخليًا.
+     */
+    public function regenerateVariationsFromAttributes()
+    {
+        try {
+            Log::info('=== بدء إعادة توليد المتغيرات ===');
+
+            // تنظيف البيانات المحددة
+            $filteredAttributes = [];
+            foreach ($this->selectedAttributes as $attributeId => $termData) {
+                if (is_array($termData)) {
+                    // إذا كانت في format checkbox (id => boolean)
+                    if (!empty($termData) && isset(array_values($termData)[0]) && is_bool(array_values($termData)[0])) {
+                        $selectedTermIds = array_keys(array_filter($termData));
+                    } else {
+                        // إذا كانت مصفوفة من IDs
+                        $selectedTermIds = array_filter($termData);
+                    }
+
+                    if (!empty($selectedTermIds)) {
+                        $filteredAttributes[$attributeId] = $selectedTermIds;
+                    }
+                }
+            }
+
+            Log::info('الخصائص المفلترة:', [
+                'filteredAttributes' => $filteredAttributes
+            ]);
+
+            if (empty($filteredAttributes)) {
+                $this->variations = [];
+                $this->attributeMap = [];
+                Log::info('لا توجد خصائص محددة - مسح المتغيرات');
+                return;
+            }
+
+            // بناء خريطة الخصائص الجديدة
+            $newAttributeMap = [];
+            $attributeOptions = [];
+
+            foreach ($filteredAttributes as $attributeId => $termIds) {
+                $attribute = collect($this->productAttributes)->firstWhere('id', $attributeId);
+                if (!$attribute) {
+                    Log::warning("لم يتم العثور على الخاصية: {$attributeId}");
+                    continue;
+                }
+
+                $terms = $this->attributeTerms[$attributeId] ?? [];
+                $termNames = [];
+
+                foreach ($termIds as $termId) {
+                    $term = collect($terms)->firstWhere('id', $termId);
+                    if ($term) {
+                        $termNames[] = $term['name'];
+                    }
+                }
+
+                if (!empty($termNames)) {
+                    $attributeOptions[$attributeId] = $termNames;
+                    $newAttributeMap[] = [
+                        'id' => $attributeId,
+                        'name' => $attribute['name']
+                    ];
+                }
+            }
+
+            // الحفاظ على البيانات الموجودة للمتغيرات عند إعادة التوليد
+            $existingVariationsData = [];
+            foreach ($this->variations as $variation) {
+                if (isset($variation['options'])) {
+                    $key = implode('|', $variation['options']);
+                    $existingVariationsData[$key] = [
+                        'id' => $variation['id'] ?? null,
+                        'regular_price' => $variation['regular_price'] ?? '',
+                        'sale_price' => $variation['sale_price'] ?? '',
+                        'stock_quantity' => $variation['stock_quantity'] ?? '',
+                        'sku' => $variation['sku'] ?? '',
+                        'description' => $variation['description'] ?? ''
+                    ];
+                }
+            }
+
+            // توليد التركيبات الجديدة
+            $newVariations = [];
+            if (!empty($attributeOptions)) {
+                $combinations = $this->cartesian(array_values($attributeOptions));
+
+                foreach ($combinations as $combo) {
+                    $options = is_array($combo) ? $combo : [$combo];
+                    $key = implode('|', $options);
+
+                    // استخدام البيانات الموجودة إذا كانت متاحة
+                    $existingData = $existingVariationsData[$key] ?? [];
+
+                    $newVariations[] = [
+                        'id' => $existingData['id'] ?? null,
+                        'options' => $options,
+                        'regular_price' => $existingData['regular_price'] ?? '',
+                        'sale_price' => $existingData['sale_price'] ?? '',
+                        'stock_quantity' => $existingData['stock_quantity'] ?? '',
+                        'sku' => $existingData['sku'] ?? '',
+                        'description' => $existingData['description'] ?? '',
+                        'manage_stock' => true,
+                        'active' => true
+                    ];
+                }
+            }
+
+            // تحديث البيانات
+            $this->attributeMap = $newAttributeMap;
+            $this->variations = $newVariations;
+
+            Log::info('تم إعادة توليد المتغيرات بنجاح:', [
+                'attributeMap_count' => count($this->attributeMap),
+                'variations_count' => count($this->variations),
+                'preserved_data_count' => count($existingVariationsData)
+            ]);
+
+            // إرسال التحديث للمكون الفرعي
+            $this->dispatch('variationsGenerated', [
+                'variations' => $this->variations,
+                'attributeMap' => $this->attributeMap
+            ])->to('variation-manager');
+
+        } catch (\Exception $e) {
+            Log::error('خطأ في إعادة توليد المتغيرات: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * دالة cartesian للتركيبات
+     */
+    private function cartesian($arrays)
+    {
+        if (empty($arrays)) return [];
+        if (count($arrays) == 1) return array_map(fn($item) => [$item], $arrays[0]);
+
+        $result = [[]];
+        foreach ($arrays as $values) {
+            $tmp = [];
+            foreach ($result as $combo) {
+                foreach ($values as $value) {
+                    $tmp[] = array_merge($combo, [$value]);
+                }
+            }
+            $result = $tmp;
+        }
+
+        return $result;
     }
 
     public function syncBeforeSave()
     {
-        if ($this->productType === 'variable') {
-            $this->dispatch('requestLatestVariations', ['page' => 'edit'])->to('variation-manager');
-        } else {
-            $this->save();
+        if ($this->isSaving) return;
+
+        try {
+            $this->isSaving = true;
+
+            if ($this->productType === 'variable') {
+                $this->dispatch('requestLatestVariations', ['page' => 'edit'])->to('variation-manager');
+            } else {
+                $this->save();
+            }
+        } catch (\Exception $e) {
+            $this->isSaving = false;
+            Log::error('خطأ في التحقق من البيانات: ' . $e->getMessage());
+            Toaster::error('حدث خطأ: ' . $e->getMessage());
         }
     }
 
@@ -337,7 +781,15 @@ class Edit extends Component
     {
         $attributes = [];
 
+        Log::info('=== بدء تجهيز الخصائص للحفظ ===', [
+            'selectedAttributes_empty' => empty($this->selectedAttributes),
+            'attributeMap_empty' => empty($this->attributeMap),
+            'selectedAttributes' => $this->selectedAttributes,
+            'attributeMap' => $this->attributeMap
+        ]);
+
         if (empty($this->selectedAttributes) || empty($this->attributeMap)) {
+            Log::info('لا توجد خصائص للتجهيز - إرجاع مصفوفة فارغة');
             return $attributes;
         }
 
@@ -345,22 +797,64 @@ class Edit extends Component
             $attributeId = $attribute['id'];
             $options = [];
 
-            if (isset($this->selectedAttributes[$attributeId])) {
-                $selectedTermIds = array_keys(array_filter($this->selectedAttributes[$attributeId]));
+            Log::info("معالجة الخاصية {$index}:", [
+                'attribute_id' => $attributeId,
+                'attribute_name' => $attribute['name']
+            ]);
 
-                if (!empty($selectedTermIds)) {
+            if (isset($this->selectedAttributes[$attributeId])) {
+                $selectedData = $this->selectedAttributes[$attributeId];
+
+                Log::info("البيانات المحددة للخاصية {$attributeId}:", [
+                    'selected_data' => $selectedData,
+                    'data_type' => gettype($selectedData)
+                ]);
+
+                $selectedTermIds = [];
+
+                // تحديد نوع البيانات والتعامل معها
+                if (is_array($selectedData)) {
+                    // إذا كانت البيانات في شكل [id => boolean] (من UI)
+                    if (!empty($selectedData) && isset(array_values($selectedData)[0]) && is_bool(array_values($selectedData)[0])) {
+                        $selectedTermIds = array_keys(array_filter($selectedData));
+                    }
+                    // إذا كانت البيانات في شكل مصفوفة من IDs
+                    else {
+                        $selectedTermIds = $selectedData;
+                    }
+                }
+
+                Log::info("IDs المحددة:", [
+                    'selected_term_ids' => $selectedTermIds
+                ]);
+
+                // تحويل IDs إلى أسماء المصطلحات
+                if (!empty($selectedTermIds) && isset($this->attributeTerms[$attributeId])) {
                     $terms = $this->attributeTerms[$attributeId];
+
+                    Log::info("المصطلحات المتاحة:", [
+                        'available_terms' => $terms
+                    ]);
+
                     foreach ($selectedTermIds as $termId) {
                         $term = collect($terms)->firstWhere('id', $termId);
                         if ($term) {
                             $options[] = $term['name'];
+                            Log::info("تم إضافة مصطلح:", [
+                                'term_id' => $termId,
+                                'term_name' => $term['name']
+                            ]);
+                        } else {
+                            Log::warning("لم يتم العثور على المصطلح:", [
+                                'term_id' => $termId
+                            ]);
                         }
                     }
                 }
             }
 
             if (!empty($options)) {
-                $attributes[] = [
+                $attributeData = [
                     'id' => $attributeId,
                     'name' => $attribute['name'],
                     'position' => $index,
@@ -368,8 +862,24 @@ class Edit extends Component
                     'variation' => true,
                     'options' => $options
                 ];
+
+                $attributes[] = $attributeData;
+
+                Log::info("تم تجهيز الخاصية بنجاح:", [
+                    'attribute_data' => $attributeData
+                ]);
+            } else {
+                Log::info("تم تجاهل الخاصية - لا توجد خيارات:", [
+                    'attribute_id' => $attributeId,
+                    'attribute_name' => $attribute['name']
+                ]);
             }
         }
+
+        Log::info('=== انتهاء تجهيز الخصائص ===', [
+            'prepared_attributes_count' => count($attributes),
+            'prepared_attributes' => $attributes
+        ]);
 
         return $attributes;
     }
@@ -377,6 +887,14 @@ class Edit extends Component
     public function save()
     {
         try {
+            Log::info('=== بدء عملية الحفظ المحدثة ===', [
+                'product_id' => $this->productId,
+                'product_type' => $this->productType,
+                'selectedAttributes_count' => count($this->selectedAttributes),
+                'variations_count' => count($this->variations),
+                'attributeMap_count' => count($this->attributeMap)
+            ]);
+
             // تجهيز بيانات المنتج الأساسية
             $productData = [
                 'name' => $this->productName,
@@ -415,65 +933,255 @@ class Edit extends Component
                 $productData['sku'] = trim($this->sku);
             }
 
-            // معالجة المنتج المتغير
+            // ✅ معالجة محسنة للمنتج المتغير
             if ($this->productType === 'variable') {
-                $attributes = $this->prepareAttributes();
-                if (!empty($attributes)) {
-                    $productData['attributes'] = $attributes;
+                // التحقق من وجود البيانات المطلوبة
+                if (empty($this->selectedAttributes) || empty($this->attributeMap) || empty($this->variations)) {
+                    throw new \Exception('بيانات المنتج المتغير غير مكتملة');
                 }
+
+                // تجهيز attributes بطريقة محسنة
+                $attributes = $this->prepareVariableProductAttributes();
+                if (empty($attributes)) {
+                    throw new \Exception('فشل في تجهيز خصائص المنتج المتغير');
+                }
+
+                $productData['attributes'] = $attributes;
+
+                // تجهيز default attributes من أول متغير
+                if (!empty($this->variations)) {
+                    $defaultAttributes = $this->prepareDefaultAttributes();
+                    if (!empty($defaultAttributes)) {
+                        $productData['default_attributes'] = $defaultAttributes;
+                    }
+                }
+
+                // إعدادات خاصة للمنتج المتغير
+                $productData['manage_stock'] = false;
+                $productData['stock_status'] = 'instock';
+                unset($productData['regular_price'], $productData['sale_price']);
+
+                Log::info('تم تجهيز بيانات المنتج المتغير:', [
+                    'attributes_count' => count($attributes),
+                    'default_attributes_count' => count($defaultAttributes ?? []),
+                    'attributes' => $attributes
+                ]);
             }
 
-            // تحديث المنتج
+            // تحديث المنتج الأساسي
+            Log::info('تحديث المنتج الأساسي...');
             $updatedProduct = $this->wooService->updateProduct($this->productId, $productData);
 
             if (!$updatedProduct) {
                 throw new \Exception('فشل تحديث المنتج الأساسي');
             }
 
-            // تحديث MRBP
-            if (!empty($this->mrbpData)) {
-                $this->wooService->updateMrbpData($this->productId, $this->mrbpData);
-            }
+            Log::info('✅ تم تحديث المنتج الأساسي بنجاح');
 
-            // تحديث المتغيرات
+            // تحديث المتغيرات للمنتج المتغير
             if ($this->productType === 'variable' && !empty($this->variations)) {
-                foreach ($this->variations as $key => $variation) {
-                    if (!empty($variation['regular_price'])) {
-                        $this->variations[$key]['regular_price'] = (string) number_format(
-                            (float) str_replace(',', '.', $variation['regular_price']),
-                            2, '.', ''
-                        );
-                    }
-                    if (!empty($variation['sale_price'])) {
-                        $this->variations[$key]['sale_price'] = (string) number_format(
-                            (float) str_replace(',', '.', $variation['sale_price']),
-                            2, '.', ''
-                        );
-                    }
-                    if (isset($this->variations[$key]['stock_quantity']) && $this->variations[$key]['stock_quantity'] !== '') {
-                        $this->variations[$key]['stock_quantity'] = (int) $this->variations[$key]['stock_quantity'];
-                    }
+                Log::info('بدء تحديث المتغيرات...');
+
+                // تنظيف وتجهيز المتغيرات للمزامنة
+                $cleanedVariations = $this->prepareVariationsForSync();
+
+                if (empty($cleanedVariations)) {
+                    throw new \Exception('لا توجد متغيرات صالحة للحفظ');
                 }
 
-                $this->wooService->syncVariations($this->productId, $this->variations);
+                Log::info('المتغيرات المجهزة للمزامنة:', [
+                    'variations_count' => count($cleanedVariations),
+                    'sample_variation' => $cleanedVariations[0] ?? null
+                ]);
+
+                // مزامنة المتغيرات
+                $syncResult = $this->wooService->syncVariations($this->productId, $cleanedVariations);
+
+                if (!$syncResult['success']) {
+                    throw new \Exception('فشل في مزامنة المتغيرات: ' . ($syncResult['message'] ?? 'خطأ غير معروف'));
+                }
+
+                Log::info('✅ تم تحديث المتغيرات بنجاح:', $syncResult);
             }
 
-            Toaster::success('تم تحديث المنتج بنجاح');
+            // تحديث MRBP
+            if (!empty($this->mrbpData)) {
+                try {
+                    $this->wooService->updateMrbpData($this->productId, $this->mrbpData);
+                    Log::info('✅ تم تحديث بيانات MRBP');
+                } catch (\Exception $e) {
+                    Log::warning('فشل تحديث MRBP (غير حرج):', ['error' => $e->getMessage()]);
+                }
+            }
+
+            $this->isSaving = false;
+
+            Log::info('=== انتهت عملية الحفظ بنجاح ===');
+
+            if ($this->productType === 'variable') {
+                Toaster::success('✅ تم تحديث المنتج المتغير بنجاح مع جميع الخصائص والمتغيرات');
+            } else {
+                Toaster::success('✅ تم تحديث المنتج بنجاح');
+            }
+
             return redirect()->route('product.index');
 
         } catch (\Exception $e) {
-            Log::error('خطأ في تحديث المنتج', [
+            $this->isSaving = false;
+            Log::error('❌ فشل في حفظ المنتج:', [
                 'product_id' => $this->productId,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
             ]);
-            session()->flash('error', 'فشل تعديل المنتج: ' . $e->getMessage());
+
+            Toaster::error('فشل في حفظ المنتج: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * تجهيز خصائص المنتج المتغير
+     */
+    private function prepareVariableProductAttributes(): array
+    {
+        $attributes = [];
+
+        Log::info('=== تجهيز خصائص المنتج المتغير ===');
+
+        foreach ($this->attributeMap as $index => $attribute) {
+            $attributeId = $attribute['id'];
+            $options = [];
+
+            // جمع جميع القيم الفريدة لهذه الخاصية من المتغيرات
+            $uniqueValues = collect($this->variations)
+                ->pluck("options.{$index}")
+                ->unique()
+                ->filter()
+                ->values()
+                ->toArray();
+
+            if (!empty($uniqueValues)) {
+                $attributes[] = [
+                    'id' => $attributeId,
+                    'name' => $attribute['name'],
+                    'position' => $index,
+                    'visible' => true,
+                    'variation' => true,
+                    'options' => $uniqueValues
+                ];
+
+                Log::info("تم تجهيز الخاصية {$attribute['name']}:", [
+                    'attribute_id' => $attributeId,
+                    'options' => $uniqueValues
+                ]);
+            }
+        }
+
+        return $attributes;
+    }
+
+    /**
+     * تجهيز الخصائص الافتراضية
+     */
+    private function prepareDefaultAttributes(): array
+    {
+        $defaultAttributes = [];
+
+        if (!empty($this->variations) && isset($this->variations[0]['options'])) {
+            $firstVariation = $this->variations[0];
+
+            foreach ($this->attributeMap as $index => $attr) {
+                if (isset($firstVariation['options'][$index])) {
+                    $defaultAttributes[] = [
+                        'id' => (int)$attr['id'],
+                        'name' => $attr['name'],
+                        'option' => $firstVariation['options'][$index]
+                    ];
+                }
+            }
+        }
+
+        return $defaultAttributes;
+    }
+
+    /**
+     * تجهيز المتغيرات للمزامنة
+     * تم تحديث هذه الدالة لإضافة مصفوفة 'attributes' لكل متغير، وهي ضرورية لـ WooCommerce.
+     */
+    private function prepareVariationsForSync(): array
+    {
+        $cleanedVariations = [];
+
+        foreach ($this->variations as $variation) {
+            // تنظيف الأسعار
+            $regularPrice = '';
+            $salePrice = '';
+
+            if (!empty($variation['regular_price'])) {
+                $regularPrice = (string) number_format(
+                    (float) str_replace(',', '.', $variation['regular_price']),
+                    2, '.', ''
+                );
+            }
+
+            if (!empty($variation['sale_price'])) {
+                $salePrice = (string) number_format(
+                    (float) str_replace(',', '.', $variation['sale_price']),
+                    2, '.', ''
+                );
+            }
+
+            // تنظيف الكمية
+            $stockQuantity = null;
+            if (isset($variation['stock_quantity']) && $variation['stock_quantity'] !== '') {
+                $stockQuantity = (int) $variation['stock_quantity'];
+            }
+
+            $cleanedVariation = [
+                'id' => $variation['id'] ?? null,
+                'regular_price' => $regularPrice,
+                'sale_price' => $salePrice,
+                'stock_quantity' => $stockQuantity,
+                'sku' => $variation['sku'] ?? '',
+                'description' => $variation['description'] ?? '',
+                'manage_stock' => true, // افتراض أن المخزون يتم إدارته للمتغيرات
+                'status' => 'publish' // أو 'private', 'draft' إلخ.
+            ];
+
+            // --- مهم: إعداد خصائص المتغير ---
+            $variationAttributes = [];
+            if (isset($variation['options']) && is_array($variation['options'])) {
+                foreach ($variation['options'] as $index => $optionName) {
+                    if (isset($this->attributeMap[$index])) {
+                        $attributeId = $this->attributeMap[$index]['id'];
+                        // $attributeName = $this->attributeMap[$index]['name']; // غير ضروري لواجهة برمجة التطبيقات ولكن جيد للسياق
+
+                        // واجهة برمجة تطبيقات WooCommerce تتوقع 'id' و 'option' (اسم المصطلح) لخصائص المتغير
+                        if ($attributeId && $optionName !== null && $optionName !== '') {
+                            $variationAttributes[] = [
+                                'id' => (int) $attributeId,
+                                'option' => (string) $optionName,
+                            ];
+                        }
+                    }
+                }
+            }
+            $cleanedVariation['attributes'] = $variationAttributes;
+            // --- نهاية التعديل المهم ---
+
+            $cleanedVariations[] = $cleanedVariation;
+        }
+
+        return $cleanedVariations;
     }
 
     // باقي الدوال (الصور، التصنيفات، إلخ) بدون تغيير
     public function getCategories(): array
     {
-        $categories = $this->wooService->getCategories(['per_page' => 100]);
+        $response = $this->wooService->getCategories(['per_page' => 100]);
+
+        // استخراج البيانات من مفتاح "data"
+        $categories = $response['data'] ?? [];
+
         $grouped = [];
         foreach ($categories as $cat) {
             $grouped[$cat['parent']][] = $cat;
@@ -511,6 +1219,60 @@ class Edit extends Component
     {
         unset($this->galleryImages[$index]);
         $this->galleryImages = array_values($this->galleryImages);
+    }
+
+    /**
+     * مسح جميع المتغيرات المولدة محلياً
+     */
+    public function clearVariations()
+    {
+        $this->variations = [];
+        $this->attributeMap = [];
+
+        // إرسال التحديث للمكون الفرعي
+        $this->dispatch('variationsCleared')->to('variation-manager');
+
+        Toaster::success('تم مسح جميع المتغيرات');
+
+        Log::info('تم مسح جميع المتغيرات محلياً');
+    }
+
+    /**
+     * معاينة المتغيرات قبل الحفظ
+     */
+    public function previewVariations()
+    {
+        if (empty($this->variations)) {
+            Toaster::info('لا توجد متغيرات للمعاينة');
+            return;
+        }
+
+        $summary = [];
+        foreach ($this->variations as $variation) {
+            if (!empty($variation['options'])) {
+                $summary[] = implode(' × ', $variation['options']);
+            }
+        }
+
+        Log::info('معاينة المتغيرات:', [
+            'total_variations' => count($this->variations),
+            'variations_summary' => $summary
+        ]);
+
+        Toaster::info("المتغيرات المولدة: " . count($this->variations) . " متغير");
+    }
+
+    /**
+     * إضافة دوال للحصول على حالة التحديث والحفظ
+     */
+    public function getRefreshingProperty()
+    {
+        return $this->isRefreshing;
+    }
+
+    public function getSavingProperty()
+    {
+        return $this->isSaving;
     }
 
     public function render()

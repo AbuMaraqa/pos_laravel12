@@ -250,7 +250,7 @@ class WooCommerceService
 
     public function getCategories(array $query = []): array
     {
-        return $this->get('products/categories', $query);
+        return $this->get('products/categories', $query)['data'];
     }
 
     public function getVariationsByProductId($productId): array
@@ -259,7 +259,7 @@ class WooCommerceService
             $response = $this->get("products/{$productId}/variations", [
                 'per_page' => 100, // Get up to 100 variations
                 'status' => 'publish'
-            ]);
+            ])['data'];
 
             // Log the response for debugging
             logger()->info('Retrieved variations for product', [
@@ -309,7 +309,7 @@ class WooCommerceService
 
     public function getAttributes(array $query = []): array
     {
-        return $this->get('products/attributes', $query);
+        return $this->get('products/attributes', $query)['data'];
     }
 
     public function getVariationById($id): array
@@ -368,7 +368,7 @@ class WooCommerceService
 
     public function getTermsForAttribute($attributeId, array $query = []): array
     {
-        return $this->get("products/attributes/{$attributeId}/terms", $query);
+        return $this->get("products/attributes/{$attributeId}/terms", $query)['data'];
     }
 
     public function getAttributeById($id): array

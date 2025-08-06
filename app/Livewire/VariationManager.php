@@ -129,24 +129,27 @@ class VariationManager extends Component
         }
     }
 
-    public function updatedSelectedAttributes()
+    /**
+     * يستقبل المتغيرات التي تم جلبها من WooCommerce بواسطة مكون Edit.
+     * هذا يضمن أن VariationManager لديه أحدث قائمة بالمتغيرات الموجودة.
+     */
+    #[On('variationsGenerated')]
+    public function handleVariationsGenerated($data)
     {
-        // تنظيف البيانات وإرسالها للمكون الرئيسي
-        $cleanedAttributes = [];
-        foreach ($this->selectedAttributes as $attributeId => $terms) {
-            if (is_array($terms)) {
-                $selectedTerms = array_keys(array_filter($terms, fn($value) => $value === true));
-                if (!empty($selectedTerms)) {
-                    $cleanedAttributes[$attributeId] = $selectedTerms;
-                }
-            }
-        }
+        Log::info('Received variationsGenerated event from Edit component.', [
+            'variations_count' => count($data['variations'] ?? []),
+            'attributeMap_count' => count($data['attributeMap'] ?? [])
+        ]);
 
-        $targetComponent = $this->productId ? 'pages.product.edit' : 'pages.product.add';
-        $this->dispatch('attributesSelected', [
-            'selectedAttributes' => $cleanedAttributes
-        ])->to($targetComponent);
+        $this->variations = $data['variations'] ?? [];
+        $this->attributeMap = $data['attributeMap'] ?? [];
+
+        Log::info('VariationManager updated with generated variations.', [
+            'current_variations_count' => count($this->variations),
+            'current_attributeMap_count' => count($this->attributeMap)
+        ]);
     }
+
 
     public function generateVariations()
     {
@@ -195,32 +198,48 @@ class VariationManager extends Component
             $combinations = $this->cartesian(array_values($attributeOptions));
             $newVariations = [];
 
-            foreach ($combinations as $combo) {
-                // البحث عن متغير موجود بنفس الخيارات
-                $existingVariation = null;
-                foreach ($this->variations as $variation) {
-                    if (isset($variation['options']) && $this->areOptionsEqual($variation['options'], $combo)) {
-                        $existingVariation = $variation;
-                        break;
-                    }
-                }
-
-                if ($existingVariation) {
-                    $newVariations[] = $existingVariation;
-                } else {
-                    $newVariations[] = [
-                        'options' => $combo,
-                        'sku' => '',
-                        'regular_price' => '',
-                        'sale_price' => '',
-                        'stock_quantity' => '',
-                        'description' => '',
+            // الحفاظ على البيانات الموجودة للمتغيرات عند إعادة التوليد
+            $existingVariationsData = [];
+            foreach ($this->variations as $variation) {
+                if (isset($variation['options'])) {
+                    $key = implode('|', $variation['options']);
+                    $existingVariationsData[$key] = [
+                        'id' => $variation['id'] ?? null,
+                        'regular_price' => $variation['regular_price'] ?? '',
+                        'sale_price' => $variation['sale_price'] ?? '',
+                        'stock_quantity' => $variation['stock_quantity'] ?? '',
+                        'sku' => $variation['sku'] ?? '',
+                        'description' => $variation['description'] ?? ''
                     ];
                 }
             }
 
+
+            foreach ($combinations as $combo) {
+                $options = is_array($combo) ? $combo : [$combo];
+                $key = implode('|', $options);
+
+                // استخدام البيانات الموجودة إذا كانت متاحة
+                $existingData = $existingVariationsData[$key] ?? [];
+
+                $newVariations[] = [
+                    'id' => $existingData['id'] ?? null,
+                    'options' => $options,
+                    'regular_price' => $existingData['regular_price'] ?? '',
+                    'sale_price' => $existingData['sale_price'] ?? '',
+                    'stock_quantity' => $existingData['stock_quantity'] ?? '',
+                    'sku' => $existingData['sku'] ?? '',
+                    'description' => $existingData['description'] ?? '',
+                    'manage_stock' => true,
+                    'active' => true
+                ];
+            }
+
             $this->variations = $newVariations;
-            $this->notifyParentOfUpdate();
+            $this->notifyParentOfUpdate(); // إرسال التحديث إلى المكون الأب
+
+            // تمت إزالة إرسال حدث attributesSelected هنا
+            // لأن VariationManager هو المسؤول عن توليد المتغيرات وإرسالها مباشرة إلى Edit.php
 
             session()->flash('success', 'تم توليد ' . count($this->variations) . ' متغير بنجاح');
 

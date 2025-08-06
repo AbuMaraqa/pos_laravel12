@@ -106,7 +106,7 @@
                         >
                             <input
                                 type="checkbox"
-                                wire:model.live="selectedAttributes.{{ $attribute['id'] }}.{{ $term['id'] }}"
+                                wire:model="selectedAttributes.{{ $attribute['id'] }}.{{ $term['id'] }}" {{-- تم تغيير هذا السطر --}}
                                 class="form-checkbox h-5 w-5 text-blue-600"
                             >
                             <span class="mr-2 text-sm">{{ $term['name'] }}</span>
@@ -186,103 +186,103 @@
             <div class="overflow-x-auto bg-white shadow-md rounded-lg">
                 <table class="min-w-full divide-y divide-gray-200">
                     <thead class="bg-gray-50">
-                        <tr>
-                            @foreach($attributeMap as $attr)
-                                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                    {{ $attr['name'] }}
-                                </th>
-                            @endforeach
+                    <tr>
+                        @foreach($attributeMap as $attr)
                             <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                <span>{{ __('السعر') }}</span>
-                                <div><input type="number" wire:model.live="allRegularPrice" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500" placeholder="السعر للكل"></div>
+                                {{ $attr['name'] }}
                             </th>
-                            <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                <span>{{ __('سعر الخصم') }}</span>
-                                <div><input type="number" wire:model.live="allSalePrice" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500" placeholder="سعر الخصم للكل"></div>
-                            </th>
-                            <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                <div class="flex flex-col">
-                                    <span>{{ __('الكمية') }}</span>
-                                    <input
-                                        type="number"
-                                        wire:model.live="allStockQuantity"
-                                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 text-xs"
-                                        placeholder="الكمية للكل"
-                                        step="1"
-                                        min="0"
-                                    >
-                                </div>
-                            </th>
-                            <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{{ __('الوصف') }}</th>
-                        </tr>
+                        @endforeach
+                        <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            <span>{{ __('السعر') }}</span>
+                            <div><input type="number" wire:model.live="allRegularPrice" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500" placeholder="السعر للكل"></div>
+                        </th>
+                        <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            <span>{{ __('سعر الخصم') }}</span>
+                            <div><input type="number" wire:model.live="allSalePrice" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500" placeholder="سعر الخصم للكل"></div>
+                        </th>
+                        <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            <div class="flex flex-col">
+                                <span>{{ __('الكمية') }}</span>
+                                <input
+                                    type="number"
+                                    wire:model.live="allStockQuantity"
+                                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 text-xs"
+                                    placeholder="الكمية للكل"
+                                    step="1"
+                                    min="0"
+                                >
+                            </div>
+                        </th>
+                        <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{{ __('الوصف') }}</th>
+                    </tr>
                     </thead>
                     <tbody class="bg-white divide-y divide-gray-200">
-                        @foreach($variations as $index => $variation)
-                            <tr class="@if(empty($variation['regular_price'])) bg-red-50 @else bg-white @endif">
-                                @foreach($variation['options'] as $option)
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm">{{ $option }}</td>
-                                @endforeach
-                                <td class="px-6 py-4 whitespace-nowrap">
-                                    <input
-                                        type="number"
-                                        wire:model.live="variations.{{ $index }}.regular_price"
-                                        step="0.01"
-                                        min="0"
-                                        class="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 text-sm
+                    @foreach($variations as $index => $variation)
+                        <tr class="@if(empty($variation['regular_price'])) bg-red-50 @else bg-white @endif">
+                            @foreach($variation['options'] as $option)
+                                <td class="px-6 py-4 whitespace-nowrap text-sm">{{ $option }}</td>
+                            @endforeach
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <input
+                                    type="number"
+                                    wire:model.live="variations.{{ $index }}.regular_price"
+                                    step="0.01"
+                                    min="0"
+                                    class="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 text-sm
                                             @if(empty($variation['regular_price'])) border-red-300 bg-red-50 @else bg-white border-green-300 @endif"
-                                        placeholder="السعر *"
-                                        required
-                                    >
-                                    @if(empty($variation['regular_price']))
-                                        <p class="text-xs text-red-500 mt-1">مطلوب</p>
-                                    @endif
-                                </td>
-                                <td class="px-6 py-4 whitespace-nowrap">
-                                    <input
-                                        type="number"
-                                        wire:model.live="variations.{{ $index }}.sale_price"
-                                        step="0.01"
-                                        min="0"
-                                        class="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 bg-yellow-50 text-sm"
-                                        placeholder="سعر الخصم"
-                                    >
-                                </td>
-                                <td class="px-6 py-4 whitespace-nowrap">
-                                    @php
-                                        $stockValue = '';
-                                        if (isset($variation['stock_quantity'])) {
-                                            $stockValue = $variation['stock_quantity'];
-                                            // التأكد من أن القيمة ليست null
-                                            if (is_null($stockValue)) {
-                                                $stockValue = '';
-                                            }
+                                    placeholder="السعر *"
+                                    required
+                                >
+                                @if(empty($variation['regular_price']))
+                                    <p class="text-xs text-red-500 mt-1">مطلوب</p>
+                                @endif
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <input
+                                    type="number"
+                                    wire:model.live="variations.{{ $index }}.sale_price"
+                                    step="0.01"
+                                    min="0"
+                                    class="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 bg-yellow-50 text-sm"
+                                    placeholder="سعر الخصم"
+                                >
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                @php
+                                    $stockValue = '';
+                                    if (isset($variation['stock_quantity'])) {
+                                        $stockValue = $variation['stock_quantity'];
+                                        // التأكد من أن القيمة ليست null
+                                        if (is_null($stockValue)) {
+                                            $stockValue = '';
                                         }
-                                    @endphp
-                                    <input
-                                        type="number"
-                                        wire:model.live="variations.{{ $index }}.stock_quantity"
-                                        step="1"
-                                        min="0"
-                                        class="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 bg-blue-50 text-sm"
-                                        placeholder="الكمية"
-                                    >
-                                    <div class="text-xs text-gray-500 mt-1">
-                                        <div>من المصفوفة: "{{ $variation['stock_quantity'] ?? 'غير موجود' }}"</div>
-                                        <div>النوع: {{ gettype($variation['stock_quantity'] ?? null) }}</div>
-                                        <div>Livewire Value: {{ $variations[$index]['stock_quantity'] ?? 'غير موجود' }}</div>
-                                    </div>
-                                </td>
-                                <td class="px-6 py-4 whitespace-nowrap">
-                                    <input
-                                        type="text"
-                                        wire:model.live="variations.{{ $index }}.description"
-                                        class="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 text-sm"
-                                        placeholder="الوصف"
-                                        value="{{ $variation['description'] ?? '' }}"
-                                    >
-                                </td>
-                            </tr>
-                        @endforeach
+                                    }
+                                @endphp
+                                <input
+                                    type="number"
+                                    wire:model.live="variations.{{ $index }}.stock_quantity"
+                                    step="1"
+                                    min="0"
+                                    class="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 bg-blue-50 text-sm"
+                                    placeholder="الكمية"
+                                >
+                                <div class="text-xs text-gray-500 mt-1">
+                                    <div>من المصفوفة: "{{ $variation['stock_quantity'] ?? 'غير موجود' }}"</div>
+                                    <div>النوع: {{ gettype($variation['stock_quantity'] ?? null) }}</div>
+                                    <div>Livewire Value: {{ $variations[$index]['stock_quantity'] ?? 'غير موجود' }}</div>
+                                </div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <input
+                                    type="text"
+                                    wire:model.live="variations.{{ $index }}.description"
+                                    class="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 text-sm"
+                                    placeholder="الوصف"
+                                    value="{{ $variation['description'] ?? '' }}"
+                                >
+                            </td>
+                        </tr>
+                    @endforeach
                     </tbody>
                 </table>
             </div>
