@@ -409,83 +409,46 @@ class Edit extends Component
             foreach ($existingVariations as $variation) {
                 $options = [];
 
-                Log::info('Processing variation', [
-                    'variation_id' => $variation['id'] ?? 'new',
-                    'variation_attributes' => $variation['attributes'] ?? [],
-                    'current_attributeMap' => $this->attributeMap
-                ]);
-
-                // ترتيب القيم حسب attributeMap مع تسجيل مفصل
+                // ترتيب القيم حسب attributeMap
                 foreach ($this->attributeMap as $attr) {
                     $value = null;
                     $attributeId = $attr['id'];
 
                     // البحث في attributes المتغير
                     foreach ($variation['attributes'] as $vAttr) {
-                        Log::info('Checking variation attribute', [
-                            'variation_attr' => $vAttr,
-                            'looking_for_id' => $attributeId,
-                            'looking_for_name' => $attr['name']
-                        ]);
-
-                        // مقارنة بالـ ID أو الاسم
                         if ((isset($vAttr['id']) && $vAttr['id'] == $attributeId) ||
                             (isset($vAttr['name']) && $vAttr['name'] === $attr['name']) ||
                             (isset($vAttr['name']) && strtolower($vAttr['name']) === strtolower($attr['name']))) {
                             $value = $vAttr['option'] ?? null;
-                            Log::info('Found matching attribute', [
-                                'attribute_id' => $attributeId,
-                                'found_value' => $value
-                            ]);
                             break;
                         }
                     }
 
                     $options[] = $value ?? '';
-                    Log::info('Added option', [
-                        'attribute_name' => $attr['name'],
-                        'option_value' => $value ?? 'empty'
-                    ]);
                 }
 
-                // --- تعديل هنا لمعالجة stock_quantity كـ integer أو null ---
-                $stockQuantity = null; // القيمة الافتراضية null
-                if (isset($variation['stock_quantity'])) {
-                    // إذا كانت القيمة موجودة ورقمية، حولها إلى integer
-                    if (is_numeric($variation['stock_quantity'])) {
-                        $stockQuantity = (int)$variation['stock_quantity'];
-                    }
-                    // إذا كانت موجودة ولكنها ليست رقمية (مثل سلسلة نصية فارغة)، اجعلها null
-                    else if ($variation['stock_quantity'] === '') {
-                        $stockQuantity = null;
-                    }
-                    // إذا كانت أي شيء آخر، استخدم القيمة كما هي (للتصحيح أو حالات خاصة)
-                    else {
-                        $stockQuantity = $variation['stock_quantity'];
-                    }
+                // --- تحويل stock_quantity إلى integer أو 0 ---
+                $stockQuantity = 0; // الافتراضي 0
+                if (isset($variation['stock_quantity']) && is_numeric($variation['stock_quantity'])) {
+                    $stockQuantity = (int)$variation['stock_quantity'];
                 }
-                // --- نهاية التعديل ---
 
                 $variationData = [
                     'id' => $variation['id'] ?? null,
                     'options' => $options,
                     'regular_price' => $variation['regular_price'] ?? '',
                     'sale_price' => $variation['sale_price'] ?? '',
-                    'stock_quantity' => $stockQuantity, // ستكون الآن integer أو null
+                    'stock_quantity' => $stockQuantity,
                     'description' => $variation['description'] ?? '',
                     'sku' => $variation['sku'] ?? '',
+                    'manage_stock' => true, // ✅ تفعيل إدارة المخزون دائماً
+                    'active' => true
                 ];
-
-                Log::info('Final variation data', [
-                    'variation_id' => $variation['id'] ?? 'new',
-                    'options' => $options,
-                    'variation_data' => $variationData
-                ]);
 
                 $this->variations[] = $variationData;
             }
 
-            Log::info('All variations processed', [
+            Log::info('All variations loaded with manage_stock=true', [
                 'final_variations_count' => count($this->variations),
                 'sample_variation' => $this->variations[0] ?? null
             ]);
@@ -497,7 +460,6 @@ class Edit extends Component
             ]);
         }
     }
-
     protected function loadMrbpData()
     {
         $mrbpData = $this->wooService->getMrbpData($this->productId);
@@ -830,9 +792,8 @@ class Edit extends Component
                     // إذا كانت البيانات في شكل [id => boolean] (من UI)
                     if (!empty($selectedData) && isset(array_values($selectedData)[0]) && is_bool(array_values($selectedData)[0])) {
                         $selectedTermIds = array_keys(array_filter($selectedData));
-                    }
-                    // إذا كانت البيانات في شكل مصفوفة من IDs
-                    else {
+                    } else {
+                        // إذا كانت مصفوفة من IDs
                         $selectedTermIds = $selectedData;
                     }
                 }
@@ -1143,21 +1104,21 @@ class Edit extends Component
                 );
             }
 
-            // تنظيف الكمية
-            $stockQuantity = null;
-            // إذا كانت القيمة موجودة وليست فارغة (سلسلة نصية فارغة)، حولها إلى int
-            if (isset($variation['stock_quantity']) && $variation['stock_quantity'] !== '') {
-                $stockQuantity = (int) $variation['stock_quantity'];
-            }
-            // إذا كانت القيمة 0 (كرقم أو كنص)، يجب أن تظل 0
-            else if (isset($variation['stock_quantity']) && ($variation['stock_quantity'] === 0 || $variation['stock_quantity'] === '0')) {
-                $stockQuantity = 0;
-            }
-            // في أي حالة أخرى (null، أو غير موجودة، أو فارغة)، تكون null
-            else {
-                $stockQuantity = null;
+            // --- منطق محسّن لتنظيف الكمية وحالة المخزون ---
+            $stockQuantity = 0; // الافتراضي 0 بدلاً من null
+            if (isset($variation['stock_quantity'])) {
+                // استخدام filter_var لتحويل آمن إلى int
+                $filteredValue = filter_var($variation['stock_quantity'], FILTER_VALIDATE_INT, FILTER_NULL_ON_FAILURE);
+                if ($filteredValue !== null) {
+                    $stockQuantity = $filteredValue;
+                }
             }
 
+            // تحديد حالة المخزون بناءً على الكمية
+            $stockStatus = 'instock';
+            if ($stockQuantity <= 0) {
+                $stockStatus = 'outofstock';
+            }
 
             $cleanedVariation = [
                 'id' => $variation['id'] ?? null,
@@ -1166,19 +1127,18 @@ class Edit extends Component
                 'stock_quantity' => $stockQuantity,
                 'sku' => $variation['sku'] ?? '',
                 'description' => $variation['description'] ?? '',
-                'manage_stock' => true, // افتراض أن المخزون يتم إدارته للمتغيرات
-                'status' => 'publish' // أو 'private', 'draft' إلخ.
+                'manage_stock' => true, // ✅ إجباري: تفعيل إدارة المخزون
+                'stock_status' => $stockStatus,
+                'status' => 'publish'
             ];
 
-            // --- مهم: إعداد خصائص المتغير ---
+            // --- إعداد خصائص المتغير ---
             $variationAttributes = [];
             if (isset($variation['options']) && is_array($variation['options'])) {
                 foreach ($variation['options'] as $index => $optionName) {
                     if (isset($this->attributeMap[$index])) {
                         $attributeId = $this->attributeMap[$index]['id'];
-                        // $attributeName = $this->attributeMap[$index]['name']; // غير ضروري لواجهة برمجة التطبيقات ولكن جيد للسياق
 
-                        // واجهة برمجة تطبيقات WooCommerce تتوقع 'id' و 'option' (اسم المصطلح) لخصائص المتغير
                         if ($attributeId && $optionName !== null && $optionName !== '') {
                             $variationAttributes[] = [
                                 'id' => (int) $attributeId,
@@ -1189,14 +1149,17 @@ class Edit extends Component
                 }
             }
             $cleanedVariation['attributes'] = $variationAttributes;
-            // --- نهاية التعديل المهم ---
 
             $cleanedVariations[] = $cleanedVariation;
         }
 
+        Log::info('Variations prepared for sync with manage_stock=true:', [
+            'prepared_variations_count' => count($cleanedVariations),
+            'sample_variation' => $cleanedVariations[0] ?? null
+        ]);
+
         return $cleanedVariations;
     }
-
     // باقي الدوال (الصور، التصنيفات، إلخ) بدون تغيير
     public function getCategories(): array
     {

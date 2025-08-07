@@ -429,13 +429,6 @@ class WooCommerceService
                 'variations_count' => count($data['variations'] ?? [])
             ]);
 
-            // Log sample variation for debugging
-            if (!empty($data['variations'])) {
-                logger()->info('Sample variation data', [
-                    'sample' => $data['variations'][0]
-                ]);
-            }
-
             // First update the product attributes
             if (isset($data['attributes']) && !empty($data['attributes'])) {
                 $productData = ['attributes' => $data['attributes']];
@@ -444,8 +437,6 @@ class WooCommerceService
                 logger()->info('Product attributes updated', [
                     'response' => $attributeResponse
                 ]);
-            } else {
-                logger()->warning('No attributes provided for update');
             }
 
             // Prepare batch update for variations
@@ -458,13 +449,15 @@ class WooCommerceService
             if (isset($data['variations']) && !empty($data['variations'])) {
                 foreach ($data['variations'] as $index => $variation) {
                     try {
+                        // ✅ إجباري: تأكد من تفعيل إدارة المخزون
+                        $variation['manage_stock'] = true;
+
                         // Validate required fields
                         if (
                             empty($variation['regular_price']) ||
                             !isset($variation['stock_quantity']) ||
                             empty($variation['sku'])
                         ) {
-
                             $missing = [];
                             if (empty($variation['regular_price'])) $missing[] = 'regular_price';
                             if (!isset($variation['stock_quantity'])) $missing[] = 'stock_quantity';
@@ -484,10 +477,8 @@ class WooCommerceService
 
                         // Add to appropriate batch operation
                         if (isset($cleanVariation['id']) && !empty($cleanVariation['id'])) {
-                            // Update existing variation
                             $variationUpdates['update'][] = $cleanVariation;
                         } else {
-                            // Create new variation
                             $variationUpdates['create'][] = $cleanVariation;
                         }
                     } catch (\Exception $ve) {
@@ -515,18 +506,10 @@ class WooCommerceService
                         ]);
                         $errors[] = "Batch update failed: " . $e->getMessage();
                     }
-                } else {
-                    logger()->warning('No valid variations for batch update');
                 }
-            } else {
-                logger()->warning('No variations provided for update');
             }
 
             if (!empty($errors)) {
-                logger()->warning('Some variations had errors', [
-                    'errors' => $errors
-                ]);
-
                 return [
                     'success' => $batchResults !== null,
                     'message' => 'Product attributes updated with some errors. ' . count($errors) . ' variations failed.',
@@ -557,7 +540,6 @@ class WooCommerceService
             ];
         }
     }
-
     public function uploadImage($file)
     {
         try {
@@ -1317,30 +1299,45 @@ class WooCommerceService
         // --- تعديل هنا لمعالجة stock_quantity كـ integer أو null ---
         $stockQuantity = null;
         if (isset($variation['stock_quantity'])) {
+            // إذا كانت القيمة رقمية (بما في ذلك الصفر كرقم أو كنص)، حولها إلى integer
             if (is_numeric($variation['stock_quantity'])) {
                 $stockQuantity = (int)$variation['stock_quantity'];
-            } else if ($variation['stock_quantity'] === '') {
-                $stockQuantity = null; // Keep null for empty string if not managed
-            } else if (is_null($variation['stock_quantity'])) {
+            }
+            // إذا كانت موجودة ولكنها فارغة (سلسلة نصية فارغة)، اجعلها null
+            else if ($variation['stock_quantity'] === '') {
                 $stockQuantity = null;
-            } else {
-                $stockQuantity = $variation['stock_quantity']; // Fallback for unexpected types
+            }
+            // إذا كانت null، اجعلها null
+            else if (is_null($variation['stock_quantity'])) {
+                $stockQuantity = null;
+            }
+            // لأي حالات أخرى غير متوقعة، استخدم القيمة كما هي
+            else {
+                $stockQuantity = $variation['stock_quantity'];
             }
         }
+
+        // ✅ إجباري: تفعيل إدارة المخزون للمتغيرات
+        $cleanData['manage_stock'] = true;
 
         // Crucial: If stock is managed, send 0 instead of null for empty quantities
-        // This is often required by WooCommerce API
-        // Check if 'manage_stock' is explicitly true in the variation data being sent
-        // (assuming it's passed correctly from prepareVariationsForSync)
-        if (isset($variation['manage_stock']) && $variation['manage_stock'] === true) {
-            if (is_null($stockQuantity)) { // If it's null (empty input) and managed, send 0
-                $stockQuantity = 0;
-            }
+        if (is_null($stockQuantity)) {
+            $stockQuantity = 0; // تحويل null إلى 0 عند تفعيل إدارة المخزون
+            Log::info('WooCommerceService->sanitizeVariationData: Converted null stock_quantity to 0 (manage_stock is true).', [
+                'final_stock_quantity_after_conversion' => $stockQuantity
+            ]);
         }
-        $cleanData['stock_quantity'] = $stockQuantity;
-        // --- نهاية التعديل ---
 
-        // --- باقي الحقول كما هي ---
+        $cleanData['stock_quantity'] = $stockQuantity;
+
+        // --- إضافة stock_status بناءً على الكمية ---
+        $stockStatus = 'instock';
+        if ($cleanData['stock_quantity'] <= 0) {
+            $stockStatus = 'outofstock';
+        }
+        $cleanData['stock_status'] = $stockStatus;
+
+        // باقي الحقول
         if (isset($variation['sku'])) {
             $cleanData['sku'] = (string)$variation['sku'];
         }
@@ -1380,9 +1377,12 @@ class WooCommerceService
             }
         }
 
+        Log::info('WooCommerceService->sanitizeVariationData: Final cleaned data with manage_stock=true.', [
+            'final_cleaned_data' => $cleanData
+        ]);
+
         return $cleanData;
     }
-
     private function sanitizeAttributes(array $attributes): array
     {
         $sanitized = [];
@@ -1429,11 +1429,9 @@ class WooCommerceService
     public function batchUpdateVariations($productId, array $data): array
     {
         try {
-            logger()->info('Sending batch variation update for product', [
+            Log::info('WooCommerceService->batchUpdateVariations: Sending batch variation update payload.', [
                 'productId' => $productId,
-                'create_count' => count($data['create'] ?? []),
-                'update_count' => count($data['update'] ?? []),
-                'delete_count' => count($data['delete'] ?? [])
+                'payload_data' => $data // Log the full payload being sent
             ]);
 
             return $this->post("products/{$productId}/variations/batch", $data);

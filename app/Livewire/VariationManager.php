@@ -207,13 +207,12 @@ class VariationManager extends Component
                         'id' => $variation['id'] ?? null,
                         'regular_price' => $variation['regular_price'] ?? '',
                         'sale_price' => $variation['sale_price'] ?? '',
-                        'stock_quantity' => $variation['stock_quantity'] ?? '',
+                        'stock_quantity' => $variation['stock_quantity'] ?? 0, // الافتراضي 0
                         'sku' => $variation['sku'] ?? '',
                         'description' => $variation['description'] ?? ''
                     ];
                 }
             }
-
 
             foreach ($combinations as $combo) {
                 $options = is_array($combo) ? $combo : [$combo];
@@ -227,28 +226,24 @@ class VariationManager extends Component
                     'options' => $options,
                     'regular_price' => $existingData['regular_price'] ?? '',
                     'sale_price' => $existingData['sale_price'] ?? '',
-                    'stock_quantity' => $existingData['stock_quantity'] ?? '',
+                    'stock_quantity' => $existingData['stock_quantity'] ?? 0, // الافتراضي 0
                     'sku' => $existingData['sku'] ?? '',
                     'description' => $existingData['description'] ?? '',
-                    'manage_stock' => true,
+                    'manage_stock' => true, // ✅ تفعيل إدارة المخزون دائماً
                     'active' => true
                 ];
             }
 
             $this->variations = $newVariations;
-            $this->notifyParentOfUpdate(); // إرسال التحديث إلى المكون الأب
+            $this->notifyParentOfUpdate();
 
-            // تمت إزالة إرسال حدث attributesSelected هنا
-            // لأن VariationManager هو المسؤول عن توليد المتغيرات وإرسالها مباشرة إلى Edit.php
-
-            session()->flash('success', 'تم توليد ' . count($this->variations) . ' متغير بنجاح');
+            session()->flash('success', 'تم توليد ' . count($this->variations) . ' متغير بنجاح مع تفعيل إدارة المخزون');
 
         } catch (\Exception $e) {
             Log::error('خطأ في توليد المتغيرات: ' . $e->getMessage());
             session()->flash('error', 'حدث خطأ في توليد المتغيرات');
         }
     }
-
     private function areOptionsEqual($options1, $options2)
     {
         if (count($options1) !== count($options2)) {
@@ -344,11 +339,12 @@ class VariationManager extends Component
 
     public function updatedAllStockQuantity($value)
     {
-        // تحويل القيمة إلى عدد صحيح بشكل صريح، أو null إذا كانت فارغة
-        $cleanedValue = (empty($value) && $value !== 0 && $value !== '0') ? null : (int)$value;
+        // تحويل القيمة إلى عدد صحيح، أو 0 إذا كانت فارغة
+        $cleanedValue = (empty($value) && $value !== 0 && $value !== '0') ? 0 : (int)$value;
 
         foreach ($this->variations as $index => $variation) {
             $this->variations[$index]['stock_quantity'] = $cleanedValue;
+            $this->variations[$index]['manage_stock'] = true; // ✅ تأكد من تفعيل إدارة المخزون
         }
         $this->notifyParentOfUpdate();
     }
@@ -359,21 +355,23 @@ class VariationManager extends Component
      */
     public function syncStockQuantity($value, $index)
     {
-        // تحويل القيمة إلى عدد صحيح بشكل صريح، أو null إذا كانت فارغة
-        $cleanedValue = (empty($value) && $value !== 0 && $value !== '0') ? null : (int)$value;
+        // تحويل القيمة إلى عدد صحيح، أو 0 إذا كانت فارغة
+        $cleanedValue = (empty($value) && $value !== 0 && $value !== '0') ? 0 : (int)$value;
 
         if (isset($this->variations[$index])) {
             $this->variations[$index]['stock_quantity'] = $cleanedValue;
-            Log::info('Individual stock quantity updated', [
+            $this->variations[$index]['manage_stock'] = true; // ✅ تأكد من تفعيل إدارة المخزون
+
+            Log::info('Individual stock quantity updated with manage_stock=true', [
                 'index' => $index,
                 'value' => $value,
                 'cleaned_value' => $cleanedValue,
-                'type_after_sync' => gettype($this->variations[$index]['stock_quantity'])
+                'manage_stock' => $this->variations[$index]['manage_stock']
             ]);
+
             $this->notifyParentOfUpdate();
         }
     }
-
 
     public function updatedVariations($value, $name)
     {
@@ -384,8 +382,17 @@ class VariationManager extends Component
             'all_variations' => $this->variations
         ]);
 
-        // لا يتم تحويل stock_quantity هنا، بل يتم الاعتماد على syncStockQuantity
-        // للحقول الفردية وعلى updatedAllStockQuantity للحقول الجماعية.
+        // إذا كان الحقل الذي تم تحديثه هو stock_quantity، قم بتحويله إلى عدد صحيح
+        if (str_contains($name, '.stock_quantity')) {
+            $path = explode('.', $name);
+            $index = $path[1];
+            $this->variations[$index]['stock_quantity'] = is_numeric($value) ? (int)$value : null;
+            Log::info('Converted stock_quantity to int/null via updatedVariations', [
+                'index' => $index,
+                'value' => $value,
+                'type_after_conversion' => gettype($this->variations[$index]['stock_quantity'])
+            ]);
+        }
 
         $this->notifyParentOfUpdate();
     }
