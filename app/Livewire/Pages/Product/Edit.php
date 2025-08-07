@@ -71,14 +71,7 @@ class Edit extends Component
             // جلب البيانات من API
             $response = $this->wooService->getAttributes();
 
-            // تشخيص هيكل البيانات المستلمة
-            Log::info('هيكل البيانات المستلمة:', [
-                'response_keys' => array_keys($response),
-                'has_data_key' => isset($response['data']),
-                'response_type' => gettype($response)
-            ]);
-
-            // استخراج البيانات من مفتاح "data" أو استخدام البيانات مباشرة
+            // استخراج البيانات
             if (isset($response['data']) && is_array($response['data'])) {
                 $this->productAttributes = $response['data'];
             } else {
@@ -86,11 +79,10 @@ class Edit extends Component
             }
 
             Log::info('تم جلب الخصائص:', [
-                'attributes_count' => count($this->productAttributes),
-                'first_attribute' => $this->productAttributes[0] ?? null
+                'attributes_count' => count($this->productAttributes)
             ]);
 
-            // جلب المصطلحات لكل خاصية
+            // جلب المصطلحات لكل خاصية مع إزالة التكرارات
             $this->attributeTerms = [];
             foreach ($this->productAttributes as $attr) {
                 if (!isset($attr['id'])) {
@@ -99,25 +91,19 @@ class Edit extends Component
                 }
 
                 try {
-                    $termsResponse = $this->wooService->getTermsForAttribute($attr['id']);
-
-                    // تشخيص هيكل المصطلحات
-                    Log::info("هيكل مصطلحات الخاصية {$attr['id']}:", [
-                        'response_keys' => is_array($termsResponse) ? array_keys($termsResponse) : 'not_array',
-                        'has_data_key' => isset($termsResponse['data'])
+                    // استخدام الدالة المحسنة التي تزيل التكرارات
+                    $filteredTerms = $this->wooService->getTermsForAttribute($attr['id'], [
+                        'per_page' => 100,
+                        'orderby' => 'name',
+                        'order' => 'asc'
                     ]);
 
-                    // استخراج المصطلحات
-                    if (isset($termsResponse['data']) && is_array($termsResponse['data'])) {
-                        $this->attributeTerms[$attr['id']] = $termsResponse['data'];
-                    } else {
-                        $this->attributeTerms[$attr['id']] = $termsResponse;
-                    }
+                    $this->attributeTerms[$attr['id']] = $filteredTerms;
 
-                    Log::info("تم جلب مصطلحات الخاصية {$attr['name']}:", [
+                    Log::info("تم جلب مصطلحات الخاصية {$attr['name']} (مفلترة):", [
                         'attribute_id' => $attr['id'],
-                        'terms_count' => count($this->attributeTerms[$attr['id']]),
-                        'sample_term' => $this->attributeTerms[$attr['id']][0] ?? null
+                        'terms_count' => count($filteredTerms),
+                        'sample_terms' => array_slice(array_column($filteredTerms, 'name'), 0, 5)
                     ]);
                 } catch (\Exception $e) {
                     Log::error("فشل في جلب مصطلحات الخاصية {$attr['id']}:", [
@@ -129,12 +115,12 @@ class Edit extends Component
 
             $this->isRefreshing = false;
 
-            // إذا لم تكن هذه المرة الأولى (في mount)، أظهر رسالة نجاح
+            // إذا لم تكن هذه المرة الأولى، أظهر رسالة نجاح
             if (!empty($this->productName)) {
-                Toaster::success('تم تحديث الخصائص والمصطلحات بنجاح');
+                Toaster::success('تم تحديث الخصائص والمصطلحات بنجاح (بدون تكرارات)');
             }
 
-            Log::info('انتهاء جلب الخصائص:', [
+            Log::info('انتهاء جلب الخصائص بنجاح:', [
                 'total_attributes' => count($this->productAttributes),
                 'attributes_with_terms' => count($this->attributeTerms)
             ]);
@@ -145,13 +131,11 @@ class Edit extends Component
             $this->productAttributes = [];
             $this->attributeTerms = [];
 
-            // إذا لم تكن هذه المرة الأولى، أظهر رسالة خطأ
             if (!empty($this->productName)) {
                 Toaster::error('حدث خطأ في تحديث الخصائص: ' . $e->getMessage());
             }
         }
     }
-
     /**
      * تحديث شامل للخصائص والمصطلحات والمتغيرات
      */
@@ -211,9 +195,14 @@ class Edit extends Component
         try {
             Log::info("بدء تحديث الخاصية: {$attributeId}");
 
-            // تحديث مصطلحات الخاصية المحددة
-            $terms = $this->wooService->getTermsForAttribute($attributeId);
-            $this->attributeTerms[$attributeId] = $terms['data'] ?? $terms;
+            // تحديث مصطلحات الخاصية المحددة مع إزالة التكرارات
+            $filteredTerms = $this->wooService->getTermsForAttribute($attributeId, [
+                'per_page' => 100,
+                'orderby' => 'name',
+                'order' => 'asc'
+            ]);
+
+            $this->attributeTerms[$attributeId] = $filteredTerms;
 
             // البحث عن الخاصية في القائمة وتحديثها
             $attributeIndex = collect($this->productAttributes)->search(function ($attr) use ($attributeId) {
@@ -227,10 +216,11 @@ class Edit extends Component
                 }
             }
 
-            Toaster::success('تم تحديث الخاصية بنجاح');
+            Toaster::success('تم تحديث الخاصية بنجاح (بدون تكرارات)');
 
             Log::info("انتهاء تحديث الخاصية {$attributeId}:", [
-                'terms_count' => count($this->attributeTerms[$attributeId])
+                'terms_count' => count($filteredTerms),
+                'sample_terms' => array_slice(array_column($filteredTerms, 'name'), 0, 5)
             ]);
 
         } catch (\Exception $e) {

@@ -373,8 +373,24 @@ class WooCommerceService
 
     public function getTermsForAttribute($attributeId, array $query = []): array
     {
-        $response = $this->get("products/attributes/{$attributeId}/terms", $query);
-        return $response['data'] ?? [];
+        try {
+            $response = $this->get("products/attributes/{$attributeId}/terms", $query);
+            $terms = $response['data'] ?? $response;
+
+            // فلترة المصطلحات لإزالة التكرارات
+            $filteredTerms = $this->filterUniqueTerms($terms, 'en'); // تفضيل الإنجليزية
+
+            Log::info('Retrieved and filtered terms for attribute', [
+                'attribute_id' => $attributeId,
+                'original_terms_count' => count($terms),
+                'filtered_terms_count' => count($filteredTerms)
+            ]);
+
+            return $filteredTerms;
+        } catch (\Exception $e) {
+            Log::error("Failed to get terms for attribute {$attributeId}: " . $e->getMessage());
+            return [];
+        }
     }
 
     public function getAttributeById($id): array
@@ -396,8 +412,77 @@ class WooCommerceService
 
     public function getTermsByAttributeId($attributeId, array $query = []): array
     {
-        $response = $this->get("products/attributes/{$attributeId}/terms", $query);
-        return $response['data'] ?? [];
+        try {
+            $response = $this->get("products/attributes/{$attributeId}/terms", $query);
+            $terms = $response['data'] ?? $response;
+
+            // فلترة المصطلحات لإزالة التكرارات
+            $filteredTerms = $this->filterUniqueTerms($terms, 'en');
+
+            return $filteredTerms;
+        } catch (\Exception $e) {
+            Log::error("Failed to get terms by attribute ID {$attributeId}: " . $e->getMessage());
+            return [];
+        }
+    }
+
+    public function getTermsForAttributeByLang($attributeId, string $lang = 'en', array $query = []): array
+    {
+        try {
+            // إضافة معامل اللغة للاستعلام إذا كان مدعوماً
+            $query['lang'] = $lang;
+
+            $response = $this->get("products/attributes/{$attributeId}/terms", $query);
+            $terms = $response['data'] ?? $response;
+
+            // فلترة المصطلحات بناءً على اللغة المطلوبة
+            $langSpecificTerms = array_filter($terms, function($term) use ($lang) {
+                return ($term['lang'] ?? 'en') === $lang;
+            });
+
+            // إذا لم نجد مصطلحات باللغة المطلوبة، استخدم الفلترة العامة
+            if (empty($langSpecificTerms)) {
+                $langSpecificTerms = $this->filterUniqueTerms($terms, $lang);
+            }
+
+            // ترتيب المصطلحات
+            usort($langSpecificTerms, function($a, $b) {
+                $nameA = $a['name'] ?? '';
+                $nameB = $b['name'] ?? '';
+
+                if (is_numeric($nameA) && is_numeric($nameB)) {
+                    return (int)$nameA - (int)$nameB;
+                }
+
+                return strcmp($nameA, $nameB);
+            });
+
+            Log::info('Retrieved terms for specific language', [
+                'attribute_id' => $attributeId,
+                'language' => $lang,
+                'terms_count' => count($langSpecificTerms)
+            ]);
+
+            return array_values($langSpecificTerms);
+        } catch (\Exception $e) {
+            Log::error("Failed to get terms for attribute {$attributeId} in language {$lang}: " . $e->getMessage());
+            return [];
+        }
+    }
+
+    private function getPreferredLanguage(): string
+    {
+        // يمكنك تخصيص هذا حسب إعدادات موقعك
+        $locale = app()->getLocale();
+
+        // تحويل locale إلى رمز لغة WooCommerce
+        $langMap = [
+            'ar' => 'ar',
+            'en' => 'en',
+            'he' => 'he'
+        ];
+
+        return $langMap[$locale] ?? 'en';
     }
 
     public function deleteTerm($attributeId, $termId, array $query = []): array
@@ -934,6 +1019,45 @@ class WooCommerceService
     {
         // جلب المتغيرات للمنتج المحدد
         return $this->get("products/{$productId}/variations", $query)['data'];
+    }
+
+    private function filterUniqueTerms(array $terms, string $preferredLang = 'en'): array
+    {
+        $uniqueTerms = [];
+        $seenNames = [];
+
+        foreach ($terms as $term) {
+            $termName = $term['name'] ?? '';
+            $termLang = $term['lang'] ?? $preferredLang;
+
+            // إذا لم نر هذا الاسم من قبل، أو إذا كانت هذه اللغة المفضلة
+            if (!isset($seenNames[$termName]) || $termLang === $preferredLang) {
+                $uniqueTerms[] = $term;
+                $seenNames[$termName] = $term['id'];
+            }
+        }
+
+        // ترتيب المصطلحات حسب الاسم (رقمياً إذا كانت أرقام)
+        usort($uniqueTerms, function($a, $b) {
+            $nameA = $a['name'] ?? '';
+            $nameB = $b['name'] ?? '';
+
+            // إذا كانت الأسماء أرقام، قارن رقمياً
+            if (is_numeric($nameA) && is_numeric($nameB)) {
+                return (int)$nameA - (int)$nameB;
+            }
+
+            // وإلا قارن أبجدياً
+            return strcmp($nameA, $nameB);
+        });
+
+        Log::info('Filtered unique terms', [
+            'original_count' => count($terms),
+            'filtered_count' => count($uniqueTerms),
+            'preferred_lang' => $preferredLang
+        ]);
+
+        return $uniqueTerms;
     }
 
     public function updateVariationMrbpRole($variationId, $roleId, $value)

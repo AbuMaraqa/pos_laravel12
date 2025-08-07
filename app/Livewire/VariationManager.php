@@ -93,7 +93,8 @@ class VariationManager extends Component
 
             foreach ($this->loadedAttributes as $attribute) {
                 $this->attributeTerms[$attribute['id']] = $this->wooService->getTermsForAttribute($attribute['id'] , [
-                    'per_page' => 100
+                    'per_page' => 100,
+                    'translations' => app()->getLocale()
                 ]);
             }
 
@@ -280,15 +281,29 @@ class VariationManager extends Component
     #[On('requestLatestVariations')]
     public function sendLatestVariations($data = [])
     {
+        // التحقق من سلامة البيانات أولاً
+        $this->validateVariations();
+
         // التحقق من صحة البيانات
         $validVariations = [];
-        foreach ($this->variations as $variation) {
-            if (!empty($variation['regular_price']) && !empty($variation['options'])) {
+        foreach ($this->variations as $index => $variation) {
+            // التأكد من وجود العناصر المطلوبة
+            if (!isset($variation['options'])) {
+                Log::warning('Variation missing options, skipping', ['index' => $index]);
+                continue;
+            }
+
+            if (!empty($variation['regular_price'])) {
                 $validVariations[] = $variation;
+            } else {
+                Log::warning('Variation missing regular_price, skipping', [
+                    'index' => $index,
+                    'variation' => $variation
+                ]);
             }
         }
 
-        if (empty($validVariations)) { // تم تصحيح اسم المتغير هنا
+        if (empty($validVariations)) {
             session()->flash('error', 'لا توجد متغيرات صالحة للحفظ. يرجى التأكد من إدخال الأسعار.');
             return;
         }
@@ -300,6 +315,11 @@ class VariationManager extends Component
             'attributeMap' => $this->attributeMap,
             'selectedAttributes' => $this->getSelectedAttributesForSaving()
         ])->to($targetComponent);
+
+        Log::info('Valid variations sent successfully', [
+            'total_variations' => count($this->variations),
+            'valid_variations' => count($validVariations)
+        ]);
     }
 
     private function getSelectedAttributesForSaving()
@@ -379,22 +399,204 @@ class VariationManager extends Component
         Log::info('Variation field updated', [
             'field' => $name,
             'value' => $value,
-            'all_variations' => $this->variations
+            'variations_count' => count($this->variations)
         ]);
 
-        // إذا كان الحقل الذي تم تحديثه هو stock_quantity، قم بتحويله إلى عدد صحيح
-        if (str_contains($name, '.stock_quantity')) {
-            $path = explode('.', $name);
-            $index = $path[1];
-            $this->variations[$index]['stock_quantity'] = is_numeric($value) ? (int)$value : null;
-            Log::info('Converted stock_quantity to int/null via updatedVariations', [
-                'index' => $index,
-                'value' => $value,
-                'type_after_conversion' => gettype($this->variations[$index]['stock_quantity'])
-            ]);
+        // ✅ التحقق من أن المتغيرات موجودة وصالحة
+        if (empty($this->variations)) {
+            Log::warning('No variations found during update');
+            return;
+        }
+
+        // ✅ استخراج الفهرس من اسم الحقل
+        // مثال: variations.0.stock_quantity -> الفهرس = 0
+        if (preg_match('/variations\.(\d+)\./', $name, $matches)) {
+            $index = (int)$matches[1];
+
+            // ✅ التحقق من وجود المتغير في الفهرس المحدد
+            if (!isset($this->variations[$index])) {
+                Log::warning('Variation not found at index', [
+                    'index' => $index,
+                    'field' => $name
+                ]);
+                return;
+            }
+
+            // ✅ التأكد من وجود options في المتغير
+            if (!isset($this->variations[$index]['options'])) {
+                Log::warning('Options not found for variation, initializing...', [
+                    'index' => $index,
+                    'variation_keys' => array_keys($this->variations[$index])
+                ]);
+
+                // إنشاء options فارغة إذا لم تكن موجودة
+                $this->variations[$index]['options'] = [];
+            }
+
+            // ✅ تأكد من تفعيل إدارة المخزون للمتغير المحدث
+            $this->variations[$index]['manage_stock'] = true;
+
+            // ✅ معالجة خاصة لحقل stock_quantity
+            if (str_contains($name, '.stock_quantity')) {
+                $cleanedValue = (empty($value) && $value !== 0 && $value !== '0') ? 0 : (int)$value;
+                $this->variations[$index]['stock_quantity'] = $cleanedValue;
+
+                Log::info('Stock quantity updated for single variation', [
+                    'index' => $index,
+                    'original_value' => $value,
+                    'cleaned_value' => $cleanedValue,
+                    'manage_stock' => $this->variations[$index]['manage_stock']
+                ]);
+            }
+
+            // ✅ معالجة خاصة لحقل regular_price
+            if (str_contains($name, '.regular_price')) {
+                $this->variations[$index]['regular_price'] = (string)$value;
+
+                Log::info('Regular price updated for single variation', [
+                    'index' => $index,
+                    'value' => $value
+                ]);
+            }
+
+            // ✅ معالجة خاصة لحقل sale_price
+            if (str_contains($name, '.sale_price')) {
+                $this->variations[$index]['sale_price'] = (string)$value;
+
+                Log::info('Sale price updated for single variation', [
+                    'index' => $index,
+                    'value' => $value
+                ]);
+            }
         }
 
         $this->notifyParentOfUpdate();
+    }
+
+    public function updateSingleVariationStock($index, $value)
+    {
+        try {
+            // التحقق من صحة الفهرس
+            if (!isset($this->variations[$index])) {
+                Log::error('Invalid variation index for stock update', [
+                    'index' => $index,
+                    'total_variations' => count($this->variations)
+                ]);
+                return;
+            }
+
+            // تنظيف القيمة
+            $cleanedValue = (empty($value) && $value !== 0 && $value !== '0') ? 0 : (int)$value;
+
+            // تحديث البيانات
+            $this->variations[$index]['stock_quantity'] = $cleanedValue;
+            $this->variations[$index]['manage_stock'] = true;
+
+            // التأكد من وجود options
+            if (!isset($this->variations[$index]['options'])) {
+                $this->variations[$index]['options'] = [];
+            }
+
+            Log::info('Single variation stock updated successfully', [
+                'index' => $index,
+                'value' => $value,
+                'cleaned_value' => $cleanedValue,
+                'manage_stock' => true
+            ]);
+
+            $this->notifyParentOfUpdate();
+
+        } catch (\Exception $e) {
+            Log::error('Error updating single variation stock', [
+                'index' => $index,
+                'value' => $value,
+                'error' => $e->getMessage()
+            ]);
+        }
+    }
+
+    public function updateSingleVariationPrice($index, $field, $value)
+    {
+        try {
+            // التحقق من صحة الفهرس
+            if (!isset($this->variations[$index])) {
+                Log::error('Invalid variation index for price update', [
+                    'index' => $index,
+                    'field' => $field,
+                    'total_variations' => count($this->variations)
+                ]);
+                return;
+            }
+
+            // التحقق من صحة الحقل
+            if (!in_array($field, ['regular_price', 'sale_price'])) {
+                Log::error('Invalid price field', [
+                    'field' => $field,
+                    'allowed_fields' => ['regular_price', 'sale_price']
+                ]);
+                return;
+            }
+
+            // تحديث البيانات
+            $this->variations[$index][$field] = (string)$value;
+            $this->variations[$index]['manage_stock'] = true;
+
+            // التأكد من وجود options
+            if (!isset($this->variations[$index]['options'])) {
+                $this->variations[$index]['options'] = [];
+            }
+
+            Log::info('Single variation price updated successfully', [
+                'index' => $index,
+                'field' => $field,
+                'value' => $value
+            ]);
+
+            $this->notifyParentOfUpdate();
+
+        } catch (\Exception $e) {
+            Log::error('Error updating single variation price', [
+                'index' => $index,
+                'field' => $field,
+                'value' => $value,
+                'error' => $e->getMessage()
+            ]);
+        }
+    }
+
+    public function validateVariations()
+    {
+        $fixed = false;
+
+        foreach ($this->variations as $index => &$variation) {
+            // التأكد من وجود options
+            if (!isset($variation['options'])) {
+                $variation['options'] = [];
+                $fixed = true;
+                Log::info('Fixed missing options for variation', ['index' => $index]);
+            }
+
+            // التأكد من تفعيل إدارة المخزون
+            if (!isset($variation['manage_stock']) || !$variation['manage_stock']) {
+                $variation['manage_stock'] = true;
+                $fixed = true;
+                Log::info('Fixed manage_stock for variation', ['index' => $index]);
+            }
+
+            // التأكد من وجود stock_quantity كرقم
+            if (!isset($variation['stock_quantity']) || !is_numeric($variation['stock_quantity'])) {
+                $variation['stock_quantity'] = 0;
+                $fixed = true;
+                Log::info('Fixed stock_quantity for variation', ['index' => $index]);
+            }
+        }
+
+        if ($fixed) {
+            Log::info('Variations data fixed and validated');
+            $this->notifyParentOfUpdate();
+        }
+
+        return $fixed;
     }
 
     private function notifyParentOfUpdate()
