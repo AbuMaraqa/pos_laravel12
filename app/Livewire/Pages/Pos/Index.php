@@ -94,13 +94,11 @@ class Index extends Component
     #[On('fetch-products-from-api')]
     public function fetchProductsFromAPI()
     {
-        $allProducts = [];
         $page = 1;
+        $perPage = 100; // يمكنك زيادة هذا الرقم إذا كان أداء الخادم جيدًا
 
-        // الحلقة الرئيسية لجلب جميع المنتجات على دفعات
         while (true) {
-            $response = $this->wooService->getProducts(['per_page' => 100, 'page' => $page]);
-            $products = $response['data'];
+            $products = $this->wooService->getProducts(['per_page' => $perPage, 'page' => $page])['data'];
 
             if (empty($products)) {
                 // لا توجد منتجات أخرى، نخرج من الحلقة
@@ -113,7 +111,7 @@ class Index extends Component
                 // إذا كان المنتج من نوع 'variable'، نقوم بجلب الـ variations
                 if ($product['type'] === 'variable' && !empty($product['variations'])) {
                     // جلب الـ variations في طلب واحد
-                    $variations = $this->wooService->getProducts(['parent' => $product['id'], 'per_page' => 100])['data'];
+                    $variations = $this->wooService->getProducts(['parent' => $product['id']])['data'];
 
                     foreach ($variations as $variation) {
                         $variation['product_id'] = $product['id']; // للحفاظ على العلاقة
@@ -122,10 +120,12 @@ class Index extends Component
                 }
             }
 
+            // هنا يمكنك إرسال المنتجات التي تم جلبها في كل صفحة إلى وظيفة التخزين
+            $this->dispatch('store-products', products: $allProducts);
+
+            $allProducts = []; // تفريغ المصفوفة للصفحة التالية
             $page++;
         }
-
-        $this->dispatch('store-products', products: $allProducts);
     }
 
     #[On('fetch-categories-from-api')]
