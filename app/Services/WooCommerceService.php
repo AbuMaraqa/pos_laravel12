@@ -995,7 +995,7 @@ class WooCommerceService
 
     public function shippingZones()
     {
-        return $this->get('shipping/zones');
+        return $this->get('shipping/zones')['data'];
     }
 
     public function shippingZoneById($zoneId)
@@ -1005,14 +1005,14 @@ class WooCommerceService
 
     public function shippingZoneMethods($zoneId)
     {
-        return $this->get("shipping/zones/{$zoneId}/methods");
+        return $this->get("shipping/zones/{$zoneId}/methods")['data'];
     }
 
     public function updateShippingZoneMethod($zoneId, $methodId, $settings)
     {
         return $this->put("shipping/zones/{$zoneId}/methods/{$methodId}", [
             'settings' => $settings
-        ]);
+        ])['data'];
     }
 
     public function getProductVariations($productId , $query = []): array
@@ -1023,17 +1023,86 @@ class WooCommerceService
 
     private function filterUniqueTerms(array $terms, string $preferredLang = 'en'): array
     {
+        if (empty($terms)) {
+            return [];
+        }
+
+        // تسجيل البيانات الأولية
+        Log::info('بدء فلترة المصطلحات:', [
+            'total_terms' => count($terms),
+            'preferred_lang' => $preferredLang,
+            'sample_terms' => array_slice($terms, 0, 5)
+        ]);
+
         $uniqueTerms = [];
         $seenNames = [];
+        $duplicatesLog = [];
 
-        foreach ($terms as $term) {
+        foreach ($terms as $index => $term) {
             $termName = $term['name'] ?? '';
+            $termId = $term['id'] ?? null;
             $termLang = $term['lang'] ?? $preferredLang;
 
-            // إذا لم نر هذا الاسم من قبل، أو إذا كانت هذه اللغة المفضلة
-            if (!isset($seenNames[$termName]) || $termLang === $preferredLang) {
+            Log::debug("معالجة المصطلح {$index}:", [
+                'id' => $termId,
+                'name' => $termName,
+                'lang' => $termLang
+            ]);
+
+            // إذا كان الاسم فارغ، تجاهله
+            if (empty($termName)) {
+                Log::warning("تجاهل مصطلح بدون اسم:", ['term' => $term]);
+                continue;
+            }
+
+            // إذا لم نر هذا الاسم من قبل
+            if (!isset($seenNames[$termName])) {
                 $uniqueTerms[] = $term;
-                $seenNames[$termName] = $term['id'];
+                $seenNames[$termName] = [
+                    'id' => $termId,
+                    'lang' => $termLang,
+                    'index' => count($uniqueTerms) - 1
+                ];
+
+                Log::debug("✅ تمت إضافة مصطلح جديد:", [
+                    'name' => $termName,
+                    'id' => $termId,
+                    'lang' => $termLang
+                ]);
+            } else {
+                // المصطلح موجود، تحقق من اللغة
+                $existingInfo = $seenNames[$termName];
+
+                $duplicatesLog[] = [
+                    'name' => $termName,
+                    'existing_id' => $existingInfo['id'],
+                    'existing_lang' => $existingInfo['lang'],
+                    'new_id' => $termId,
+                    'new_lang' => $termLang
+                ];
+
+                // إذا كانت اللغة الجديدة هي المفضلة، استبدل الموجود
+                if ($termLang === $preferredLang && $existingInfo['lang'] !== $preferredLang) {
+                    $uniqueTerms[$existingInfo['index']] = $term;
+                    $seenNames[$termName] = [
+                        'id' => $termId,
+                        'lang' => $termLang,
+                        'index' => $existingInfo['index']
+                    ];
+
+                    Log::info("🔄 تم استبدال المصطلح باللغة المفضلة:", [
+                        'name' => $termName,
+                        'old_id' => $existingInfo['id'],
+                        'new_id' => $termId,
+                        'preferred_lang' => $preferredLang
+                    ]);
+                } else {
+                    Log::debug("تجاهل مصطلح مكرر:", [
+                        'name' => $termName,
+                        'existing_id' => $existingInfo['id'],
+                        'duplicate_id' => $termId
+                    ]);
+                }
             }
         }
 
@@ -1051,15 +1120,21 @@ class WooCommerceService
             return strcmp($nameA, $nameB);
         });
 
-        Log::info('Filtered unique terms', [
+        // تسجيل النتائج
+        Log::info('انتهاء فلترة المصطلحات:', [
             'original_count' => count($terms),
             'filtered_count' => count($uniqueTerms),
-            'preferred_lang' => $preferredLang
+            'removed_count' => count($terms) - count($uniqueTerms),
+            'duplicates_found' => count($duplicatesLog),
+            'final_terms' => array_column($uniqueTerms, 'name')
         ]);
 
-        return $uniqueTerms;
-    }
+        if (!empty($duplicatesLog)) {
+            Log::info('المصطلحات المكررة التي تم معالجتها:', $duplicatesLog);
+        }
 
+        return array_values($uniqueTerms);
+    }
     public function updateVariationMrbpRole($variationId, $roleId, $value)
     {
         // For variations, we need to update directly on the target product/variation

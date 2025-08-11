@@ -148,20 +148,50 @@ class Add extends Component
         $this->attributeMap = $data['attributeMap'] ?? [];
     }
 
+// أضف هذا الكود في دالة generateVariations() في Add.php
+
     public function generateVariations()
     {
         try {
+            // تسجيل البيانات الأولية
+            Log::info('=== بدء توليد المتغيرات - تشخيص مفصل ===', [
+                'selectedAttributes' => $this->selectedAttributes,
+                'attributeTerms_summary' => array_map(fn($terms) => [
+                    'count' => count($terms),
+                    'sample_names' => array_slice(array_column($terms, 'name'), 0, 10)
+                ], $this->attributeTerms)
+            ]);
+
             // تنظيف البيانات المحددة
             $filteredAttributes = [];
             foreach ($this->selectedAttributes as $attributeId => $termIds) {
+                Log::info("معالجة الخاصية {$attributeId}:", [
+                    'received_termIds' => $termIds,
+                    'termIds_type' => gettype($termIds)
+                ]);
+
                 if (is_array($termIds) && !empty($termIds)) {
-                    $filteredAttributes[$attributeId] = array_filter($termIds);
+                    $cleanedTermIds = array_filter($termIds);
+                    if (!empty($cleanedTermIds)) {
+                        $filteredAttributes[$attributeId] = $cleanedTermIds;
+
+                        Log::info("تم تصفية الخاصية {$attributeId}:", [
+                            'original_count' => count($termIds),
+                            'filtered_count' => count($cleanedTermIds),
+                            'filtered_termIds' => $cleanedTermIds
+                        ]);
+                    }
                 }
             }
+
+            Log::info('البيانات المفلترة النهائية:', [
+                'filteredAttributes' => $filteredAttributes
+            ]);
 
             if (empty($filteredAttributes)) {
                 $this->variations = [];
                 $this->attributeMap = [];
+                Log::warning('لا توجد خصائص محددة - إنهاء العملية');
                 return;
             }
 
@@ -171,15 +201,35 @@ class Add extends Component
 
             foreach ($filteredAttributes as $attributeId => $termIds) {
                 $attribute = collect($this->productAttributes)->firstWhere('id', $attributeId);
-                if (!$attribute) continue;
+                if (!$attribute) {
+                    Log::error("لم يتم العثور على الخاصية في النظام: {$attributeId}");
+                    continue;
+                }
 
                 $terms = $this->attributeTerms[$attributeId] ?? [];
                 $termNames = [];
+
+                Log::info("تحويل IDs إلى أسماء للخاصية {$attributeId}:", [
+                    'termIds_to_convert' => $termIds,
+                    'available_terms' => array_map(fn($term) => [
+                        'id' => $term['id'],
+                        'name' => $term['name']
+                    ], $terms)
+                ]);
 
                 foreach ($termIds as $termId) {
                     $term = collect($terms)->firstWhere('id', $termId);
                     if ($term) {
                         $termNames[] = $term['name'];
+                        Log::info("✅ تم العثور على المصطلح:", [
+                            'termId' => $termId,
+                            'termName' => $term['name']
+                        ]);
+                    } else {
+                        Log::error("❌ لم يتم العثور على المصطلح:", [
+                            'termId' => $termId,
+                            'available_term_ids' => array_column($terms, 'id')
+                        ]);
                     }
                 }
 
@@ -189,12 +239,30 @@ class Add extends Component
                         'id' => $attributeId,
                         'name' => $attribute['name']
                     ];
+
+                    Log::info("✅ تم إعداد خيارات الخاصية {$attributeId}:", [
+                        'attribute_name' => $attribute['name'],
+                        'termNames' => $termNames,
+                        'termNames_count' => count($termNames)
+                    ]);
+                } else {
+                    Log::error("❌ لا توجد أسماء صالحة للخاصية {$attributeId}");
                 }
             }
+
+            Log::info('خيارات الخصائص النهائية:', [
+                'attributeOptions' => $attributeOptions,
+                'attributeMap' => $this->attributeMap
+            ]);
 
             // توليد التركيبات
             if (!empty($attributeOptions)) {
                 $combinations = $this->cartesian(array_values($attributeOptions));
+
+                Log::info('تم توليد التركيبات:', [
+                    'combinations_count' => count($combinations),
+                    'sample_combinations' => array_slice($combinations, 0, 5)
+                ]);
 
                 $this->variations = array_map(function($combo) {
                     return [
@@ -208,6 +276,11 @@ class Add extends Component
                         'description' => '',
                     ];
                 }, $combinations);
+
+                Log::info('✅ تم توليد المتغيرات بنجاح:', [
+                    'variations_count' => count($this->variations),
+                    'sample_variation_options' => array_slice(array_column($this->variations, 'options'), 0, 5)
+                ]);
             }
 
             // إرسال البيانات للمكون الفرعي
@@ -216,8 +289,12 @@ class Add extends Component
                 'attributeMap' => $this->attributeMap
             ])->to('variation-manager');
 
+            Log::info('=== انتهاء توليد المتغيرات بنجاح ===');
+
         } catch (\Exception $e) {
-            Log::error('خطأ في توليد المتغيرات: ' . $e->getMessage());
+            Log::error('❌ خطأ في توليد المتغيرات: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString()
+            ]);
             Toaster::error('حدث خطأ في توليد المتغيرات');
         }
     }
@@ -364,9 +441,21 @@ class Add extends Component
 
     private function prepareProductAttributes(): array
     {
+        Log::info('=== بدء تحضير خصائص المنتج للحفظ ===', [
+            'attributeMap_count' => count($this->attributeMap),
+            'variations_count' => count($this->variations),
+            'attributeMap' => $this->attributeMap
+        ]);
+
         $productAttributes = [];
 
         foreach ($this->attributeMap as $index => $attribute) {
+            Log::info("معالجة الخاصية {$index}:", [
+                'attribute_id' => $attribute['id'],
+                'attribute_name' => $attribute['name']
+            ]);
+
+            // جمع جميع القيم الفريدة لهذه الخاصية من المتغيرات
             $options = collect($this->variations)
                 ->pluck("options.{$index}")
                 ->unique()
@@ -374,15 +463,42 @@ class Add extends Component
                 ->filter()
                 ->toArray();
 
+            Log::info("خيارات الخاصية {$index}:", [
+                'options' => $options,
+                'options_count' => count($options),
+                'all_variation_options' => collect($this->variations)->map(function($variation, $varIndex) use ($index) {
+                    return [
+                        'variation_index' => $varIndex,
+                        'option_at_index_' . $index => $variation['options'][$index] ?? 'MISSING'
+                    ];
+                })->toArray()
+            ]);
+
             if (!empty($options)) {
-                $productAttributes[] = [
+                $attributeData = [
                     'id' => $attribute['id'],
                     'variation' => true,
                     'visible' => true,
                     'options' => $options,
                 ];
+
+                $productAttributes[] = $attributeData;
+
+                Log::info("✅ تم تحضير خاصية للحفظ:", [
+                    'attribute_data' => $attributeData
+                ]);
+            } else {
+                Log::warning("❌ تجاهل خاصية بدون خيارات:", [
+                    'attribute_id' => $attribute['id'],
+                    'attribute_name' => $attribute['name']
+                ]);
             }
         }
+
+        Log::info('=== انتهاء تحضير خصائص المنتج ===', [
+            'prepared_attributes_count' => count($productAttributes),
+            'prepared_attributes' => $productAttributes
+        ]);
 
         return $productAttributes;
     }
