@@ -94,23 +94,35 @@ class Index extends Component
     #[On('fetch-products-from-api')]
     public function fetchProductsFromAPI()
     {
-        $products = $this->wooService->getProducts(['per_page' => 100])['data'];
         $allProducts = [];
-        foreach ($products as $product) {
-            $allProducts[] = $product;
+        $page = 1;
 
-            if ($product['type'] === 'variable' && !empty($product['variations'])) {
-                // اجلب تفاصيل كل variation
-                foreach ($product['variations'] as $variationId) {
-                    $variation = $this->wooService->getProduct($variationId);
+        // الحلقة الرئيسية لجلب جميع المنتجات على دفعات
+        while (true) {
+            $response = $this->wooService->getProducts(['per_page' => 100, 'page' => $page]);
+            $products = $response['data'];
 
-                    if ($variation) {
-                        // ضف علاقة للمنتج الأب إن أردت تتبعها لاحقًا
-                        $variation['product_id'] = $product['id'];
+            if (empty($products)) {
+                // لا توجد منتجات أخرى، نخرج من الحلقة
+                break;
+            }
+
+            foreach ($products as $product) {
+                $allProducts[] = $product;
+
+                // إذا كان المنتج من نوع 'variable'، نقوم بجلب الـ variations
+                if ($product['type'] === 'variable' && !empty($product['variations'])) {
+                    // جلب الـ variations في طلب واحد
+                    $variations = $this->wooService->getProducts(['parent' => $product['id'], 'per_page' => 100])['data'];
+
+                    foreach ($variations as $variation) {
+                        $variation['product_id'] = $product['id']; // للحفاظ على العلاقة
                         $allProducts[] = $variation;
                     }
                 }
             }
+
+            $page++;
         }
 
         $this->dispatch('store-products', products: $allProducts);
