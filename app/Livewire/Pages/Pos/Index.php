@@ -33,40 +33,6 @@ class Index extends Component
         $this->products = $this->wooService->getProducts(['per_page' => 100, 'page' => 1])['data'] ?? [];
     }
 
-    public function selectCategory(?int $id = null)
-    {
-        $this->selectedCategory = $id;
-        $params = ['per_page' => 100, 'page' => 1];
-        if ($id !== null) {
-            $params['category'] = $id;
-        }
-        $response = $this->wooService->getProducts($params);
-        $this->products = $response['data'] ?? $response;
-    }
-
-    public function updatedSearch()
-    {
-        $response = $this->wooService->getProducts(['per_page' => 100, 'search' => $this->search]);
-        $this->products = $response['data'] ?? $response;
-    }
-
-    public function openVariationsModal($id, string $type)
-    {
-        if ($type == 'variable') {
-            $this->variations = $this->wooService->getProductVariations($id);
-            $this->modal('variations-modal')->show();
-        }
-    }
-
-    public function addProduct($productID, $productName, $productPrice)
-    {
-        $this->productArray[] = [
-            'id' => $productID,
-            'name' => $productName,
-            'price' => $productPrice,
-        ];
-    }
-
     #[On('fetch-products-from-api')]
     public function fetchProductsFromAPI()
     {
@@ -74,18 +40,18 @@ class Index extends Component
         $page = 1;
 
         try {
-            // الحصول على العدد الإجمالي
+            // جلب العدد الإجمالي
             $initialResponse = $this->wooService->getProductsWithHeaders([
                 'per_page' => 1,
                 'page' => 1
-            ]);
+            ])['data'];
 
             $totalProducts = isset($initialResponse['headers']['X-WP-Total'][0])
                 ? (int)$initialResponse['headers']['X-WP-Total'][0]
                 : 1000;
             $totalPages = ceil($totalProducts / $perPage);
 
-            \Log::info("بدء جلب المنتجات", [
+            \Log::info("بدء جلب سريع للمنتجات", [
                 'total_products' => $totalProducts,
                 'total_pages' => $totalPages
             ]);
@@ -95,12 +61,11 @@ class Index extends Component
                 'pages' => $totalPages
             ]);
 
-            // جلب المنتجات صفحة بصفحة
+            // جلب المنتجات الأساسية فقط أولاً (بدون متغيرات)
             for ($currentPage = 1; $currentPage <= $totalPages; $currentPage++) {
-                $pageProducts = $this->fetchPageProductsOptimized($currentPage, $perPage);
+                $pageProducts = $this->fetchPageProductsUltraFast($currentPage, $perPage);
 
                 if (!empty($pageProducts)) {
-                    // إرسال فوري للتخزين
                     $this->dispatch('store-products-batch', [
                         'products' => $pageProducts,
                         'page' => $currentPage,
@@ -108,28 +73,29 @@ class Index extends Component
                     ]);
                 }
 
-                // تحديث التقدم
                 $progress = ($currentPage / $totalPages) * 100;
                 $this->dispatch('update-progress', [
                     'page' => $currentPage,
                     'totalPages' => $totalPages,
                     'progress' => round($progress, 1),
-                    'message' => "جاري معالجة الصفحة {$currentPage} من {$totalPages}"
+                    'message' => "جلب سريع - الصفحة {$currentPage} من {$totalPages}"
                 ]);
 
-                // استراحة قصيرة
-                usleep(100000); // 0.1 ثانية
+                // استراحة صغيرة جداً
+                usleep(50000); // 0.05 ثانية
             }
 
             $this->dispatch('sync-completed', [
                 'total' => $totalProducts,
-                'message' => 'تم جلب جميع المنتجات بنجاح!'
+                'message' => 'تم جلب المنتجات الأساسية بسرعة! المتغيرات ستُحمل في الخلفية.'
             ]);
+
+            // بدء جلب المتغيرات في الخلفية (اختياري)
+            $this->dispatch('start-background-variations');
 
         } catch (\Exception $e) {
             \Log::error('فشل في جلب المنتجات', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'error' => $e->getMessage()
             ]);
 
             $this->dispatch('sync-error', [
@@ -138,32 +104,41 @@ class Index extends Component
         }
     }
 
-    private function fetchPageProductsOptimized($page, $perPage)
+    private function fetchPageProductsUltraFast($page, $perPage)
     {
         $pageProducts = [];
 
         try {
-            // جلب المنتجات الأساسية
+            // جلب المنتجات مع حقول محددة فقط لتوفير البيانات
             $response = $this->wooService->getProducts([
                 'per_page' => $perPage,
                 'page' => $page,
-                'status' => 'publish'
+                'status' => 'publish',
+                '_fields' => 'id,name,type,price,regular_price,sale_price,sku,stock_quantity,stock_status,categories,images,variations'
             ]);
 
             $products = $response['data'] ?? $response;
 
             foreach ($products as $product) {
-                // تحضير المنتج الأساسي
-                $cleanProduct = $this->prepareProductForPOS($product);
-                $pageProducts[] = $cleanProduct;
+                // تحضير المنتج بأقل البيانات المطلوبة
+                $cleanProduct = [
+                    'id' => $product['id'],
+                    'name' => $product['name'],
+                    'sku' => $product['sku'] ?? '',
+                    'type' => $product['type'],
+                    'price' => $product['price'] ?? '0',
+                    'regular_price' => $product['regular_price'] ?? '0',
+                    'sale_price' => $product['sale_price'] ?? '',
+                    'stock_quantity' => $product['stock_quantity'] ?? 0,
+                    'stock_status' => $product['stock_status'] ?? 'instock',
+                    'categories' => $product['categories'] ?? [],
+                    'images' => $this->extractProductImagesQuick($product),
+                    'variations' => $product['variations'] ?? [],
+                    'synced_at' => now()->toISOString(),
+                    'has_variations' => $product['type'] === 'variable' && !empty($product['variations'])
+                ];
 
-                // معالجة المتغيرات
-                if ($product['type'] === 'variable' && !empty($product['variations'])) {
-                    $variations = $this->fetchVariationsOptimized($product['id'], $product['name']);
-                    if (!empty($variations)) {
-                        $pageProducts = array_merge($pageProducts, $variations);
-                    }
-                }
+                $pageProducts[] = $cleanProduct;
             }
 
         } catch (\Exception $e) {
@@ -176,89 +151,60 @@ class Index extends Component
         return $pageProducts;
     }
 
-    private function prepareProductForPOS($product)
+    private function extractProductImagesQuick($product)
     {
-        return [
-            'id' => $product['id'],
-            'name' => $product['name'],
-            'sku' => $product['sku'] ?? '',
-            'type' => $product['type'],
-            'status' => $product['status'],
-            'price' => $product['price'] ?? '0',
-            'regular_price' => $product['regular_price'] ?? '0',
-            'sale_price' => $product['sale_price'] ?? '',
-            'stock_quantity' => $product['stock_quantity'] ?? 0,
-            'stock_status' => $product['stock_status'] ?? 'instock',
-            'manage_stock' => $product['manage_stock'] ?? false,
-            'categories' => $product['categories'] ?? [],
-            'images' => $this->extractProductImages($product),
-            'attributes' => $product['attributes'] ?? [],
-            'variations' => $product['variations'] ?? [],
-            'short_description' => $product['short_description'] ?? '',
-            'synced_at' => now()->toISOString()
-        ];
+        if (empty($product['images'])) return [];
+
+        // جلب أول صورة فقط لتوفير الذاكرة
+        $firstImage = $product['images'][0] ?? null;
+        if (!$firstImage) return [];
+
+        return [[
+            'id' => $firstImage['id'] ?? null,
+            'src' => $firstImage['src'] ?? '',
+            'alt' => $firstImage['alt'] ?? $product['name'] ?? ''
+        ]];
     }
 
-    private function extractProductImages($product)
+    #[On('fetch-variations-on-demand')]
+    public function fetchVariationsOnDemand($productId)
     {
-        $images = [];
-        if (!empty($product['images'])) {
-            foreach ($product['images'] as $image) {
-                $images[] = [
-                    'id' => $image['id'] ?? null,
-                    'src' => $image['src'] ?? '',
-                    'alt' => $image['alt'] ?? $product['name'] ?? ''
+        try {
+            $variations = $this->wooService->getProductVariations($productId);
+            $processedVariations = [];
+
+            foreach ($variations as $variation) {
+                $processedVariations[] = [
+                    'id' => $variation['id'],
+                    'product_id' => $productId,
+                    'type' => 'variation',
+                    'name' => $this->buildVariationNameQuick($variation, $productId),
+                    'sku' => $variation['sku'] ?? '',
+                    'price' => $variation['price'] ?? '0',
+                    'regular_price' => $variation['regular_price'] ?? '0',
+                    'sale_price' => $variation['sale_price'] ?? '',
+                    'stock_quantity' => $variation['stock_quantity'] ?? 0,
+                    'stock_status' => $variation['stock_status'] ?? 'instock',
+                    'attributes' => $variation['attributes'] ?? [],
+                    'images' => $this->extractVariationImageQuick($variation),
+                    'synced_at' => now()->toISOString()
                 ];
             }
-        }
-        return $images;
-    }
 
-    private function fetchVariationsOptimized($productId, $productName)
-    {
-        $variations = [];
-
-        try {
-            $variationData = $this->wooService->getProductVariations($productId);
-
-            if (is_array($variationData)) {
-                foreach ($variationData as $variation) {
-                    $cleanVariation = [
-                        'id' => $variation['id'],
-                        'product_id' => $productId,
-                        'type' => 'variation',
-                        'name' => $this->buildVariationName($variation, $productName),
-                        'sku' => $variation['sku'] ?? '',
-                        'price' => $variation['price'] ?? '0',
-                        'regular_price' => $variation['regular_price'] ?? '0',
-                        'sale_price' => $variation['sale_price'] ?? '',
-                        'stock_quantity' => $variation['stock_quantity'] ?? 0,
-                        'stock_status' => $variation['stock_status'] ?? 'instock',
-                        'manage_stock' => $variation['manage_stock'] ?? false,
-                        'attributes' => $variation['attributes'] ?? [],
-                        'images' => $this->extractVariationImage($variation),
-                        'description' => $variation['description'] ?? '',
-                        'synced_at' => now()->toISOString()
-                    ];
-
-                    $variations[] = $cleanVariation;
-                }
-            }
+            $this->dispatch('store-variations-for-product', [
+                'product_id' => $productId,
+                'variations' => $processedVariations
+            ]);
 
         } catch (\Exception $e) {
             \Log::error("فشل في جلب متغيرات المنتج {$productId}", [
-                'error' => $e->getMessage(),
-                'product_id' => $productId
+                'error' => $e->getMessage()
             ]);
         }
-
-        return $variations;
     }
 
-    private function buildVariationName($variation, $parentName = '')
+    private function buildVariationNameQuick($variation, $productId)
     {
-        $name = $parentName ? $parentName . ' - ' : 'متغير ';
-
         if (!empty($variation['attributes'])) {
             $attributeNames = [];
             foreach ($variation['attributes'] as $attribute) {
@@ -267,26 +213,22 @@ class Index extends Component
                 }
             }
             if (!empty($attributeNames)) {
-                $name .= implode(' - ', $attributeNames);
+                return implode(' - ', $attributeNames);
             }
-        } else {
-            $name .= '#' . $variation['id'];
         }
 
-        return $name;
+        return 'متغير #' . $variation['id'];
     }
 
-    private function extractVariationImage($variation)
+    private function extractVariationImageQuick($variation)
     {
-        $images = [];
-        if (!empty($variation['image'])) {
-            $images[] = [
-                'id' => $variation['image']['id'] ?? null,
-                'src' => $variation['image']['src'] ?? '',
-                'alt' => $variation['image']['alt'] ?? ''
-            ];
-        }
-        return $images;
+        if (empty($variation['image'])) return [];
+
+        return [[
+            'id' => $variation['image']['id'] ?? null,
+            'src' => $variation['image']['src'] ?? '',
+            'alt' => $variation['image']['alt'] ?? ''
+        ]];
     }
 
     #[On('quick-sync-products')]
@@ -295,36 +237,64 @@ class Index extends Component
         try {
             $perPage = 100;
             $page = 1;
-            $allProducts = [];
+            $totalFetched = 0;
+
+            $this->dispatch('sync-started', [
+                'total' => 'غير محدد',
+                'pages' => 'جلب سريع'
+            ]);
 
             do {
                 $response = $this->wooService->getProducts([
                     'per_page' => $perPage,
                     'page' => $page,
                     'status' => 'publish',
-                    'type' => 'simple'
+                    'type' => 'simple', // فقط المنتجات البسيطة
+                    '_fields' => 'id,name,type,price,sku,stock_quantity,images,categories'
                 ]);
 
                 $products = $response['data'] ?? $response;
 
                 if (!empty($products)) {
+                    $processedProducts = [];
                     foreach ($products as $product) {
-                        $allProducts[] = $this->prepareProductForPOS($product);
+                        $processedProducts[] = [
+                            'id' => $product['id'],
+                            'name' => $product['name'],
+                            'sku' => $product['sku'] ?? '',
+                            'type' => $product['type'],
+                            'price' => $product['price'] ?? '0',
+                            'stock_quantity' => $product['stock_quantity'] ?? 0,
+                            'categories' => $product['categories'] ?? [],
+                            'images' => $this->extractProductImagesQuick($product),
+                            'variations' => [],
+                            'synced_at' => now()->toISOString()
+                        ];
                     }
 
                     $this->dispatch('store-products-batch', [
-                        'products' => $allProducts,
+                        'products' => $processedProducts,
                         'page' => $page
                     ]);
 
-                    $allProducts = [];
+                    $totalFetched += count($products);
+
+                    $this->dispatch('update-progress', [
+                        'page' => $page,
+                        'totalPages' => '؟',
+                        'progress' => min(($totalFetched / 500) * 100, 99), // تقدير
+                        'message' => "جلب سريع - {$totalFetched} منتج"
+                    ]);
                 }
 
                 $page++;
-            } while (!empty($products) && count($products) == $perPage);
+                usleep(30000); // 0.03 ثانية
 
-            $this->dispatch('quick-sync-completed', [
-                'message' => 'تم جلب المنتجات الأساسية بسرعة!'
+            } while (!empty($products) && count($products) == $perPage && $page <= 20); // حد أقصى 20 صفحة
+
+            $this->dispatch('sync-completed', [
+                'total' => $totalFetched,
+                'message' => "تم جلب {$totalFetched} منتج بسرعة!"
             ]);
 
         } catch (\Exception $e) {
@@ -334,42 +304,40 @@ class Index extends Component
         }
     }
 
-    #[On('fetch-variations-background')]
-    public function fetchVariationsInBackground()
+    #[On('background-variations-sync')]
+    public function backgroundVariationsSync()
     {
         try {
+            // جلب المنتجات المتغيرة بحد أقصى 10 منتجات
             $variableProducts = $this->wooService->getProducts([
                 'type' => 'variable',
                 'status' => 'publish',
-                'per_page' => 50
+                'per_page' => 10 // قليل عشان ما ياخذ وقت
             ]);
 
             $products = $variableProducts['data'] ?? $variableProducts;
+            $processedCount = 0;
 
             foreach ($products as $product) {
-                if (!empty($product['variations'])) {
-                    $variations = $this->fetchVariationsOptimized($product['id'], $product['name']);
-
-                    if (!empty($variations)) {
-                        $this->dispatch('store-variations-batch', [
-                            'variations' => $variations,
-                            'product_id' => $product['id']
-                        ]);
-                    }
+                if (!empty($product['variations']) && $processedCount < 5) { // حد أقصى 5 منتجات
+                    $this->fetchVariationsOnDemand($product['id']);
+                    $processedCount++;
+                    usleep(200000); // 0.2 ثانية بين كل منتج
                 }
             }
 
-            $this->dispatch('variations-sync-completed', [
-                'message' => 'تم جلب جميع المتغيرات!'
+            $this->dispatch('background-sync-completed', [
+                'message' => "تم جلب متغيرات {$processedCount} منتجات في الخلفية"
             ]);
 
         } catch (\Exception $e) {
-            \Log::error('فشل في جلب المتغيرات', [
+            \Log::error('فشل في المزامنة الخلفية', [
                 'error' => $e->getMessage()
             ]);
         }
     }
 
+    // باقي الدوال كما هي...
     #[On('fetch-categories-from-api')]
     public function fetchCategoriesFromAPI()
     {
@@ -380,7 +348,7 @@ class Index extends Component
     #[On('fetch-customers-from-api')]
     public function fetchCustomersFromAPI()
     {
-        $response = $this->wooService->getCustomers();
+        $response = $this->wooService->getCustomers(['per_page' => 100]);
         $customers = $response['data'] ?? $response;
         $this->dispatch('store-customers', ['customers' => $customers]);
     }
@@ -422,13 +390,6 @@ class Index extends Component
             logger()->error('Order creation failed', ['error' => $e->getMessage()]);
             $this->dispatch('order-failed');
         }
-    }
-
-    #[On('fetch-shipping-methods-from-api')]
-    public function fetchShippingMethods()
-    {
-        $methods = $this->wooService->getShippingMethods();
-        $this->dispatch('store-shipping-methods', ['methods' => $methods]);
     }
 
     #[On('fetch-shipping-zones-and-methods')]
