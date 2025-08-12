@@ -147,7 +147,7 @@ class WooCommerceService
 
             $response = $this->client->get('products', [
                 'query' => $query,
-            ])['data'];
+            ]);
 
             $statusCode = $response->getStatusCode();
 
@@ -273,7 +273,7 @@ class WooCommerceService
 
         Log::info("Getting products", ['query' => $finalQuery]);
 
-        return $this->get('products', $finalQuery);
+        return $this->get('products', $finalQuery)['data'];
     }
 
     public function getCategories(array $query = []): array
@@ -361,7 +361,7 @@ class WooCommerceService
 
     public function getProductsById($id): array
     {
-        return $this->get('products/' . $id);
+        return $this->get('products/' . $id)['data'];
     }
 
     public function deleteProductById($id): array
@@ -394,7 +394,7 @@ class WooCommerceService
     public function getProductsCount(): int
     {
         try {
-            $response = $this->get('products', ['per_page' => 1]);
+            $response = $this->get('products', ['per_page' => 1])['data'];
             return $response['total'] ?? 0;
         } catch (\Exception $e) {
             Log::error('Failed to get products count: ' . $e->getMessage());
