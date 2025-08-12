@@ -1,12 +1,10 @@
 <div>
     <!-- تحسين شريط التقدم -->
-    <div id="sync-progress-container" class="fixed top-0 left-0 right-0 bg-blue-600 text-white p-4 z-50"
-         style="display: none;">
+    <div id="sync-progress-container" class="fixed top-0 left-0 right-0 bg-blue-600 text-white p-4 z-50" style="display: none;">
         <div class="max-w-4xl mx-auto">
             <div id="sync-message" class="text-center mb-2">جاري المزامنة...</div>
             <div class="bg-blue-400 rounded-full h-3">
-                <div id="sync-progress-bar" class="bg-white h-3 rounded-full transition-all duration-300"
-                     style="width: 0%"></div>
+                <div id="sync-progress-bar" class="bg-white h-3 rounded-full transition-all duration-300" style="width: 0%"></div>
             </div>
             <div class="flex justify-between text-sm mt-1 opacity-75">
                 <span id="sync-details">الصفحة 0 من 0</span>
@@ -22,8 +20,7 @@
                 <div id="variationsTableBody"></div>
             </div>
             <div class="flex justify-end">
-                <flux:button type="button" variant="primary" onclick="Flux.modal('variations-modal').close()">إغلاق
-                </flux:button>
+                <flux:button type="button" variant="primary" onclick="Flux.modal('variations-modal').close()">إغلاق</flux:button>
             </div>
         </div>
     </flux:modal>
@@ -44,7 +41,7 @@
 
             <div id="shippingZonesContainer" class="space-y-4"></div>
 
-            <flux:input id="orderNotes" label="ملاحظات إضافية" placeholder="اكتب أي ملاحظة (اختياري)"/>
+            <flux:input id="orderNotes" label="ملاحظات إضافية" placeholder="اكتب أي ملاحظة (اختياري)" />
 
             <div class="flex justify-end gap-2">
                 <flux:button type="button" variant="danger" x-on:click="$flux.modal('confirm-order-modal').close()">
@@ -60,7 +57,7 @@
     <flux:modal name="add-customer-modal">
         <div class="space-y-4">
             <h3 class="text-lg font-bold">إضافة زبون جديد</h3>
-            <input id="newCustomerName" type="text" placeholder="اسم الزبون" class="w-full border rounded px-3 py-2"/>
+            <input id="newCustomerName" type="text" placeholder="اسم الزبون" class="w-full border rounded px-3 py-2" />
             <div class="flex justify-end gap-2">
                 <flux:button variant="danger" onclick="Flux.modal('add-customer-modal').close()">إلغاء</flux:button>
                 <flux:button variant="primary" onclick="addNewCustomer()">حفظ</flux:button>
@@ -74,7 +71,7 @@
             <div class="bg-white p-4 rounded-lg shadow-md">
                 <!-- شريط الأدوات -->
                 <div class="flex items-center gap-2 mb-4">
-                    <flux:input id="searchInput" placeholder="البحث..." icon="magnifying-glass"/>
+                    <flux:input id="searchInput" placeholder="البحث..." icon="magnifying-glass" />
                     <flux:button onclick="startBarcodeScan()">Scan</flux:button>
                     <flux:button id="syncButton" onclick="startFullSync()">مزامنة كاملة</flux:button>
                     <flux:button onclick="startQuickSync()" variant="filled">مزامنة سريعة</flux:button>
@@ -88,7 +85,7 @@
                 </div>
 
                 <div class="mt-4">
-                    <flux:separator/>
+                    <flux:separator />
                 </div>
 
                 <!-- عرض المنتجات -->
@@ -138,42 +135,40 @@
     // إعداد قاعدة البيانات
     function initializeDB() {
         return new Promise((resolve, reject) => {
-            // const request = indexedDB.open(dbName, 6);
-            const request = indexedDB.open(dbName, 7)
+            const request = indexedDB.open(dbName, 7);
 
-            request.onupgradeneeded = function (event) {
+            request.onupgradeneeded = function(event) {
                 db = event.target.result;
 
                 // إنشاء المتاجر
                 const stores = [
-                    {name: 'products', keyPath: 'id'},
-                    {name: 'variations', keyPath: 'id'},
-                    {name: 'categories', keyPath: 'id'},
-                    {name: 'cart', keyPath: 'id'},
-                    {name: 'customers', keyPath: 'id'},
-                    {name: 'shippingZones', keyPath: 'id'},
-                    {name: 'shippingZoneMethods', keyPath: 'id'}
+                    { name: 'products', keyPath: 'id' },
+                    { name: 'categories', keyPath: 'id' },
+                    { name: 'cart', keyPath: 'id' },
+                    { name: 'customers', keyPath: 'id' },
+                    { name: 'shippingZones', keyPath: 'id' },
+                    { name: 'shippingZoneMethods', keyPath: 'id' }
                 ];
 
                 stores.forEach(store => {
                     if (!db.objectStoreNames.contains(store.name)) {
-                        const objectStore = db.createObjectStore(store.name, {keyPath: store.keyPath});
+                        const objectStore = db.createObjectStore(store.name, { keyPath: store.keyPath });
 
                         // إضافة فهارس حسب الحاجة
                         if (store.name === 'shippingZoneMethods') {
-                            objectStore.createIndex('zone_id', 'zone_id', {unique: false});
+                            objectStore.createIndex('zone_id', 'zone_id', { unique: false });
                         }
                     }
                 });
             };
 
-            request.onsuccess = function (event) {
+            request.onsuccess = function(event) {
                 db = event.target.result;
                 console.log('✅ قاعدة البيانات جاهزة');
                 resolve(db);
             };
 
-            request.onerror = function () {
+            request.onerror = function() {
                 console.error('❌ فشل في فتح قاعدة البيانات');
                 reject(request.error);
             };
@@ -181,7 +176,7 @@
     }
 
     // تحميل الصفحة
-    window.onload = async function () {
+    window.onload = async function() {
         const searchInput = document.getElementById('searchInput');
         if (searchInput) searchInput.focus();
 
@@ -250,12 +245,12 @@
     function setupEventListeners() {
         const searchInput = document.getElementById('searchInput');
         if (searchInput) {
-            searchInput.addEventListener('input', function () {
+            searchInput.addEventListener('input', function() {
                 currentSearchTerm = this.value;
                 renderProductsFromIndexedDB(currentSearchTerm, selectedCategoryId);
             });
 
-            searchInput.addEventListener('keydown', function (e) {
+            searchInput.addEventListener('keydown', function(e) {
                 if (e.key === 'Enter') {
                     e.preventDefault();
                     searchProductByBarcode(this.value.trim());
@@ -355,7 +350,7 @@
         const div = document.createElement('div');
         div.className = 'bg-white rounded-lg shadow-md relative cursor-pointer hover:shadow-lg transition-shadow';
 
-        div.onclick = async function () {
+        div.onclick = async function() {
             if (item.type === 'variable') {
                 await loadAndShowVariations(item);
             } else if (item.type === 'simple') {
@@ -400,16 +395,26 @@
             return;
         }
 
+        const variationIds = product.variations;
         const variations = [];
+        let allFound = true;
 
-        for (const variationId of product.variations) {
-            const variation = await getProductFromDB(variationId);
+        for (const id of variationIds) {
+            const variation = await getProductFromDB(id);
             if (variation) {
                 variations.push(variation);
+            } else {
+                allFound = false;
+                break;
             }
         }
 
-        showVariationsModal(variations);
+        if (allFound && variations.length > 0) {
+            showVariationsModal(variations);
+        } else {
+            showInfoMessage('جاري تحميل متغيرات المنتج...');
+            Livewire.dispatch('fetch-variations-on-demand', { productId: product.id });
+        }
     }
 
     // الحصول على منتج من قاعدة البيانات
@@ -556,7 +561,7 @@
         // فحص المنتج الموجود
         const existingRequest = store.get(product.id);
 
-        existingRequest.onsuccess = function () {
+        existingRequest.onsuccess = function() {
             const existing = existingRequest.result;
 
             if (existing) {
@@ -665,7 +670,7 @@
         const store = tx.objectStore('cart');
         const request = store.get(productId);
 
-        request.onsuccess = function () {
+        request.onsuccess = function() {
             const item = request.result;
             if (!item) return;
 
@@ -688,7 +693,7 @@
         const tx = db.transaction('cart', 'readwrite');
         const store = tx.objectStore('cart');
 
-        store.delete(productId).onsuccess = function () {
+        store.delete(productId).onsuccess = function() {
             renderCart();
             showSuccessMessage('تم حذف المنتج من السلة');
         };
@@ -703,7 +708,7 @@
         const tx = db.transaction('cart', 'readwrite');
         const store = tx.objectStore('cart');
 
-        store.clear().onsuccess = function () {
+        store.clear().onsuccess = function() {
             renderCart();
             showSuccessMessage('تم مسح السلة');
         };
@@ -752,7 +757,7 @@
         dropdown.appendChild(addOption);
 
         // إضافة مستمع الأحداث
-        dropdown.onchange = function () {
+        dropdown.onchange = function() {
             if (this.value === 'add_new_customer') {
                 this.value = '';
                 Flux.modal('add-customer-modal').show();
@@ -929,7 +934,7 @@
         const tx = db.transaction('customers', 'readwrite');
         const store = tx.objectStore('customers');
 
-        store.add(newCustomer).onsuccess = function () {
+        store.add(newCustomer).onsuccess = function() {
             Flux.modal('add-customer-modal').close();
             nameInput.value = '';
 
@@ -979,7 +984,7 @@
         };
 
         if (navigator.onLine) {
-            Livewire.dispatch('submit-order', {order: orderData});
+            Livewire.dispatch('submit-order', { order: orderData });
         } else {
             showErrorMessage('لا يوجد اتصال بالإنترنت');
         }
