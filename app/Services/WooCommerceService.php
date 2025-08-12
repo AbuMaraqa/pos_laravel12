@@ -147,7 +147,7 @@ class WooCommerceService
 
             $response = $this->client->get('products', [
                 'query' => $query,
-            ]);
+            ])['data'];
 
             $statusCode = $response->getStatusCode();
 
