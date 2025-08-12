@@ -141,22 +141,37 @@
                 db = event.target.result;
 
                 // إنشاء المتاجر
-                const stores = [
-                    { name: 'products', keyPath: 'id' },
-                    { name: 'categories', keyPath: 'id' },
-                    { name: 'cart', keyPath: 'id' },
-                    { name: 'customers', keyPath: 'id' },
-                    { name: 'shippingZones', keyPath: 'id' },
-                    { name: 'shippingZoneMethods', keyPath: 'id' }
-                ];
+                const stores = [{
+                    name: 'products',
+                    keyPath: 'id'
+                }, {
+                    name: 'categories',
+                    keyPath: 'id'
+                }, {
+                    name: 'cart',
+                    keyPath: 'id'
+                }, {
+                    name: 'customers',
+                    keyPath: 'id'
+                }, {
+                    name: 'shippingZones',
+                    keyPath: 'id'
+                }, {
+                    name: 'shippingZoneMethods',
+                    keyPath: 'id'
+                }];
 
                 stores.forEach(store => {
                     if (!db.objectStoreNames.contains(store.name)) {
-                        const objectStore = db.createObjectStore(store.name, { keyPath: store.keyPath });
+                        const objectStore = db.createObjectStore(store.name, {
+                            keyPath: store.keyPath
+                        });
 
                         // إضافة فهارس حسب الحاجة
                         if (store.name === 'shippingZoneMethods') {
-                            objectStore.createIndex('zone_id', 'zone_id', { unique: false });
+                            objectStore.createIndex('zone_id', 'zone_id', {
+                                unique: false
+                            });
                         }
                     }
                 });
@@ -318,6 +333,7 @@
         // فلترة المنتجات
         const filtered = products.filter(item => {
             const term = searchTerm.trim().toLowerCase();
+            // Show only simple and variable products, not variations
             const isAllowedType = item.type === 'simple' || item.type === 'variable';
 
             const matchesSearch = !term || (
@@ -361,24 +377,20 @@
         const imageUrl = item.images?.[0]?.src || 'https://via.placeholder.com/200x200?text=No+Image';
 
         div.innerHTML = `
-        <!-- رقم المنتج -->
         <div class="absolute top-0 left-0 right-0 bg-black text-white text-xs text-center py-1 opacity-75 z-10">
             ID: ${item.id}
         </div>
 
-        <!-- صورة المنتج -->
         <img src="${imageUrl}" alt="${item.name}"
              class="w-full object-cover"
              style="height: 200px;"
              loading="lazy"
              onerror="this.src='https://via.placeholder.com/200x200?text=No+Image'">
 
-        <!-- السعر -->
         <div class="absolute bottom-12 left-2 bg-black text-white px-2 py-1 rounded text-sm font-bold opacity-80 z-10">
             ${item.price || '0'} ₪
         </div>
 
-        <!-- اسم المنتج -->
         <div class="bg-gray-200 p-3">
             <p class="font-bold text-sm text-center truncate">${item.name || 'بدون اسم'}</p>
             ${item.type === 'variable' ? '<span class="text-xs text-blue-600">منتج متغير</span>' : ''}
@@ -395,26 +407,37 @@
             return;
         }
 
-        const variationIds = product.variations;
-        const variations = [];
-        let allFound = true;
+        const variations = await getVariationsByParentId(product.id);
 
-        for (const id of variationIds) {
-            const variation = await getProductFromDB(id);
-            if (variation) {
-                variations.push(variation);
-            } else {
-                allFound = false;
-                break;
-            }
-        }
-
-        if (allFound && variations.length > 0) {
-            showVariationsModal(variations);
+        if (variations.length > 0) {
+            showVariationsModal(variations, product.name);
         } else {
             showInfoMessage('جاري تحميل متغيرات المنتج...');
-            Livewire.dispatch('fetch-variations-on-demand', { productId: product.id });
+            Livewire.dispatch('fetch-variations-on-demand', {
+                productId: product.id
+            });
         }
+    }
+
+    // New function: Get variations by parent product ID
+    function getVariationsByParentId(parentId) {
+        return new Promise((resolve) => {
+            if (!db) {
+                resolve([]);
+                return;
+            }
+
+            const tx = db.transaction('products', 'readonly');
+            const store = tx.objectStore('products');
+            const request = store.getAll();
+
+            request.onsuccess = () => {
+                const allItems = request.result || [];
+                const variations = allItems.filter(item => item.type === 'variation' && item.product_id === parentId);
+                resolve(variations);
+            };
+            request.onerror = () => resolve([]);
+        });
     }
 
     // الحصول على منتج من قاعدة البيانات
@@ -435,7 +458,7 @@
     }
 
     // عرض مودال المتغيرات
-    function showVariationsModal(variations) {
+    function showVariationsModal(variations, parentProductName) {
         const modal = Flux.modal('variations-modal');
         const container = document.getElementById('variationsTableBody');
 
@@ -453,7 +476,7 @@
         grid.className = 'grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 p-4';
 
         variations.forEach(variation => {
-            const card = createVariationCard(variation);
+            const card = createVariationCard(variation, parentProductName);
             grid.appendChild(card);
         });
 
@@ -462,33 +485,37 @@
     }
 
     // إنشاء بطاقة متغير
-    function createVariationCard(variation) {
+    function createVariationCard(variation, parentProductName) {
         const card = document.createElement('div');
         card.className = 'bg-white rounded-lg shadow-md overflow-hidden cursor-pointer hover:shadow-xl transition-all';
-        card.onclick = () => addToCart(variation);
+        card.onclick = () => {
+            // Include parent product ID when adding variation to cart
+            const cartItem = {
+                ...variation,
+                parent_product_id: variation.product_id
+            };
+            addToCart(cartItem);
+        };
 
         const imageUrl = variation.images?.[0]?.src || 'https://via.placeholder.com/200x200?text=No+Image';
+        const variationName = `${parentProductName} - ${variation.name}`;
 
         card.innerHTML = `
-        <!-- رقم المتغير -->
         <div class="absolute top-0 left-0 right-0 bg-black text-white text-xs text-center py-1 opacity-75 z-10">
             ID: ${variation.id}
         </div>
 
-        <!-- صورة المتغير -->
         <img src="${imageUrl}" alt="${variation.name}"
              class="w-full object-cover"
              style="height: 150px;"
              onerror="this.src='https://via.placeholder.com/200x200?text=No+Image'">
 
-        <!-- السعر -->
         <div class="absolute bottom-12 left-2 bg-black text-white px-2 py-1 rounded text-sm font-bold opacity-80 z-10">
             ${variation.price || '0'} ₪
         </div>
 
-        <!-- الاسم -->
         <div class="bg-gray-200 p-2">
-            <p class="font-bold text-xs text-center truncate">${variation.name || 'متغير'}</p>
+            <p class="font-bold text-xs text-center truncate">${variationName}</p>
         </div>
     `;
 
@@ -573,7 +600,9 @@
                     name: product.name,
                     price: parseFloat(product.price) || 0,
                     image: product.images?.[0]?.src || '',
-                    quantity: 1
+                    quantity: 1,
+                    // Add parent product ID for variations
+                    parent_product_id: product.product_id ?? null
                 });
             }
 
@@ -978,13 +1007,16 @@
                 total: method.cost || 0
             }],
             line_items: cartItems.map(item => ({
-                product_id: item.id,
+                // Use parent_product_id if available, otherwise use item.id
+                product_id: item.parent_product_id || item.id,
                 quantity: item.quantity
             }))
         };
 
         if (navigator.onLine) {
-            Livewire.dispatch('submit-order', { order: orderData });
+            Livewire.dispatch('submit-order', {
+                order: orderData
+            });
         } else {
             showErrorMessage('لا يوجد اتصال بالإنترنت');
         }
@@ -1057,11 +1089,6 @@
         // تخزين دفعات المنتجات
         Livewire.on('store-products-batch', async (data) => {
             await storeProductsBatch(data[0].products);
-
-            // تحديث العرض كل 3 دفعات
-            if (data[0].page % 3 === 0) {
-                renderProductsFromIndexedDB(currentSearchTerm, selectedCategoryId);
-            }
         });
 
         // تخزين التصنيفات
@@ -1096,11 +1123,23 @@
         Livewire.on('order-failed', () => {
             showErrorMessage('فشل في إرسال الطلب');
         });
+
+        // Handle on-demand variations sync completion
+        Livewire.on('variations-synced-on-demand', (data) => {
+            const productId = data[0].productId;
+            showSuccessMessage('تم جلب المتغيرات بنجاح. يتم عرضها الآن.');
+            // Re-run the function to show the modal with the new data
+            getProductFromDB(productId).then(product => {
+                if (product) {
+                    loadAndShowVariations(product);
+                }
+            });
+        });
     });
 
     // تخزين دفعة المنتجات
     async function storeProductsBatch(products) {
-        if (!db || !products) return;
+        if (!db || !products || products.length === 0) return;
 
         const tx = db.transaction('products', 'readwrite');
         const store = tx.objectStore('products');
@@ -1114,7 +1153,7 @@
         });
 
         await Promise.all(promises);
-        console.log(`✅ تم تخزين ${products.length} منتج`);
+        console.log(`✅ تم تخزين ${products.length} منتج/متغير`);
     }
 
     // تخزين دفعة التصنيفات

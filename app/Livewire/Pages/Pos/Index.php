@@ -52,6 +52,7 @@ class Index extends Component
 
             $this->dispatch('sync-started', ['total' => $totalProducts, 'pages' => $totalPages]);
 
+            $productsToStore = [];
             $variableProductIds = [];
 
             for ($currentPage = 1; $currentPage <= $totalPages; $currentPage++) {
@@ -63,19 +64,14 @@ class Index extends Component
                 ]);
                 $products = $response['data'] ?? $response;
 
-                $pageProducts = [];
                 foreach ($products as $product) {
-                    if ($product['type'] === 'variable' && !empty($product['variations'])) {
+                    if ($product['type'] === 'variable') {
                         $variableProductIds[] = $product['id'];
                     }
-                    $pageProducts[] = $this->buildProductData($product);
+                    $productsToStore[] = $this->buildProductData($product);
                 }
 
-                if (!empty($pageProducts)) {
-                    $this->dispatch('store-products-batch', ['products' => $pageProducts, 'page' => $currentPage, 'totalPages' => $totalPages]);
-                }
-
-                $progress = ($currentPage / $totalPages) * 50; // Products are 50% of the work
+                $progress = ($currentPage / $totalPages) * 50;
                 $this->dispatch('update-progress', [
                     'page' => $currentPage,
                     'totalPages' => $totalPages,
@@ -85,17 +81,23 @@ class Index extends Component
                 usleep(50000);
             }
 
-            // Pass 2: Fetch Variations
+            // Dispatch all products at once after fetching is complete
+            if (!empty($productsToStore)) {
+                $this->dispatch('store-products-batch', ['products' => $productsToStore]);
+            }
+
+            // Pass 2: Fetch and store Variations
             $totalVariationsToFetch = count($variableProductIds);
+            $allVariations = [];
             if ($totalVariationsToFetch > 0) {
                 $fetchedCount = 0;
                 foreach ($variableProductIds as $productId) {
                     $variations = $this->fetchAndProcessVariations($productId);
                     if (!empty($variations)) {
-                        $this->dispatch('store-products-batch', ['products' => $variations]);
+                        $allVariations = array_merge($allVariations, $variations);
                     }
                     $fetchedCount++;
-                    $progress = 50 + (($fetchedCount / $totalVariationsToFetch) * 50); // Variations are the other 50%
+                    $progress = 50 + (($fetchedCount / $totalVariationsToFetch) * 50);
                     $this->dispatch('update-progress', [
                         'page' => $fetchedCount,
                         'totalPages' => $totalVariationsToFetch,
@@ -106,10 +108,30 @@ class Index extends Component
                 }
             }
 
+            // Dispatch all variations at once after fetching is complete
+            if (!empty($allVariations)) {
+                $this->dispatch('store-products-batch', ['products' => $allVariations]);
+            }
+
             $this->dispatch('sync-completed', ['message' => 'اكتملت المزامنة بنجاح! تم جلب جميع المنتجات والمتغيرات.']);
 
         } catch (\Exception $e) {
             \Log::error('فشل في جلب المنتجات', ['error' => $e->getMessage()]);
+            $this->dispatch('sync-error', ['error' => $e->getMessage()]);
+        }
+    }
+
+    #[On('fetch-variations-on-demand')]
+    public function fetchVariationsOnDemand($productId)
+    {
+        try {
+            $variations = $this->fetchAndProcessVariations($productId);
+            if (!empty($variations)) {
+                $this->dispatch('store-products-batch', ['products' => $variations]);
+                $this->dispatch('variations-synced-on-demand', ['productId' => $productId]);
+            }
+        } catch (\Exception $e) {
+            \Log::error("فشل في جلب متغيرات المنتج {$productId} عند الطلب", ['error' => $e->getMessage()]);
             $this->dispatch('sync-error', ['error' => $e->getMessage()]);
         }
     }
@@ -143,7 +165,7 @@ class Index extends Component
             foreach ($variations as $variation) {
                 $processedVariations[] = [
                     'id' => $variation['id'],
-                    'product_id' => $productId,
+                    'product_id' => $productId, // Key change: store the parent product ID
                     'type' => 'variation',
                     'name' => $this->buildVariationNameQuick($variation, $productId),
                     'sku' => $variation['sku'] ?? '',
@@ -222,6 +244,7 @@ class Index extends Component
                 'pages' => 'جلب سريع'
             ]);
 
+            $processedProducts = [];
             do {
                 $response = $this->wooService->getProducts([
                     'per_page' => $perPage,
@@ -234,7 +257,6 @@ class Index extends Component
                 $products = $response['data'] ?? $response;
 
                 if (!empty($products)) {
-                    $processedProducts = [];
                     foreach ($products as $product) {
                         $processedProducts[] = [
                             'id' => $product['id'],
@@ -250,11 +272,6 @@ class Index extends Component
                         ];
                     }
 
-                    $this->dispatch('store-products-batch', [
-                        'products' => $processedProducts,
-                        'page' => $page
-                    ]);
-
                     $totalFetched += count($products);
 
                     $this->dispatch('update-progress', [
@@ -269,6 +286,10 @@ class Index extends Component
                 usleep(30000); // 0.03 ثانية
 
             } while (!empty($products) && count($products) == $perPage && $page <= 20); // حد أقصى 20 صفحة
+
+            if (!empty($processedProducts)) {
+                $this->dispatch('store-products-batch', ['products' => $processedProducts]);
+            }
 
             $this->dispatch('sync-completed', [
                 'total' => $totalFetched,
@@ -298,7 +319,10 @@ class Index extends Component
 
             foreach ($products as $product) {
                 if (!empty($product['variations']) && $processedCount < 5) { // حد أقصى 5 منتجات
-                    $this->fetchVariationsOnDemand($product['id']);
+                    $variations = $this->fetchAndProcessVariations($product['id']);
+                    if (!empty($variations)) {
+                        $this->dispatch('store-products-batch', ['products' => $variations]);
+                    }
                     $processedCount++;
                     usleep(200000); // 0.2 ثانية بين كل منتج
                 }
