@@ -122,6 +122,29 @@
             </div>
         </div>
     </div>
+
+    <div id="syncOverlay" class="hidden fixed inset-0 z-50 bg-black/30 backdrop-blur-sm flex items-center justify-center">
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-md p-5">
+            <div class="flex items-center gap-3 mb-4">
+                <svg class="animate-spin h-6 w-6" viewBox="0 0 24 24" fill="none">
+                    <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" opacity="0.2"></circle>
+                    <path d="M22 12a10 10 0 0 1-10 10" stroke="currentColor" stroke-width="4"></path>
+                </svg>
+                <h3 class="text-lg font-semibold">مزامنة البيانات</h3>
+            </div>
+
+            <p id="syncMessage" class="text-sm text-gray-600 mb-3">جارِ التحضير…</p>
+
+            <div class="w-full h-3 bg-gray-100 rounded-full overflow-hidden">
+                <div id="syncBar" class="h-3 bg-indigo-600 transition-all duration-200" style="width:0%"></div>
+            </div>
+
+            <div class="flex justify-between text-xs text-gray-500 mt-2">
+                <span id="syncStep">الخطوة 0/0</span>
+                <span id="syncPercent">0%</span>
+            </div>
+        </div>
+    </div>
 </div>
 
 <script>
@@ -219,18 +242,23 @@
 
         // تحميل البيانات إذا كانت فارغة
         if (categoriesCount === 0) {
+            console.log('📂 جلب التصنيفات...');
             Livewire.dispatch('fetch-categories-from-api');
         } else {
             renderCategoriesFromIndexedDB();
         }
 
         if (customersCount === 0) {
+            console.log('👥 جلب العملاء...');
             Livewire.dispatch('fetch-customers-from-api');
         }
 
         if (productsCount === 0) {
-            showInfoMessage('لا توجد منتجات محفوظة. اضغط "مزامنة كاملة" لجلب المنتجات.');
+            console.log('🛍️ جلب المنتجات...');
+            // ابدأ مزامنة سريعة تلقائيًا
+            Livewire.dispatch('quick-sync-products');
         } else {
+            console.log('🛍️ عرض المنتجات من قاعدة البيانات...');
             renderProductsFromIndexedDB();
         }
 
@@ -247,12 +275,20 @@
                 return;
             }
 
-            const tx = db.transaction(storeName, 'readonly');
-            const store = tx.objectStore(storeName);
-            const request = store.count();
+            try {
+                const tx = db.transaction(storeName, 'readonly');
+                const store = tx.objectStore(storeName);
+                const request = store.count();
 
-            request.onsuccess = () => resolve(request.result);
-            request.onerror = () => resolve(0);
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = () => {
+                    console.error(`خطأ في عد عناصر ${storeName}:`, request.error);
+                    resolve(0);
+                };
+            } catch (error) {
+                console.error(`خطأ في الوصول لمتجر ${storeName}:`, error);
+                resolve(0);
+            }
         });
     }
 
@@ -312,21 +348,38 @@
                 return;
             }
 
-            const tx = db.transaction('products', 'readonly');
-            const store = tx.objectStore('products');
-            const request = store.getAll();
+            try {
+                const tx = db.transaction('products', 'readonly');
+                const store = tx.objectStore('products');
+                const request = store.getAll();
 
-            request.onsuccess = () => resolve(request.result || []);
-            request.onerror = () => resolve([]);
+                request.onsuccess = () => {
+                    const result = request.result || [];
+                    console.log(`📦 تم جلب ${result.length} منتج من قاعدة البيانات`);
+                    resolve(result);
+                };
+                request.onerror = () => {
+                    console.error('خطأ في جلب المنتجات:', request.error);
+                    resolve([]);
+                };
+            } catch (error) {
+                console.error('خطأ في الوصول لمتجر المنتجات:', error);
+                resolve([]);
+            }
         });
     }
 
     // عرض المنتجات من IndexedDB
     async function renderProductsFromIndexedDB(searchTerm = '', categoryId = null) {
+        console.log('🎨 عرض المنتجات...', { searchTerm, categoryId });
+
         const products = await getAllProductsFromDB();
         const container = document.getElementById('productsContainer');
 
-        if (!container) return;
+        if (!container) {
+            console.error('❌ لا يمكن العثور على حاوي المنتجات');
+            return;
+        }
 
         container.innerHTML = '';
 
@@ -349,6 +402,8 @@
             return isAllowedType && matchesSearch && matchesCategory;
         });
 
+        console.log(`🔍 تمت فلترة ${filtered.length} منتج من أصل ${products.length}`);
+
         if (filtered.length === 0) {
             container.innerHTML = '<div class="col-span-4 text-center py-8"><p class="text-gray-500">لا يوجد منتجات مطابقة</p></div>';
             return;
@@ -356,9 +411,15 @@
 
         // عرض المنتجات
         filtered.forEach(item => {
-            const productCard = createProductCard(item);
-            container.appendChild(productCard);
+            try {
+                const productCard = createProductCard(item);
+                container.appendChild(productCard);
+            } catch (error) {
+                console.error('خطأ في إنشاء بطاقة منتج:', error, item);
+            }
         });
+
+        console.log(`✅ تم عرض ${filtered.length} منتج`);
     }
 
     // إنشاء بطاقة منتج
@@ -381,7 +442,7 @@
             ID: ${item.id}
         </div>
 
-        <img src="${imageUrl}" alt="${item.name}"
+        <img src="${imageUrl}" alt="${item.name || 'منتج'}"
              class="w-full object-cover"
              style="height: 200px;"
              loading="lazy"
@@ -427,16 +488,25 @@
                 return;
             }
 
-            const tx = db.transaction('products', 'readonly');
-            const store = tx.objectStore('products');
-            const request = store.getAll();
+            try {
+                const tx = db.transaction('products', 'readonly');
+                const store = tx.objectStore('products');
+                const request = store.getAll();
 
-            request.onsuccess = () => {
-                const allItems = request.result || [];
-                const variations = allItems.filter(item => item.type === 'variation' && item.product_id === parentId);
-                resolve(variations);
-            };
-            request.onerror = () => resolve([]);
+                request.onsuccess = () => {
+                    const allItems = request.result || [];
+                    const variations = allItems.filter(item => item.type === 'variation' && item.product_id === parentId);
+                    console.log(`🔍 تم العثور على ${variations.length} متغير للمنتج ${parentId}`);
+                    resolve(variations);
+                };
+                request.onerror = () => {
+                    console.error('خطأ في جلب المتغيرات:', request.error);
+                    resolve([]);
+                };
+            } catch (error) {
+                console.error('خطأ في الوصول للمتغيرات:', error);
+                resolve([]);
+            }
         });
     }
 
@@ -448,12 +518,20 @@
                 return;
             }
 
-            const tx = db.transaction('products', 'readonly');
-            const store = tx.objectStore('products');
-            const request = store.get(id);
+            try {
+                const tx = db.transaction('products', 'readonly');
+                const store = tx.objectStore('products');
+                const request = store.get(id);
 
-            request.onsuccess = () => resolve(request.result);
-            request.onerror = () => resolve(null);
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = () => {
+                    console.error('خطأ في جلب المنتج:', request.error);
+                    resolve(null);
+                };
+            } catch (error) {
+                console.error('خطأ في الوصول للمنتج:', error);
+                resolve(null);
+            }
         });
     }
 
@@ -550,12 +628,20 @@
                 return;
             }
 
-            const tx = db.transaction('categories', 'readonly');
-            const store = tx.objectStore('categories');
-            const request = store.getAll();
+            try {
+                const tx = db.transaction('categories', 'readonly');
+                const store = tx.objectStore('categories');
+                const request = store.getAll();
 
-            request.onsuccess = () => resolve(request.result || []);
-            request.onerror = () => resolve([]);
+                request.onsuccess = () => resolve(request.result || []);
+                request.onerror = () => {
+                    console.error('خطأ في جلب التصنيفات:', request.error);
+                    resolve([]);
+                };
+            } catch (error) {
+                console.error('خطأ في الوصول للتصنيفات:', error);
+                resolve([]);
+            }
         });
     }
 
@@ -582,33 +668,43 @@
     async function addToCart(product) {
         if (!db || !product) return;
 
-        const tx = db.transaction('cart', 'readwrite');
-        const store = tx.objectStore('cart');
+        try {
+            const tx = db.transaction('cart', 'readwrite');
+            const store = tx.objectStore('cart');
 
-        // فحص المنتج الموجود
-        const existingRequest = store.get(product.id);
+            // فحص المنتج الموجود
+            const existingRequest = store.get(product.id);
 
-        existingRequest.onsuccess = function() {
-            const existing = existingRequest.result;
+            existingRequest.onsuccess = function() {
+                const existing = existingRequest.result;
 
-            if (existing) {
-                existing.quantity += 1;
-                store.put(existing);
-            } else {
-                store.put({
-                    id: product.id,
-                    name: product.name,
-                    price: parseFloat(product.price) || 0,
-                    image: product.images?.[0]?.src || '',
-                    quantity: 1,
-                    // Add parent product ID for variations
-                    parent_product_id: product.product_id ?? null
-                });
-            }
+                if (existing) {
+                    existing.quantity += 1;
+                    store.put(existing);
+                } else {
+                    store.put({
+                        id: product.id,
+                        name: product.name,
+                        price: parseFloat(product.price) || 0,
+                        image: product.images?.[0]?.src || '',
+                        quantity: 1,
+                        // Add parent product ID for variations
+                        parent_product_id: product.product_id ?? null
+                    });
+                }
 
-            renderCart();
-            showSuccessMessage(`تمت إضافة "${product.name}" للسلة`);
-        };
+                renderCart();
+                showSuccessMessage(`تمت إضافة "${product.name}" للسلة`);
+            };
+
+            existingRequest.onerror = function() {
+                console.error('خطأ في إضافة المنتج للسلة:', existingRequest.error);
+                showErrorMessage('فشل في إضافة المنتج للسلة');
+            };
+        } catch (error) {
+            console.error('خطأ في عملية إضافة للسلة:', error);
+            showErrorMessage('فشل في إضافة المنتج للسلة');
+        }
     }
 
     // عرض السلة
@@ -650,12 +746,20 @@
                 return;
             }
 
-            const tx = db.transaction('cart', 'readonly');
-            const store = tx.objectStore('cart');
-            const request = store.getAll();
+            try {
+                const tx = db.transaction('cart', 'readonly');
+                const store = tx.objectStore('cart');
+                const request = store.getAll();
 
-            request.onsuccess = () => resolve(request.result || []);
-            request.onerror = () => resolve([]);
+                request.onsuccess = () => resolve(request.result || []);
+                request.onerror = () => {
+                    console.error('خطأ في جلب عناصر السلة:', request.error);
+                    resolve([]);
+                };
+            } catch (error) {
+                console.error('خطأ في الوصول للسلة:', error);
+                resolve([]);
+            }
         });
     }
 
@@ -695,37 +799,50 @@
     async function updateQuantity(productId, change) {
         if (!db) return;
 
-        const tx = db.transaction('cart', 'readwrite');
-        const store = tx.objectStore('cart');
-        const request = store.get(productId);
+        try {
+            const tx = db.transaction('cart', 'readwrite');
+            const store = tx.objectStore('cart');
+            const request = store.get(productId);
 
-        request.onsuccess = function() {
-            const item = request.result;
-            if (!item) return;
+            request.onsuccess = function() {
+                const item = request.result;
+                if (!item) return;
 
-            item.quantity += change;
+                item.quantity += change;
 
-            if (item.quantity <= 0) {
-                store.delete(productId);
-            } else {
-                store.put(item);
-            }
+                if (item.quantity <= 0) {
+                    store.delete(productId);
+                } else {
+                    store.put(item);
+                }
 
-            renderCart();
-        };
+                renderCart();
+            };
+
+            request.onerror = function() {
+                console.error('خطأ في تحديث الكمية:', request.error);
+            };
+        } catch (error) {
+            console.error('خطأ في عملية تحديث الكمية:', error);
+        }
     }
 
     // حذف من السلة
     async function removeFromCart(productId) {
         if (!db) return;
 
-        const tx = db.transaction('cart', 'readwrite');
-        const store = tx.objectStore('cart');
+        try {
+            const tx = db.transaction('cart', 'readwrite');
+            const store = tx.objectStore('cart');
 
-        store.delete(productId).onsuccess = function() {
-            renderCart();
-            showSuccessMessage('تم حذف المنتج من السلة');
-        };
+            store.delete(productId).onsuccess = function() {
+                renderCart();
+                showSuccessMessage('تم حذف المنتج من السلة');
+            };
+        } catch (error) {
+            console.error('خطأ في حذف المنتج:', error);
+            showErrorMessage('فشل في حذف المنتج');
+        }
     }
 
     // مسح السلة
@@ -734,291 +851,132 @@
 
         if (!confirm('هل أنت متأكد من حذف جميع المنتجات؟')) return;
 
-        const tx = db.transaction('cart', 'readwrite');
-        const store = tx.objectStore('cart');
+        try {
+            const tx = db.transaction('cart', 'readwrite');
+            const store = tx.objectStore('cart');
 
-        store.clear().onsuccess = function() {
-            renderCart();
-            showSuccessMessage('تم مسح السلة');
-        };
+            store.clear().onsuccess = function() {
+                renderCart();
+                showSuccessMessage('تم مسح السلة');
+            };
+        } catch (error) {
+            console.error('خطأ في مسح السلة:', error);
+            showErrorMessage('فشل في مسح السلة');
+        }
     }
 
-    // فتح مودال الطلب
-    async function openOrderModal() {
-        const cartItems = await getAllCartItems();
-
-        if (cartItems.length === 0) {
-            showErrorMessage('السلة فارغة');
+    // تخزين دفعة المنتجات
+    async function storeProductsBatch(products) {
+        if (!db || !products || products.length === 0) {
+            console.warn('⚠️ لا توجد منتجات للتخزين');
             return;
         }
 
-        await setupOrderModal();
-        Flux.modal('confirm-order-modal').show();
-    }
+        try {
+            const tx = db.transaction('products', 'readwrite');
+            const store = tx.objectStore('products');
 
-    // إعداد مودال الطلب
-    async function setupOrderModal() {
-        await renderCustomersDropdown();
-        await renderShippingZonesWithMethods();
-        updateOrderTotalInModal();
-    }
-
-    // عرض قائمة العملاء
-    async function renderCustomersDropdown() {
-        const customers = await getAllCustomersFromDB();
-        const dropdown = document.getElementById('customerSelect');
-
-        if (!dropdown) return;
-
-        dropdown.innerHTML = '<option value="">اختر عميل</option>';
-
-        customers.forEach(customer => {
-            const option = document.createElement('option');
-            option.value = customer.id;
-            option.textContent = customer.name;
-            dropdown.appendChild(option);
-        });
-
-        // إضافة خيار العميل الجديد
-        const addOption = document.createElement('option');
-        addOption.value = 'add_new_customer';
-        addOption.textContent = '+ إضافة عميل جديد';
-        dropdown.appendChild(addOption);
-
-        // إضافة مستمع الأحداث
-        dropdown.onchange = function() {
-            if (this.value === 'add_new_customer') {
-                this.value = '';
-                Flux.modal('add-customer-modal').show();
-            }
-        };
-    }
-
-    // الحصول على جميع العملاء
-    function getAllCustomersFromDB() {
-        return new Promise((resolve) => {
-            if (!db) {
-                resolve([]);
-                return;
-            }
-
-            const tx = db.transaction('customers', 'readonly');
-            const store = tx.objectStore('customers');
-            const request = store.getAll();
-
-            request.onsuccess = () => resolve(request.result || []);
-            request.onerror = () => resolve([]);
-        });
-    }
-
-    // عرض مناطق الشحن وطرقها
-    async function renderShippingZonesWithMethods() {
-        const zones = await getAllShippingZonesFromDB();
-        const methods = await getAllShippingMethodsFromDB();
-        const container = document.getElementById('shippingZonesContainer');
-
-        if (!container) return;
-
-        container.innerHTML = '';
-
-        zones.forEach(zone => {
-            const zoneDiv = document.createElement('div');
-            zoneDiv.className = 'border rounded p-4 shadow';
-
-            const zoneTitle = document.createElement('h3');
-            zoneTitle.className = 'font-bold mb-2 text-gray-800';
-            zoneTitle.textContent = `📦 ${zone.name}`;
-            zoneDiv.appendChild(zoneTitle);
-
-            const zoneMethods = methods.filter(m => m.zone_id === zone.id);
-
-            if (zoneMethods.length === 0) {
-                const noMethods = document.createElement('p');
-                noMethods.textContent = 'لا يوجد طرق شحن لهذه المنطقة.';
-                noMethods.className = 'text-gray-500 text-sm';
-                zoneDiv.appendChild(noMethods);
-            } else {
-                zoneMethods.forEach(method => {
-                    const wrapper = document.createElement('div');
-                    wrapper.className = 'flex items-center gap-2 mb-1';
-
-                    const radio = document.createElement('input');
-                    radio.type = 'radio';
-                    radio.name = 'shippingMethod';
-                    radio.value = method.id;
-                    radio.id = `method-${method.id}`;
-                    radio.onchange = () => updateOrderTotalInModal();
-
-                    const label = document.createElement('label');
-                    label.setAttribute('for', radio.id);
-                    label.className = 'text-sm cursor-pointer';
-                    label.textContent = `${method.title} - ${method.cost || 0} ₪`;
-
-                    wrapper.appendChild(radio);
-                    wrapper.appendChild(label);
-                    zoneDiv.appendChild(wrapper);
+            const promises = products.map(product => {
+                return new Promise((resolve) => {
+                    const request = store.put(product);
+                    request.onsuccess = () => resolve();
+                    request.onerror = () => {
+                        console.error('خطأ في تخزين منتج:', product.id, request.error);
+                        resolve();
+                    };
                 });
-            }
+            });
 
-            container.appendChild(zoneDiv);
-        });
+            await Promise.all(promises);
+            console.log(`✅ تم تخزين ${products.length} منتج/متغير`);
+
+            // إعادة عرض المنتجات فوراً بعد التخزين
+            await renderProductsFromIndexedDB(currentSearchTerm, selectedCategoryId);
+        } catch (error) {
+            console.error('خطأ في عملية تخزين المنتجات:', error);
+        }
     }
 
-    // الحصول على مناطق الشحن
-    function getAllShippingZonesFromDB() {
-        return new Promise((resolve) => {
-            if (!db) {
-                resolve([]);
-                return;
-            }
+    // تخزين دفعة التصنيفات
+    async function storeCategoriesBatch(categories) {
+        if (!db || !categories) return;
 
-            const tx = db.transaction('shippingZones', 'readonly');
+        try {
+            const tx = db.transaction('categories', 'readwrite');
+            const store = tx.objectStore('categories');
+
+            categories.forEach(category => {
+                store.put(category);
+            });
+
+            console.log(`✅ تم تخزين ${categories.length} تصنيف`);
+        } catch (error) {
+            console.error('خطأ في تخزين التصنيفات:', error);
+        }
+    }
+
+    // تخزين دفعة العملاء
+    async function storeCustomersBatch(customers) {
+        if (!db || !customers) return;
+
+        try {
+            const tx = db.transaction('customers', 'readwrite');
+            const store = tx.objectStore('customers');
+
+            customers.forEach(customer => {
+                store.put({
+                    id: customer.id,
+                    name: `${customer.first_name || ''} ${customer.last_name || ''}`.trim() || 'عميل'
+                });
+            });
+
+            console.log(`✅ تم تخزين ${customers.length} عميل`);
+        } catch (error) {
+            console.error('خطأ في تخزين العملاء:', error);
+        }
+    }
+
+    // تخزين مناطق الشحن
+    async function storeShippingZonesBatch(zones) {
+        if (!db || !zones) return;
+
+        try {
+            const tx = db.transaction('shippingZones', 'readwrite');
             const store = tx.objectStore('shippingZones');
-            const request = store.getAll();
 
-            request.onsuccess = () => resolve(request.result || []);
-            request.onerror = () => resolve([]);
-        });
-    }
-
-    // الحصول على طرق الشحن
-    function getAllShippingMethodsFromDB() {
-        return new Promise((resolve) => {
-            if (!db) {
-                resolve([]);
-                return;
-            }
-
-            const tx = db.transaction('shippingZoneMethods', 'readonly');
-            const store = tx.objectStore('shippingZoneMethods');
-            const request = store.getAll();
-
-            request.onsuccess = () => resolve(request.result || []);
-            request.onerror = () => resolve([]);
-        });
-    }
-
-    // تحديث إجمالي الطلب في المودال
-    async function updateOrderTotalInModal() {
-        const cartItems = await getAllCartItems();
-        const subTotal = cartItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-
-        const selectedMethod = document.querySelector('input[name="shippingMethod"]:checked');
-        let shippingCost = 0;
-
-        if (selectedMethod) {
-            const methodId = parseInt(selectedMethod.value);
-            const method = await getShippingMethodFromDB(methodId);
-            shippingCost = parseFloat(method?.cost || 0);
-        }
-
-        updateTotalDisplays(subTotal, shippingCost);
-    }
-
-    // الحصول على طريقة شحن
-    function getShippingMethodFromDB(methodId) {
-        return new Promise((resolve) => {
-            if (!db) {
-                resolve(null);
-                return;
-            }
-
-            const tx = db.transaction('shippingZoneMethods', 'readonly');
-            const store = tx.objectStore('shippingZoneMethods');
-            const request = store.get(methodId);
-
-            request.onsuccess = () => resolve(request.result);
-            request.onerror = () => resolve(null);
-        });
-    }
-
-    // تحديث عرض المبالغ
-    function updateTotalDisplays(subTotal, shippingCost) {
-        const subTotalDisplay = document.getElementById('subTotalDisplay');
-        const shippingDisplay = document.getElementById('shippingCostDisplay');
-        const finalDisplay = document.getElementById('finalTotalDisplay');
-
-        if (subTotalDisplay) subTotalDisplay.textContent = `المجموع قبل التوصيل: ${subTotal.toFixed(2)} ₪`;
-        if (shippingDisplay) shippingDisplay.textContent = `قيمة التوصيل: ${shippingCost.toFixed(2)} ₪`;
-        if (finalDisplay) finalDisplay.textContent = `${(subTotal + shippingCost).toFixed(2)} ₪`;
-    }
-
-    // إضافة عميل جديد
-    async function addNewCustomer() {
-        const nameInput = document.getElementById('newCustomerName');
-        const name = nameInput.value.trim();
-
-        if (!name) {
-            showErrorMessage('يرجى إدخال اسم العميل');
-            return;
-        }
-
-        if (!db) return;
-
-        const newCustomer = {
-            id: Date.now(),
-            name: name
-        };
-
-        const tx = db.transaction('customers', 'readwrite');
-        const store = tx.objectStore('customers');
-
-        store.add(newCustomer).onsuccess = function() {
-            Flux.modal('add-customer-modal').close();
-            nameInput.value = '';
-
-            renderCustomersDropdown().then(() => {
-                const dropdown = document.getElementById('customerSelect');
-                if (dropdown) dropdown.value = newCustomer.id;
+            zones.forEach(zone => {
+                store.put({
+                    id: zone.id,
+                    name: zone.name
+                });
             });
 
-            showSuccessMessage('تم إضافة العميل بنجاح');
-        };
+            console.log(`✅ تم تخزين ${zones.length} منطقة شحن`);
+        } catch (error) {
+            console.error('خطأ في تخزين مناطق الشحن:', error);
+        }
     }
 
-    // تأكيد الطلب
-    async function confirmOrder() {
-        const customerId = document.getElementById('customerSelect').value;
-        const notes = document.getElementById('orderNotes').value;
-        const selectedMethod = document.querySelector('input[name="shippingMethod"]:checked');
+    // تخزين طرق الشحن
+    async function storeShippingMethodsBatch(methods) {
+        if (!db || !methods) return;
 
-        if (!customerId || !selectedMethod) {
-            showErrorMessage('يرجى اختيار العميل وطريقة الشحن');
-            return;
-        }
+        try {
+            const tx = db.transaction('shippingZoneMethods', 'readwrite');
+            const store = tx.objectStore('shippingZoneMethods');
 
-        const cartItems = await getAllCartItems();
-        if (cartItems.length === 0) {
-            showErrorMessage('السلة فارغة');
-            return;
-        }
-
-        const method = await getShippingMethodFromDB(parseInt(selectedMethod.value));
-
-        const orderData = {
-            customer_id: parseInt(customerId),
-            payment_method: 'cod',
-            payment_method_title: 'الدفع عند الاستلام',
-            set_paid: true,
-            customer_note: notes,
-            shipping_lines: [{
-                method_id: method.id,
-                method_title: method.title,
-                total: method.cost || 0
-            }],
-            line_items: cartItems.map(item => ({
-                // Use parent_product_id if available, otherwise use item.id
-                product_id: item.parent_product_id || item.id,
-                quantity: item.quantity
-            }))
-        };
-
-        if (navigator.onLine) {
-            Livewire.dispatch('submit-order', {
-                order: orderData
+            methods.forEach(method => {
+                store.put({
+                    id: method.id,
+                    zone_id: method.zone_id,
+                    title: method.title,
+                    cost: parseFloat(method.settings?.cost?.value || 0)
+                });
             });
-        } else {
-            showErrorMessage('لا يوجد اتصال بالإنترنت');
+
+            console.log(`✅ تم تخزين ${methods.length} طريقة شحن`);
+        } catch (error) {
+            console.error('خطأ في تخزين طرق الشحن:', error);
         }
     }
 
@@ -1033,6 +991,7 @@
             return;
         }
 
+        console.log('🔄 بدء المزامنة الكاملة...');
         Livewire.dispatch('fetch-products-from-api');
     }
 
@@ -1043,6 +1002,7 @@
             return;
         }
 
+        console.log('⚡ بدء المزامنة السريعة...');
         Livewire.dispatch('quick-sync-products');
     }
 
@@ -1053,52 +1013,54 @@
 
     // مستمعي أحداث Livewire
     document.addEventListener('livewire:init', () => {
+        console.log('🔗 تم تهيئة Livewire');
 
         // بداية المزامنة
         Livewire.on('sync-started', (data) => {
+            console.log('🔄 بدء المزامنة:', data[0]);
             syncInProgress = true;
             showSyncProgress(data[0]);
         });
 
         // تحديث التقدم
         Livewire.on('update-progress', (data) => {
+            console.log('📊 تحديث التقدم:', data[0]);
             updateProgressBar(data[0]);
         });
 
         // انتهاء المزامنة
-        Livewire.on('sync-completed', (data) => {
+        Livewire.on('sync-completed', async (data) => {
+            console.log('✅ انتهت المزامنة:', data[0]);
             syncInProgress = false;
             hideSyncProgress();
             showSuccessMessage(data[0].message);
-            renderProductsFromIndexedDB(currentSearchTerm, selectedCategoryId);
+            await renderProductsFromIndexedDB(currentSearchTerm, selectedCategoryId);
         });
 
         // خطأ في المزامنة
         Livewire.on('sync-error', (data) => {
+            console.error('❌ خطأ في المزامنة:', data[0]);
             syncInProgress = false;
             hideSyncProgress();
             showErrorMessage('خطأ في المزامنة: ' + data[0].error);
         });
 
-        // المزامنة السريعة
-        Livewire.on('quick-sync-completed', (data) => {
-            showSuccessMessage(data[0].message);
-            renderProductsFromIndexedDB(currentSearchTerm, selectedCategoryId);
-        });
-
         // تخزين دفعات المنتجات
         Livewire.on('store-products-batch', async (data) => {
+            console.log('💾 تخزين دفعة المنتجات:', data[0].products?.length || 0);
             await storeProductsBatch(data[0].products);
         });
 
         // تخزين التصنيفات
         Livewire.on('store-categories', async (data) => {
+            console.log('📂 تخزين التصنيفات:', data[0].categories?.length || 0);
             await storeCategoriesBatch(data[0].categories);
             renderCategoriesFromIndexedDB();
         });
 
         // تخزين العملاء
         Livewire.on('store-customers', async (data) => {
+            console.log('👥 تخزين العملاء:', data[0].customers?.length || 0);
             await storeCustomersBatch(data[0].customers);
         });
 
@@ -1125,103 +1087,18 @@
         });
 
         // Handle on-demand variations sync completion
-        Livewire.on('variations-synced-on-demand', (data) => {
+        Livewire.on('variations-synced-on-demand', async (data) => {
             const productId = data[0].productId;
+            console.log('🔄 تم جلب المتغيرات عند الطلب:', productId);
             showSuccessMessage('تم جلب المتغيرات بنجاح. يتم عرضها الآن.');
+
             // Re-run the function to show the modal with the new data
-            getProductFromDB(productId).then(product => {
-                if (product) {
-                    loadAndShowVariations(product);
-                }
-            });
+            const product = await getProductFromDB(productId);
+            if (product) {
+                await loadAndShowVariations(product);
+            }
         });
     });
-
-    // تخزين دفعة المنتجات
-    async function storeProductsBatch(products) {
-        if (!db || !products || products.length === 0) return;
-
-        const tx = db.transaction('products', 'readwrite');
-        const store = tx.objectStore('products');
-
-        const promises = products.map(product => {
-            return new Promise((resolve) => {
-                const request = store.put(product);
-                request.onsuccess = () => resolve();
-                request.onerror = () => resolve();
-            });
-        });
-
-        await Promise.all(promises);
-        console.log(`✅ تم تخزين ${products.length} منتج/متغير`);
-    }
-
-    // تخزين دفعة التصنيفات
-    async function storeCategoriesBatch(categories) {
-        if (!db || !categories) return;
-
-        const tx = db.transaction('categories', 'readwrite');
-        const store = tx.objectStore('categories');
-
-        categories.forEach(category => {
-            store.put(category);
-        });
-
-        console.log(`✅ تم تخزين ${categories.length} تصنيف`);
-    }
-
-    // تخزين دفعة العملاء
-    async function storeCustomersBatch(customers) {
-        if (!db || !customers) return;
-
-        const tx = db.transaction('customers', 'readwrite');
-        const store = tx.objectStore('customers');
-
-        customers.forEach(customer => {
-            store.put({
-                id: customer.id,
-                name: `${customer.first_name || ''} ${customer.last_name || ''}`.trim() || 'عميل'
-            });
-        });
-
-        console.log(`✅ تم تخزين ${customers.length} عميل`);
-    }
-
-    // تخزين مناطق الشحن
-    async function storeShippingZonesBatch(zones) {
-        if (!db || !zones) return;
-
-        const tx = db.transaction('shippingZones', 'readwrite');
-        const store = tx.objectStore('shippingZones');
-
-        zones.forEach(zone => {
-            store.put({
-                id: zone.id,
-                name: zone.name
-            });
-        });
-
-        console.log(`✅ تم تخزين ${zones.length} منطقة شحن`);
-    }
-
-    // تخزين طرق الشحن
-    async function storeShippingMethodsBatch(methods) {
-        if (!db || !methods) return;
-
-        const tx = db.transaction('shippingZoneMethods', 'readwrite');
-        const store = tx.objectStore('shippingZoneMethods');
-
-        methods.forEach(method => {
-            store.put({
-                id: method.id,
-                zone_id: method.zone_id,
-                title: method.title,
-                cost: parseFloat(method.settings?.cost?.value || 0)
-            });
-        });
-
-        console.log(`✅ تم تخزين ${methods.length} طريقة شحن`);
-    }
 
     // عرض شريط التقدم
     function showSyncProgress(data) {
@@ -1297,6 +1174,322 @@
         createNotification(message, 'info');
     }
 
+    // فتح مودال الطلب
+    async function openOrderModal() {
+        const cartItems = await getAllCartItems();
+
+        if (cartItems.length === 0) {
+            showErrorMessage('السلة فارغة');
+            return;
+        }
+
+        await setupOrderModal();
+        Flux.modal('confirm-order-modal').show();
+    }
+
+    // إعداد مودال الطلب
+    async function setupOrderModal() {
+        await renderCustomersDropdown();
+        await renderShippingZonesWithMethods();
+        updateOrderTotalInModal();
+    }
+
+    // عرض قائمة العملاء
+    async function renderCustomersDropdown() {
+        const customers = await getAllCustomersFromDB();
+        const dropdown = document.getElementById('customerSelect');
+
+        if (!dropdown) return;
+
+        dropdown.innerHTML = '<option value="">اختر عميل</option>';
+
+        customers.forEach(customer => {
+            const option = document.createElement('option');
+            option.value = customer.id;
+            option.textContent = customer.name;
+            dropdown.appendChild(option);
+        });
+
+        // إضافة خيار العميل الجديد
+        const addOption = document.createElement('option');
+        addOption.value = 'add_new_customer';
+        addOption.textContent = '+ إضافة عميل جديد';
+        dropdown.appendChild(addOption);
+
+        // إضافة مستمع الأحداث
+        dropdown.onchange = function() {
+            if (this.value === 'add_new_customer') {
+                this.value = '';
+                Flux.modal('add-customer-modal').show();
+            }
+        };
+    }
+
+    // الحصول على جميع العملاء
+    function getAllCustomersFromDB() {
+        return new Promise((resolve) => {
+            if (!db) {
+                resolve([]);
+                return;
+            }
+
+            try {
+                const tx = db.transaction('customers', 'readonly');
+                const store = tx.objectStore('customers');
+                const request = store.getAll();
+
+                request.onsuccess = () => resolve(request.result || []);
+                request.onerror = () => {
+                    console.error('خطأ في جلب العملاء:', request.error);
+                    resolve([]);
+                };
+            } catch (error) {
+                console.error('خطأ في الوصول للعملاء:', error);
+                resolve([]);
+            }
+        });
+    }
+
+    // عرض مناطق الشحن وطرقها
+    async function renderShippingZonesWithMethods() {
+        const zones = await getAllShippingZonesFromDB();
+        const methods = await getAllShippingMethodsFromDB();
+        const container = document.getElementById('shippingZonesContainer');
+
+        if (!container) return;
+
+        container.innerHTML = '';
+
+        zones.forEach(zone => {
+            const zoneDiv = document.createElement('div');
+            zoneDiv.className = 'border rounded p-4 shadow';
+
+            const zoneTitle = document.createElement('h3');
+            zoneTitle.className = 'font-bold mb-2 text-gray-800';
+            zoneTitle.textContent = `📦 ${zone.name}`;
+            zoneDiv.appendChild(zoneTitle);
+
+            const zoneMethods = methods.filter(m => m.zone_id === zone.id);
+
+            if (zoneMethods.length === 0) {
+                const noMethods = document.createElement('p');
+                noMethods.textContent = 'لا يوجد طرق شحن لهذه المنطقة.';
+                noMethods.className = 'text-gray-500 text-sm';
+                zoneDiv.appendChild(noMethods);
+            } else {
+                zoneMethods.forEach(method => {
+                    const wrapper = document.createElement('div');
+                    wrapper.className = 'flex items-center gap-2 mb-1';
+
+                    const radio = document.createElement('input');
+                    radio.type = 'radio';
+                    radio.name = 'shippingMethod';
+                    radio.value = method.id;
+                    radio.id = `method-${method.id}`;
+                    radio.onchange = () => updateOrderTotalInModal();
+
+                    const label = document.createElement('label');
+                    label.setAttribute('for', radio.id);
+                    label.className = 'text-sm cursor-pointer';
+                    label.textContent = `${method.title} - ${method.cost || 0} ₪`;
+
+                    wrapper.appendChild(radio);
+                    wrapper.appendChild(label);
+                    zoneDiv.appendChild(wrapper);
+                });
+            }
+
+            container.appendChild(zoneDiv);
+        });
+    }
+
+    // الحصول على مناطق الشحن
+    function getAllShippingZonesFromDB() {
+        return new Promise((resolve) => {
+            if (!db) {
+                resolve([]);
+                return;
+            }
+
+            try {
+                const tx = db.transaction('shippingZones', 'readonly');
+                const store = tx.objectStore('shippingZones');
+                const request = store.getAll();
+
+                request.onsuccess = () => resolve(request.result || []);
+                request.onerror = () => {
+                    console.error('خطأ في جلب مناطق الشحن:', request.error);
+                    resolve([]);
+                };
+            } catch (error) {
+                console.error('خطأ في الوصول لمناطق الشحن:', error);
+                resolve([]);
+            }
+        });
+    }
+
+    // الحصول على طرق الشحن
+    function getAllShippingMethodsFromDB() {
+        return new Promise((resolve) => {
+            if (!db) {
+                resolve([]);
+                return;
+            }
+
+            try {
+                const tx = db.transaction('shippingZoneMethods', 'readonly');
+                const store = tx.objectStore('shippingZoneMethods');
+                const request = store.getAll();
+
+                request.onsuccess = () => resolve(request.result || []);
+                request.onerror = () => {
+                    console.error('خطأ في جلب طرق الشحن:', request.error);
+                    resolve([]);
+                };
+            } catch (error) {
+                console.error('خطأ في الوصول لطرق الشحن:', error);
+                resolve([]);
+            }
+        });
+    }
+
+    // تحديث إجمالي الطلب في المودال
+    async function updateOrderTotalInModal() {
+        const cartItems = await getAllCartItems();
+        const subTotal = cartItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+
+        const selectedMethod = document.querySelector('input[name="shippingMethod"]:checked');
+        let shippingCost = 0;
+
+        if (selectedMethod) {
+            const methodId = parseInt(selectedMethod.value);
+            const method = await getShippingMethodFromDB(methodId);
+            shippingCost = parseFloat(method?.cost || 0);
+        }
+
+        updateTotalDisplays(subTotal, shippingCost);
+    }
+
+    // الحصول على طريقة شحن
+    function getShippingMethodFromDB(methodId) {
+        return new Promise((resolve) => {
+            if (!db) {
+                resolve(null);
+                return;
+            }
+
+            try {
+                const tx = db.transaction('shippingZoneMethods', 'readonly');
+                const store = tx.objectStore('shippingZoneMethods');
+                const request = store.get(methodId);
+
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = () => {
+                    console.error('خطأ في جلب طريقة الشحن:', request.error);
+                    resolve(null);
+                };
+            } catch (error) {
+                console.error('خطأ في الوصول لطريقة الشحن:', error);
+                resolve(null);
+            }
+        });
+    }
+
+    // تحديث عرض المبالغ
+    function updateTotalDisplays(subTotal, shippingCost) {
+        const subTotalDisplay = document.getElementById('subTotalDisplay');
+        const shippingDisplay = document.getElementById('shippingCostDisplay');
+        const finalDisplay = document.getElementById('finalTotalDisplay');
+
+        if (subTotalDisplay) subTotalDisplay.textContent = `المجموع قبل التوصيل: ${subTotal.toFixed(2)} ₪`;
+        if (shippingDisplay) shippingDisplay.textContent = `قيمة التوصيل: ${shippingCost.toFixed(2)} ₪`;
+        if (finalDisplay) finalDisplay.textContent = `${(subTotal + shippingCost).toFixed(2)} ₪`;
+    }
+
+    // إضافة عميل جديد
+    async function addNewCustomer() {
+        const nameInput = document.getElementById('newCustomerName');
+        const name = nameInput.value.trim();
+
+        if (!name) {
+            showErrorMessage('يرجى إدخال اسم العميل');
+            return;
+        }
+
+        if (!db) return;
+
+        try {
+            const newCustomer = {
+                id: Date.now(),
+                name: name
+            };
+
+            const tx = db.transaction('customers', 'readwrite');
+            const store = tx.objectStore('customers');
+
+            store.add(newCustomer).onsuccess = function() {
+                Flux.modal('add-customer-modal').close();
+                nameInput.value = '';
+
+                renderCustomersDropdown().then(() => {
+                    const dropdown = document.getElementById('customerSelect');
+                    if (dropdown) dropdown.value = newCustomer.id;
+                });
+
+                showSuccessMessage('تم إضافة العميل بنجاح');
+            };
+        } catch (error) {
+            console.error('خطأ في إضافة العميل:', error);
+            showErrorMessage('فشل في إضافة العميل');
+        }
+    }
+
+    // تأكيد الطلب
+    async function confirmOrder() {
+        const customerId = document.getElementById('customerSelect').value;
+        const notes = document.getElementById('orderNotes').value;
+        const selectedMethod = document.querySelector('input[name="shippingMethod"]:checked');
+
+        if (!customerId || !selectedMethod) {
+            showErrorMessage('يرجى اختيار العميل وطريقة الشحن');
+            return;
+        }
+
+        const cartItems = await getAllCartItems();
+        if (cartItems.length === 0) {
+            showErrorMessage('السلة فارغة');
+            return;
+        }
+
+        const method = await getShippingMethodFromDB(parseInt(selectedMethod.value));
+
+        const orderData = {
+            customer_id: parseInt(customerId),
+            payment_method: 'cod',
+            payment_method_title: 'الدفع عند الاستلام',
+            set_paid: true,
+            customer_note: notes,
+            shipping_lines: [{
+                method_id: method.id,
+                method_title: method.title,
+                total: method.cost || 0
+            }],
+            line_items: cartItems.map(item => ({
+                // Use parent_product_id if available, otherwise use item.id
+                product_id: item.parent_product_id || item.id,
+                quantity: item.quantity
+            }))
+        };
+
+        if (navigator.onLine) {
+            Livewire.dispatch('submit-order', {
+                order: orderData
+            });
+        } else {
+            showErrorMessage('لا يوجد اتصال بالإنترنت');
+        }
+    }
+
     // إعداد زر تأكيد الطلب
     document.addEventListener('DOMContentLoaded', () => {
         const confirmBtn = document.getElementById('confirmOrderSubmitBtn');
@@ -1305,5 +1498,5 @@
         }
     });
 
-    console.log('🚀 تم تحميل نظام نقطة البيع بنجاح');
+    console.log('🚀 تم تحميل نظام نقطة البيع بنجاح مع الإصلاحات');
 </script>

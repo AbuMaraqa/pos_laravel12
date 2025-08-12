@@ -36,8 +36,9 @@ class WooCommerceService
         $this->client = new Client([
             'base_uri' => $this->baseUrl . '/wp-json/wc/v3/',
             'auth' => [$this->consumerKey, $this->consumerSecret],
-            'timeout' => 30.0,
-            'verify' => false
+            'timeout' => 60.0, // زيادة timeout
+            'verify' => false,
+            'http_errors' => false // منع رمي الأخطاء HTTP كاستثناءات
         ]);
 
         // WordPress API Client
@@ -47,31 +48,70 @@ class WooCommerceService
             'headers' => [
                 'Authorization' => 'Basic ' . $credentials
             ],
-            'timeout' => 30.0,
-            'verify' => false
+            'timeout' => 60.0,
+            'verify' => false,
+            'http_errors' => false
         ]);
     }
 
     public function get(string $endpoint, array $query = []): array
     {
         try {
+            Log::info("WooCommerce API Request", ['endpoint' => $endpoint, 'query' => $query]);
+
             $response = $this->client->get($endpoint, ['query' => $query]);
+            $statusCode = $response->getStatusCode();
+
+            if ($statusCode >= 400) {
+                Log::error("WooCommerce API HTTP Error", [
+                    'endpoint' => $endpoint,
+                    'status_code' => $statusCode,
+                    'response_body' => $response->getBody()->getContents()
+                ]);
+                return [];
+            }
+
             $data = json_decode($response->getBody()->getContents(), true);
+
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                Log::error("WooCommerce API JSON Error", [
+                    'endpoint' => $endpoint,
+                    'json_error' => json_last_error_msg()
+                ]);
+                return [];
+            }
 
             // إضافة معلومات الصفحات
             $headers = $response->getHeaders();
             if (isset($headers['X-WP-Total'][0]) && isset($headers['X-WP-TotalPages'][0])) {
-                return [
+                $result = [
                     'data' => $data,
                     'total' => (int)$headers['X-WP-Total'][0],
                     'total_pages' => (int)$headers['X-WP-TotalPages'][0],
                     'headers' => $headers
                 ];
+
+                Log::info("WooCommerce API Success", [
+                    'endpoint' => $endpoint,
+                    'total_items' => $result['total'],
+                    'items_returned' => is_array($data) ? count($data) : 0
+                ]);
+
+                return $result;
             }
+
+            Log::info("WooCommerce API Success", [
+                'endpoint' => $endpoint,
+                'items_returned' => is_array($data) ? count($data) : 0
+            ]);
 
             return is_array($data) ? $data : [];
         } catch (\Exception $e) {
-            Log::error("WooCommerce API Error: " . $e->getMessage());
+            Log::error("WooCommerce API Exception", [
+                'endpoint' => $endpoint,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
             return [];
         }
     }
@@ -80,12 +120,22 @@ class WooCommerceService
     {
         try {
             $response = $this->client->get($endpoint, ['query' => $query]);
+            $statusCode = $response->getStatusCode();
+
+            if ($statusCode >= 400) {
+                Log::error("WooCommerce API HTTP Error in getWithHeaders", [
+                    'endpoint' => $endpoint,
+                    'status_code' => $statusCode
+                ]);
+                return ['body' => [], 'headers' => []];
+            }
+
             return [
                 'body' => json_decode($response->getBody()->getContents(), true),
                 'headers' => $response->getHeaders()
             ];
         } catch (\Exception $e) {
-            Log::error("WooCommerce API Error: " . $e->getMessage());
+            Log::error("WooCommerce API Error in getWithHeaders: " . $e->getMessage());
             return ['body' => [], 'headers' => []];
         }
     }
@@ -93,16 +143,38 @@ class WooCommerceService
     public function getProductsWithHeaders($query = [])
     {
         try {
+            Log::info("Fetching products with headers", ['query' => $query]);
+
             $response = $this->client->get('products', [
                 'query' => $query,
             ]);
 
+            $statusCode = $response->getStatusCode();
+
+            if ($statusCode >= 400) {
+                Log::error("Products API HTTP Error", [
+                    'status_code' => $statusCode,
+                    'response_body' => $response->getBody()->getContents()
+                ]);
+                return ['data' => [], 'headers' => []];
+            }
+
+            $data = json_decode($response->getBody()->getContents(), true);
+            $headers = $response->getHeaders();
+
+            Log::info("Products fetched successfully", [
+                'products_count' => is_array($data) ? count($data) : 0,
+                'total_products' => $headers['X-WP-Total'][0] ?? 'unknown'
+            ]);
+
             return [
-                'data' => json_decode($response->getBody()->getContents(), true),
-                'headers' => $response->getHeaders(),
+                'data' => $data,
+                'headers' => $headers,
             ];
         } catch (\Exception $e) {
-            Log::error("WooCommerce API Error: " . $e->getMessage());
+            Log::error("WooCommerce Products API Error: " . $e->getMessage(), [
+                'trace' => $e->getTraceAsString()
+            ]);
             return ['data' => [], 'headers' => []];
         }
     }
@@ -190,7 +262,18 @@ class WooCommerceService
 
     public function getProducts(array $query = []): array
     {
-        return $this->get('products', $query);
+        // إضافة قيم افتراضية للاستعلام
+        $defaultQuery = [
+            'per_page' => 50,
+            'page' => 1,
+            'status' => 'publish'
+        ];
+
+        $finalQuery = array_merge($defaultQuery, $query);
+
+        Log::info("Getting products", ['query' => $finalQuery]);
+
+        return $this->get('products', $finalQuery);
     }
 
     public function getCategories(array $query = []): array
@@ -202,12 +285,21 @@ class WooCommerceService
     public function getProductVariations($productId, $query = []): array
     {
         try {
+            Log::info("Fetching variations for product", ['product_id' => $productId]);
+
             $response = $this->get("products/{$productId}/variations", array_merge([
                 'per_page' => 100,
                 'status' => 'publish'
             ], $query));
 
-            return $response['data'] ?? $response;
+            $variations = $response['data'] ?? $response;
+
+            Log::info("Variations fetched", [
+                'product_id' => $productId,
+                'variations_count' => count($variations)
+            ]);
+
+            return $variations;
         } catch (\Exception $e) {
             Log::error('Failed to get variations', [
                 'productId' => $productId,

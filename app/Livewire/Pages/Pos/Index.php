@@ -41,7 +41,12 @@ class Index extends Component
         try {
             // Pass 1: Fetch Products
             $initialResponse = $this->wooService->getProductsWithHeaders(['per_page' => 1, 'page' => 1]);
-            $totalProducts = isset($initialResponse['headers']['X-WP-Total'][0]) ? (int)$initialResponse['headers']['X-WP-Total'][0] : 0;
+
+            // إصلاح: التحقق من بنية الاستجابة
+            $totalProducts = 0;
+            if (isset($initialResponse['headers']['X-WP-Total'][0])) {
+                $totalProducts = (int)$initialResponse['headers']['X-WP-Total'][0];
+            }
 
             if ($totalProducts === 0) {
                 $this->dispatch('sync-completed', ['message' => 'لا توجد منتجات لجلبها.']);
@@ -62,7 +67,21 @@ class Index extends Component
                     'status' => 'publish',
                     '_fields' => 'id,name,type,price,regular_price,sale_price,sku,stock_quantity,stock_status,categories,images,variations'
                 ]);
-                $products = $response['data'] ?? $response;
+
+                // إصلاح: التعامل مع بنية الاستجابة المختلفة
+                $products = [];
+                if (is_array($response)) {
+                    if (isset($response['data']) && is_array($response['data'])) {
+                        $products = $response['data'];
+                    } elseif (is_array($response) && !isset($response['data'])) {
+                        $products = $response;
+                    }
+                }
+
+                if (empty($products)) {
+                    \Log::warning("No products found on page {$currentPage}");
+                    continue;
+                }
 
                 foreach ($products as $product) {
                     if ($product['type'] === 'variable') {
@@ -78,12 +97,15 @@ class Index extends Component
                     'progress' => round($progress, 1),
                     'message' => "جلب المنتجات الأساسية - صفحة {$currentPage} من {$totalPages}"
                 ]);
-                usleep(50000);
+
+                // تقليل وقت الانتظار
+                usleep(100000); // 0.1 ثانية
             }
 
             // Dispatch all products at once after fetching is complete
             if (!empty($productsToStore)) {
                 $this->dispatch('store-products-batch', ['products' => $productsToStore]);
+                \Log::info("Dispatched {count} products to frontend", ['count' => count($productsToStore)]);
             }
 
             // Pass 2: Fetch and store Variations
@@ -116,7 +138,7 @@ class Index extends Component
             $this->dispatch('sync-completed', ['message' => 'اكتملت المزامنة بنجاح! تم جلب جميع المنتجات والمتغيرات.']);
 
         } catch (\Exception $e) {
-            \Log::error('فشل في جلب المنتجات', ['error' => $e->getMessage()]);
+            \Log::error('فشل في جلب المنتجات', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
             $this->dispatch('sync-error', ['error' => $e->getMessage()]);
         }
     }
@@ -235,7 +257,7 @@ class Index extends Component
     public function quickSyncProducts()
     {
         try {
-            $perPage = 100;
+            $perPage = 50; // تقليل عدد المنتجات لكل طلب
             $page = 1;
             $totalFetched = 0;
 
@@ -254,7 +276,15 @@ class Index extends Component
                     '_fields' => 'id,name,type,price,sku,stock_quantity,images,categories'
                 ]);
 
-                $products = $response['data'] ?? $response;
+                // إصلاح: التعامل مع بنية الاستجابة
+                $products = [];
+                if (is_array($response)) {
+                    if (isset($response['data']) && is_array($response['data'])) {
+                        $products = $response['data'];
+                    } elseif (is_array($response) && !isset($response['data'])) {
+                        $products = $response;
+                    }
+                }
 
                 if (!empty($products)) {
                     foreach ($products as $product) {
@@ -280,13 +310,21 @@ class Index extends Component
                         'progress' => min(($totalFetched / 500) * 100, 99), // تقدير
                         'message' => "جلب سريع - {$totalFetched} منتج"
                     ]);
+
+                    // إرسال البيانات في دفعات أصغر
+                    if (count($processedProducts) >= 25) {
+                        $this->dispatch('store-products-batch', ['products' => $processedProducts]);
+                        $processedProducts = [];
+                        usleep(100000); // 0.1 ثانية
+                    }
                 }
 
                 $page++;
-                usleep(30000); // 0.03 ثانية
+                usleep(50000); // 0.05 ثانية
 
-            } while (!empty($products) && count($products) == $perPage && $page <= 20); // حد أقصى 20 صفحة
+            } while (!empty($products) && count($products) == $perPage && $page <= 10); // حد أقصى 10 صفحات للجلب السريع
 
+            // إرسال المنتجات المتبقية
             if (!empty($processedProducts)) {
                 $this->dispatch('store-products-batch', ['products' => $processedProducts]);
             }
@@ -297,6 +335,7 @@ class Index extends Component
             ]);
 
         } catch (\Exception $e) {
+            \Log::error('فشل في المزامنة السريعة', ['error' => $e->getMessage()]);
             $this->dispatch('sync-error', [
                 'error' => $e->getMessage()
             ]);
