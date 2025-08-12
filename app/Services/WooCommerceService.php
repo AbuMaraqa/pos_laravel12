@@ -286,4 +286,197 @@ class WooCommerceService
     {
         return $this->getProductVariations($productId);
     }
+
+    // الدوال المفقودة المطلوبة
+    public function getCustomersCount(): int
+    {
+        try {
+            $response = $this->get('customers', ['per_page' => 1]);
+            return $response['total'] ?? 0;
+        } catch (\Exception $e) {
+            Log::error('Failed to get customers count: ' . $e->getMessage());
+            return 0;
+        }
+    }
+
+    public function getProductsCount(): int
+    {
+        try {
+            $response = $this->get('products', ['per_page' => 1]);
+            return $response['total'] ?? 0;
+        } catch (\Exception $e) {
+            Log::error('Failed to get products count: ' . $e->getMessage());
+            return 0;
+        }
+    }
+
+    public function getLowStockProducts(): array
+    {
+        try {
+            $response = $this->get('products', [
+                'per_page' => 100,
+                'status' => 'publish',
+                'stock_status' => 'outofstock'
+            ]);
+            return $response['data'] ?? $response;
+        } catch (\Exception $e) {
+            Log::error('Failed to get low stock products: ' . $e->getMessage());
+            return [];
+        }
+    }
+
+    public function getVariableProductsPaginated(int $page = 1, int $perPage = 100): array
+    {
+        try {
+            return $this->get('products', [
+                'type' => 'variable',
+                'status' => 'publish',
+                'per_page' => $perPage,
+                'page' => $page,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to get variable products: ' . $e->getMessage());
+            return ['data' => [], 'total_pages' => 0];
+        }
+    }
+
+    public function getAllVariations(): array
+    {
+        $allVariations = [];
+
+        try {
+            $page = 1;
+            do {
+                $response = $this->get('products', [
+                    'type' => 'variable',
+                    'per_page' => 100,
+                    'page' => $page,
+                    'status' => 'publish'
+                ]);
+
+                $products = $response['data'] ?? $response;
+
+                foreach ($products as $product) {
+                    $productId = $product['id'];
+                    $variations = $this->getVariationsByProductId($productId);
+
+                    foreach ($variations as &$variation) {
+                        $variation['product_id'] = $productId;
+                    }
+
+                    $allVariations = array_merge($allVariations, $variations);
+                }
+
+                $totalPages = $response['total_pages'] ?? 1;
+                $page++;
+            } while ($page <= $totalPages && !empty($products));
+
+            Log::info("All variations fetched", ['total' => count($allVariations)]);
+            return $allVariations;
+        } catch (\Exception $e) {
+            Log::error('Error fetching all variations', [
+                'message' => $e->getMessage()
+            ]);
+            return [];
+        }
+    }
+
+    public function createUser($data): array
+    {
+        try {
+            return $this->post('customers', $data);
+        } catch (\Exception $e) {
+            Log::error('Failed to create user: ' . $e->getMessage());
+            throw $e;
+        }
+    }
+
+    public function getCustomerById($id): array
+    {
+        try {
+            return $this->get('customers/' . $id);
+        } catch (\Exception $e) {
+            Log::error('Failed to get customer: ' . $e->getMessage());
+            return [];
+        }
+    }
+
+    public function updateCustomer($id, $query = []): array
+    {
+        try {
+            return $this->put('customers/' . $id, $query);
+        } catch (\Exception $e) {
+            Log::error('Failed to update customer: ' . $e->getMessage());
+            throw $e;
+        }
+    }
+
+    public function getOrdersById($id, $query = []): array
+    {
+        try {
+            return $this->get('orders/' . $id, $query);
+        } catch (\Exception $e) {
+            Log::error('Failed to get order: ' . $e->getMessage());
+            return [];
+        }
+    }
+
+    public function getCustomerOrders($customerId, $query = []): array
+    {
+        try {
+            return $this->get('orders', array_merge($query, ['customer' => $customerId]));
+        } catch (\Exception $e) {
+            Log::error('Failed to get customer orders: ' . $e->getMessage());
+            return [];
+        }
+    }
+
+    public function updateOrderStatus($id, $status): array
+    {
+        try {
+            return $this->put("orders/{$id}", ['status' => $status]);
+        } catch (\Exception $e) {
+            Log::error('Failed to update order status: ' . $e->getMessage());
+            throw $e;
+        }
+    }
+
+    public function getAttributes(array $query = []): array
+    {
+        try {
+            $response = $this->get('products/attributes', $query);
+            return $response['data'] ?? $response;
+        } catch (\Exception $e) {
+            Log::error('Failed to get attributes: ' . $e->getMessage());
+            return [];
+        }
+    }
+
+    public function getTerms(int $attributeId): array
+    {
+        try {
+            return $this->get("products/attributes/{$attributeId}/terms");
+        } catch (\Exception $e) {
+            Log::error('Failed to get terms: ' . $e->getMessage());
+            return [];
+        }
+    }
+
+    // دالة helper لاستخراج headers من response
+    public function getLastPageFromHeaders(): int
+    {
+        // يمكن استخدامها في المستقبل إذا احتجت لمعرفة آخر صفحة
+        return 1;
+    }
+
+    // دالة لجلب الإحصائيات العامة
+    public function getOrdersReportData(): array
+    {
+        try {
+            return $this->get('reports/orders/totals');
+        } catch (\Exception $e) {
+            Log::error('Failed to get orders report: ' . $e->getMessage());
+            return [];
+        }
+    }
 }
