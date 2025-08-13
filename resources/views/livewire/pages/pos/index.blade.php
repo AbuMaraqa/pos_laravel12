@@ -21,8 +21,12 @@
 
             </div>
             <div class="flex justify-end">
-                <flux:button type="button" variant="primary" onclick="Flux.modal('variations-modal').close()">إغلاق
-                </flux:button>
+{{--                <flux:button type="button" variant="primary" onclick="Flux.modal('variations-modal').close()">إغلاق--}}
+{{--                </flux:button>--}}
+                <flux:modal.trigger name="variations-modal">
+                    <flux:button type="button" variant="primary">إغلاق
+                    </flux:button>
+                </flux:modal.trigger>
             </div>
         </div>
     </flux:modal>
