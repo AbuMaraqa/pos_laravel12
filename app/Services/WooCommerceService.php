@@ -890,7 +890,7 @@ class WooCommerceService
     // 📍 دوال متنوعة محسنة
     public function getProduct($id): array
     {
-        return $this->get('products/' . $id);
+        return $this->get('products/' . $id)['data'];
     }
 
     public function shippingMethods()
