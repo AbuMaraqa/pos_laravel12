@@ -92,51 +92,45 @@ class Index extends Component
     }
 
     #[On('fetch-products-from-api')]
-    public function fetchProductsFromAPI(int $perPage = 100, array $extraQuery = []): void
+    public function fetchProductsFromAPI()
     {
-        // نبلّغ الواجهة ببدء المزامنة (عدد الصفحات سيُحدّث لاحقًا إن لم نعرفه)
-        $this->dispatch('sync-started', pages: 0);
+        $perPage = 100; // عدد المنتجات في كل دفعة
+        $page = 1;
+        $allProducts = [];
 
-        if (method_exists($this->wooService, 'getProductsPage')) {
-            // ✅ المسار المفضّل: الخدمة تُرجع total_pages من هيدر WooCommerce
-            $first = $this->wooService->getProductsPage(1, $perPage, $extraQuery);
-            $totalPages = max(1, (int)($first['total_pages'] ?? 1));
+        do {
+            $response = $this->wooService->getProducts([
+                'per_page' => $perPage,
+                'page' => $page,
+            ]);
 
-            // أرسل الدفعة الأولى
-            $this->dispatch('store-products-batch', products: $first['data'], i: 1, total: $totalPages);
-            $this->dispatch('sync-progress', page: 1, pages: $totalPages, message: "جلب الصفحة 1 من {$totalPages}");
+            $products = $response['data'] ?? $response;
 
-            // بقية الصفحات
-            for ($page = 2; $page <= $totalPages; $page++) {
-                $res = $this->wooService->getProductsPage($page, $perPage, $extraQuery);
-                $this->dispatch('store-products-batch', products: $res['data'], i: $page, total: $totalPages);
-                $this->dispatch('sync-progress', page: $page, pages: $totalPages, message: "جلب الصفحة {$page} من {$totalPages}");
-            }
-        } else {
-            // 🔁 fallback: لف لحد ما الصفحة ترجع أقل من per_page
-            $page = 1;
-            do {
-                $query = array_merge($extraQuery, ['per_page' => $perPage, 'page' => $page]);
-                $data  = $this->wooService->getProducts($query);
+            foreach ($products as $product) {
+                $allProducts[] = $product;
 
-                // قد تكون الخدمة تُرجع ['data'=>[]] أو مصفوفة مباشرة — طبعها إلى items
-                $items = is_array($data) && array_key_exists('data', $data) ? ($data['data'] ?? []) : (is_array($data) ? $data : []);
-                if (empty($items)) {
-                    break;
+                if ($product['type'] === 'variable' && !empty($product['variations'])) {
+                    foreach ($product['variations'] as $variationId) {
+                        $variation = $this->wooService->getProduct($variationId);
+                        if ($variation) {
+                            $variation['product_id'] = $product['id'];
+                            $allProducts[] = $variation;
+                        }
+                    }
                 }
+            }
 
-                // أرسل الدفعة الحالية
-                $this->dispatch('store-products-batch', products: $items, i: $page, total: 0);
-                $this->dispatch('sync-progress', page: $page, pages: 0, message: "جلب الصفحة {$page}");
+            // إذا النظام بيرجع total_pages نستفيد منه
+            $totalPages = $response['total_pages'] ?? null;
+            $hasMore = $totalPages
+                ? $page < $totalPages
+                : (is_array($products) && count($products) === $perPage);
 
-                $page++;
-                // نتوقف عندما تقل العناصر عن perPage — يعني آخر صفحة
-            } while (count($items) === $perPage);
-        }
+            $page++;
+        } while ($hasMore);
 
-        $this->dispatch('sync-completed', message: 'اكتملت مزامنة المنتجات بنجاح');
+        $this->dispatch('store-products', products: $allProducts);
     }
-
     #[On('fetch-categories-from-api')]
     public function fetchCategoriesFromAPI()
     {
