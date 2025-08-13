@@ -20,17 +20,12 @@ class Index extends Component
     public array $variations = [];
     public array $productArray = [];
 
+    public int $perPage = 100;     // حجم الدُفعة
+    public int $throttleMs = 500;  // تأخير بين الصفحات (مللي ثانية)
+    private bool $isFetching = false; // حارس لمنع الجلب المتوازي
     public ?int $selectedCategory = 0;
 
     public array $cart = [];
-
-    // إضافات للـ Pagination
-    public int $currentPage = 1;
-    public int $perPage = 50; // حجم صفحة أفضل للأداء
-    public int $totalPages = 1;
-    public int $totalProducts = 0;
-    public bool $isLoading = false;
-    public bool $isBackgroundSyncing = false;
 
     protected $wooService;
 
@@ -41,237 +36,66 @@ class Index extends Component
 
     public function mount()
     {
-        // جلب الكاتيجوريز فقط في البداية
         $this->categories = $this->wooService->getCategories(['parent' => 0]);
 
-        // جلب أول صفحة من المنتجات بحجم صغير للعرض السريع
-        $this->loadProducts();
-    }
-
-    // 📍 تحميل المنتجات مع Pagination
-    public function loadProducts($append = false)
-    {
-        $this->isLoading = true;
-
-        $params = [
+        // اعرض أول صفحة فقط لسرعة الواجهة
+        $this->products = $this->wooService->getProducts([
             'per_page' => $this->perPage,
-            'page' => $this->currentPage,
-        ];
-
-        // إضافة فلتر الكاتيجوري إذا كان محدد
-        if ($this->selectedCategory !== null && $this->selectedCategory > 0) {
-            $params['category'] = $this->selectedCategory;
-        }
-
-        // إضافة فلتر البحث إذا موجود
-        if (!empty($this->search)) {
-            $params['search'] = $this->search;
-        }
-
-        try {
-            $response = $this->wooService->getProducts($params);
-
-            // معالجة الاستجابة حسب هيكل الـ API
-            if (isset($response['data'])) {
-                $products = $response['data'];
-                $this->totalPages = $response['total_pages'] ?? 1;
-                $this->totalProducts = $response['total'] ?? count($products);
-            } else {
-                $products = $response;
-                // حساب التقريبي للصفحات
-                $this->totalPages = ceil(count($products) / $this->perPage);
-            }
-
-            if ($append) {
-                // إضافة المنتجات الجديدة للموجودة (للـ infinite scroll)
-                $this->products = array_merge($this->products, $products);
-            } else {
-                // استبدال المنتجات (للـ pagination عادي)
-                $this->products = $products;
-            }
-
-            $this->isLoading = false;
-
-            // إرسال للجافا سكريبت للتخزين في IndexedDB
-            $this->dispatch('products-loaded', [
-                'products' => $products,
-                'currentPage' => $this->currentPage,
-                'totalPages' => $this->totalPages,
-                'append' => $append,
-                'totalProducts' => $this->totalProducts
-            ]);
-
-        } catch (\Exception $e) {
-            $this->isLoading = false;
-            logger()->error('Error loading products: ' . $e->getMessage());
-            $this->dispatch('api-error', [
-                'message' => 'حدث خطأ في تحميل المنتجات. الرجاء المحاولة مرة أخرى.'
-            ]);
-        }
-    }
-
-    // 📍 Background Sync مع معالجة أفضل للأخطاء
-    #[On('start-background-sync')]
-    public function startBackgroundSync()
-    {
-        if ($this->isBackgroundSyncing) {
-            return;
-        }
-
-        $this->isBackgroundSyncing = true;
-        $this->currentPage = 1;
-
-        $this->dispatch('sync-started');
-        $this->fetchProductsChunk();
-    }
-
-    #[On('fetch-products-chunk')]
-    public function fetchProductsChunk()
-    {
-        try {
-            $response = $this->wooService->getProducts([
-                'per_page' => $this->perPage,
-                'page' => $this->currentPage,
-            ]);
-
-            $products = $response['data'] ?? $response;
-            $totalPages = $response['total_pages'] ?? null;
-
-            // معالجة المتغيرات للمنتجات المتغيرة (بشكل محدود لتجنب البطء)
-            $enrichedProducts = [];
-            foreach ($products as $product) {
-                $enrichedProducts[] = $product;
-
-                // جلب المتغيرات فقط للمنتجات المهمة وبحد أقصى
-                if ($product['type'] === 'variable' && !empty($product['variations'])) {
-                    $variations = array_slice($product['variations'], 0, 20); // أول 20 متغير فقط
-                    foreach ($variations as $variationId) {
-                        try {
-                            $variation = $this->wooService->getProduct($variationId);
-                            if ($variation) {
-                                $variation['product_id'] = $product['id'];
-                                $enrichedProducts[] = $variation;
-                            }
-                        } catch (\Exception $e) {
-                            // تجاهل الأخطاء وأكمل
-                            logger()->warning('Failed to fetch variation ' . $variationId . ': ' . $e->getMessage());
-                            continue;
-                        }
-                    }
-                }
-            }
-
-            // إرسال للجافا سكريبت للتخزين
-            $this->dispatch('store-products-chunk', [
-                'products' => $enrichedProducts,
-                'page' => $this->currentPage,
-                'totalPages' => $totalPages
-            ]);
-
-            // هل يوجد صفحات أخرى؟
-            $hasMore = $totalPages ? $this->currentPage < $totalPages : count($products) === $this->perPage;
-
-            $this->dispatch('sync-progress', [
-                'page' => $this->currentPage,
-                'totalPages' => $totalPages,
-                'hasMore' => $hasMore,
-                'progress' => $totalPages ? ($this->currentPage / $totalPages * 100) : 0
-            ]);
-
-            if ($hasMore) {
-                $this->currentPage++;
-                // استدعاء الصفحة التالية بتأخير قصير لتجنب إرهاق الخادم
-                $this->dispatch('schedule-next-chunk');
-            } else {
-                $this->isBackgroundSyncing = false;
-                $this->dispatch('sync-completed');
-            }
-
-        } catch (\Exception $e) {
-            $this->isBackgroundSyncing = false;
-            logger()->error('Error in background sync: ' . $e->getMessage());
-            $this->dispatch('sync-error', [
-                'message' => 'حدث خطأ أثناء المزامنة: ' . $e->getMessage()
-            ]);
-        }
-    }
-
-    // 📍 Load More للصفحات الإضافية
-    #[On('load-more')]
-    public function loadMore()
-    {
-        if ($this->currentPage < $this->totalPages && !$this->isLoading) {
-            $this->currentPage++;
-            $this->loadProducts(true); // append = true
-        }
-    }
-
-    // 📍 البحث مع Debouncing
-    public function updatedSearch()
-    {
-        // إعادة تعيين للصفحة الأولى عند البحث
-        $this->currentPage = 1;
-        $this->loadProducts();
-    }
-
-    #[On('perform-search')]
-    public function performSearch($searchTerm = null)
-    {
-        if ($searchTerm !== null) {
-            $this->search = $searchTerm;
-        }
-
-        $this->currentPage = 1;
-        $this->loadProducts();
+            'page'     => 1,
+        ]);
     }
 
     public function selectCategory(?int $id = null)
     {
         $this->selectedCategory = $id;
-        $this->currentPage = 1; // إعادة تعيين للصفحة الأولى
-        $this->search = ''; // مسح البحث
 
-        $this->loadProducts();
+        $params = [
+            'per_page' => $this->perPage,
+            'page'     => 1,
+        ];
+        if ($id !== null) {
+            $params['category'] = $id;
+        }
+
+        // اعرض أول صفحة فقط
+        $this->products = $this->wooService->getProducts($params);
+
+        // ثم اجلب بقية الصفحات بالخلفية عبر نفس الفنكشن (بدون تغيير اسم)
+        $this->fetchProductsFromAPI();
     }
 
-    // 📍 الدوال الأصلية مع تحسينات
     public function syncProductsToIndexedDB()
     {
-        try {
-            $products = $this->wooService->getProducts(['per_page' => 100]);
-            return $products;
-        } catch (\Exception $e) {
-            logger()->error('Error syncing products: ' . $e->getMessage());
-            return [];
-        }
+        // Get fresh products from the API
+        $products = $this->wooService->getProducts(['per_page' => 100]);
+        return $products;
     }
 
     public function syncCategoriesToIndexedDB()
     {
-        try {
-            $categories = $this->wooService->getCategories();
-            return $categories;
-        } catch (\Exception $e) {
-            logger()->error('Error syncing categories: ' . $e->getMessage());
-            return [];
-        }
+        // Get fresh categories from the API
+        $categories = $this->wooService->getCategories();
+        return $categories;
+    }
+
+    public function updatedSearch()
+    {
+        $this->products = $this->wooService->getProducts([
+            'per_page' => $this->perPage,
+            'page'     => 1,
+            'search'   => $this->search,
+            ...($this->selectedCategory ? ['category' => $this->selectedCategory] : []),
+        ]);
+
+        // بقية النتائج على دفعات
+        $this->fetchProductsFromAPI();
     }
 
     public function openVariationsModal($id, string $type)
     {
         if ($type == 'variable') {
-            try {
-                $this->variations = $this->wooService->getProductVariations($id);
-                $this->dispatch('show-variations-modal', [
-                    'variations' => $this->variations,
-                    'product_id' => $id
-                ]);
-            } catch (\Exception $e) {
-                logger()->error('Error loading variations: ' . $e->getMessage());
-                $this->dispatch('api-error', [
-                    'message' => 'حدث خطأ في تحميل المتغيرات'
-                ]);
-            }
+            $this->variations = $this->wooService->getProductVariations($id);
+            $this->modal('variations-modal')->show();
         }
     }
 
@@ -285,132 +109,107 @@ class Index extends Component
     }
 
     #[On('fetch-products-from-api')]
-    public function fetchProductsFromAPI(int $page = 1, int $perPage = 50): void
+    public function fetchProductsFromAPI()
     {
+        if ($this->isFetching) {
+            return; // منع الجلب المتكرر بالتوازي
+        }
+        $this->isFetching = true;
+
+        $page = 1;
+        $maxPages = 1000; // أمان؛ لو ما رجع إجمالي صفحات من API
+
+        // بارامترات أساسية حسب الحالة الحالية (بدون تغيير على API)
+        $baseParams = [
+            'per_page' => $this->perPage,
+        ];
+        if (!empty($this->search)) {
+            $baseParams['search'] = $this->search;
+        }
+        if (!empty($this->selectedCategory)) {
+            $baseParams['category'] = $this->selectedCategory;
+        }
+
         try {
-            $response = $this->wooService->getProducts([
-                'per_page' => $perPage,
-                'page' => $page,
-            ]);
+            while (true) {
+                $params = $baseParams + ['page' => $page];
 
-            $products = $response['data'] ?? $response;
-            $totalPages = $response['total_pages'] ?? null;
+                // نفس دالة الـ API الموجودة عندك
+                $chunk = $this->wooService->getProducts($params);
 
-            $chunk = [];
+                // دعم الشكلين (بعض الخدمات ترجع ['data'=>[]] وبعضها ترجع [] مباشرة)
+                $items = is_array($chunk) && array_key_exists('data', $chunk) ? ($chunk['data'] ?? []) : $chunk;
+                $count = is_countable($items) ? count($items) : 0;
 
-            foreach ($products as $product) {
-                $chunk[] = $product;
-
-                // معالجة المتغيرات بحذر
-                if ($product['type'] === 'variable' && !empty($product['variations'])) {
-                    // جلب المتغيرات بشكل محدود
-                    $variations = array_slice($product['variations'], 0, 10); // أول 10 متغيرات فقط
-                    foreach ($variations as $variationId) {
-                        try {
-                            $variation = $this->wooService->getProduct($variationId);
-                            if ($variation) {
-                                $variation['product_id'] = $product['id'];
-                                $chunk[] = $variation;
-                            }
-                        } catch (\Exception $e) {
-                            logger()->warning('Failed to fetch variation: ' . $e->getMessage());
-                            continue;
-                        }
-                    }
+                if ($count === 0) {
+                    break; // انتهت البيانات
                 }
+
+                // مهم: لا نجلب variations هنا. خليها Lazy في openVariationsModal
+                // أرسل الدُفعة مباشرة للواجهة لتخزينها محليًا (نفس الحدث ونفس الاسم)
+                $this->dispatch('store-products', products: $items);
+
+                // لو الصفحة ممتلئة تمامًا، أكمل؛ غير ذلك توقف
+                if ($count < $this->perPage || $page >= $maxPages) {
+                    break;
+                }
+
+                // تخفيف الضغط على السيرفر
+                usleep($this->throttleMs * 1000);
+                $page++;
             }
-
-            $this->dispatch('store-products', ['products' => $chunk]);
-
-            $hasMore = $totalPages
-                ? $page < (int) $totalPages
-                : (is_array($products) && count($products) === $perPage);
-
-            $this->dispatch('products-chunk-progress', [
-                'page' => $page,
-                'hasMore' => $hasMore,
-                'perPage' => $perPage,
-                'totalPages' => $totalPages
-            ]);
-
-            if (!$hasMore) {
-                $this->dispatch('products-chunk-finished');
-            }
-
-        } catch (\Exception $e) {
-            logger()->error('Error fetching products from API: ' . $e->getMessage());
-            $this->dispatch('api-error', [
-                'message' => 'حدث خطأ في جلب المنتجات من API'
-            ]);
+        } catch (\Throwable $e) {
+            logger()->error('Chunked fetch failed', ['error' => $e->getMessage()]);
+            // بإمكانك إرسال إشعار للواجهة إن رغبت
+        } finally {
+            $this->isFetching = false;
         }
     }
 
     #[On('fetch-categories-from-api')]
     public function fetchCategoriesFromAPI()
     {
-        try {
-            $categories = $this->wooService->getCategories(['parent' => 0]);
-            $this->dispatch('store-categories', ['categories' => $categories]);
-        } catch (\Exception $e) {
-            logger()->error('Error fetching categories: ' . $e->getMessage());
-            $this->dispatch('api-error', [
-                'message' => 'حدث خطأ في جلب التصنيفات'
-            ]);
-        }
+        $categories = $this->wooService->getCategories(['parent' => 0]);
+        $this->dispatch('store-categories', categories: $categories);
     }
 
     #[On('fetch-all-variations')]
     public function fetchAllVariations()
     {
-        try {
-            $page = 1;
-            do {
-                $response = $this->wooService->getVariableProductsPaginated($page);
-                $products = $response['data'] ?? $response;
+        $page = 1;
+        do {
+            $response = $this->wooService->getVariableProductsPaginated($page);
+            $products = $response['data'] ?? $response;
+            $productId = $id ?? $this->productId ?? null;
 
-                foreach ($products as $product) {
-                    try {
-                        $variations = $this->wooService->getVariationsByProductId($product['id']);
+            foreach ($products as $product) {
+                $variations = $this->wooService->getVariationsByProductId($product['id']);
 
-                        foreach ($variations as &$v) {
-                            $v['product_id'] = $product['id'];
-                        }
-
-                        $this->dispatch('store-variations', [
-                            'product_id' => $product['id'],
-                            'variations' => $variations,
-                        ]);
-                    } catch (\Exception $e) {
-                        logger()->warning('Failed to fetch variations for product ' . $product['id'] . ': ' . $e->getMessage());
-                        continue;
-                    }
+                // أضف معرف المنتج لكل متغير
+                foreach ($variations as &$v) {
+                    $v['product_id'] = $product['id'];
                 }
 
-                $page++;
-                $hasMore = isset($response['total_pages']) && $page <= $response['total_pages'];
-            } while ($hasMore);
 
-        } catch (\Exception $e) {
-            logger()->error('Error fetching all variations: ' . $e->getMessage());
-            $this->dispatch('api-error', [
-                'message' => 'حدث خطأ في جلب المتغيرات'
-            ]);
-        }
+                // إرسال إلى JavaScript لتخزينهم
+                $this->dispatch('store-variations', [
+                    'product_id' => $productId,
+                    'variations' => $variations,
+                ]);
+            }
+
+            $page++;
+            $hasMore = isset($response['total_pages']) && $page <= $response['total_pages'];
+        } while ($hasMore);
     }
 
     #[On('fetch-customers-from-api')]
     public function fetchCustomersFromAPI()
     {
-        try {
-            $customers = $this->wooService->getCustomers();
-            $this->dispatch('store-customers', ['customers' => $customers]);
-        } catch (\Exception $e) {
-            logger()->error('Error fetching customers: ' . $e->getMessage());
-            $this->dispatch('api-error', [
-                'message' => 'حدث خطأ في جلب العملاء'
-            ]);
-        }
+        $customers = $this->wooService->getCustomers();
+        $this->dispatch('store-customers', customers: $customers);
     }
+
 
     #[On('add-simple-to-cart')]
     public function addSimpleToCart($product)
@@ -419,6 +218,7 @@ class Index extends Component
 
         if (!$productId) return;
 
+        // فرضًا تضيف إلى this->cart[]
         $this->cart[] = [
             'id' => $productId,
             'name' => $product['name'] ?? '',
@@ -433,6 +233,7 @@ class Index extends Component
         $orderData = $order ?? [];
 
         try {
+            // ✅ إذا كان هناك customer_id نضيف بيانات billing
             if (!empty($orderData['customer_id'])) {
                 $customer = $this->wooService->getUserById($orderData['customer_id']);
 
@@ -447,6 +248,7 @@ class Index extends Component
                 ];
             }
 
+            // إرسال الطلب بعد دمج بيانات العميل
             $order = $this->wooService->createOrder($orderData);
 
             foreach($orderData['line_items'] as $item) {
@@ -462,21 +264,15 @@ class Index extends Component
             $this->dispatch('order-success');
         } catch (\Exception $e) {
             logger()->error('Order creation failed', ['error' => $e->getMessage()]);
-            $this->dispatch('order-failed', [
-                'message' => 'فشل في إنشاء الطلب: ' . $e->getMessage()
-            ]);
+            $this->dispatch('order-failed');
         }
     }
 
     #[On('fetch-shipping-methods-from-api')]
     public function fetchShippingMethods()
     {
-        try {
-            $methods = $this->wooService->getShippingMethods();
-            $this->dispatch('store-shipping-methods', ['methods' => $methods]);
-        } catch (\Exception $e) {
-            logger()->error('Error fetching shipping methods: ' . $e->getMessage());
-        }
+        $methods = $this->wooService->getShippingMethods();
+        $this->dispatch('store-shipping-methods', methods: $methods);
     }
 
     public function shippingMethods()
@@ -497,52 +293,26 @@ class Index extends Component
     #[On('fetch-shipping-zones-and-methods')]
     public function fetchShippingZonesAndMethods()
     {
-        try {
-            $zones = $this->wooService->shippingZones();
-            $methods = [];
+        $zones = $this->wooService->shippingZones();
 
-            foreach ($zones as $zone) {
-                $zoneMethods = $this->wooService->shippingZoneMethods($zone['id']);
+        $methods = [];
 
-                foreach ($zoneMethods as $method) {
-                    $methods[] = [
-                        'id' => $method['id'],
-                        'title' => $method['title'],
-                        'zone_id' => $zone['id'],
-                        'zone_name' => $zone['name'],
-                        'settings' => $method['settings'] ?? [],
-                    ];
-                }
+        foreach ($zones as $zone) {
+            $zoneMethods = $this->wooService->shippingZoneMethods($zone['id']);
+
+            foreach ($zoneMethods as $method) {
+                $methods[] = [
+                    'id' => $method['id'],
+                    'title' => $method['title'],
+                    'zone_id' => $zone['id'],
+                    'zone_name' => $zone['name'],
+                    'settings' => $method['settings'] ?? [],
+                ];
             }
-
-            $this->dispatch('store-shipping-zones', ['zones' => $zones]);
-            $this->dispatch('store-shipping-zone-methods', $methods);
-        } catch (\Exception $e) {
-            logger()->error('Error fetching shipping zones and methods: ' . $e->getMessage());
         }
-    }
 
-    // 📍 Cache المنتجات محليًا
-    public function getCachedProducts()
-    {
-        $cacheKey = "pos_products_{$this->selectedCategory}_{$this->search}_{$this->currentPage}";
-
-        return cache()->remember($cacheKey, now()->addMinutes(5), function() {
-            return $this->loadProducts();
-        });
-    }
-
-    // 📍 إحصائيات للمراقبة
-    #[On('get-sync-status')]
-    public function getSyncStatus()
-    {
-        $this->dispatch('sync-status', [
-            'isLoading' => $this->isLoading,
-            'isBackgroundSyncing' => $this->isBackgroundSyncing,
-            'currentPage' => $this->currentPage,
-            'totalPages' => $this->totalPages,
-            'totalProducts' => $this->totalProducts
-        ]);
+        $this->dispatch('store-shipping-zones', ['zones' => $zones]);
+        $this->dispatch('store-shipping-zone-methods', $methods);
     }
 
     public function render()
