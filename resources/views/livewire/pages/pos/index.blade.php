@@ -1598,4 +1598,35 @@
         if (shippingDisplay) shippingDisplay.textContent = `قيمة التوصيل: ${shippingCost.toFixed(2)} ₪`;
         if (finalDisplay) finalDisplay.textContent = ` ${(subTotal + shippingCost).toFixed(2)} ₪`;
     }
+
+    // ابدأ من الصفحة 1
+    let page = 1;
+    const perPage = 100;
+
+    function fetchNextChunk() {
+        Livewire.dispatch('fetch-products-from-api', { page, perPage });
+    }
+
+    document.addEventListener('livewire:init', () => {
+        // أول استدعاء
+        fetchNextChunk();
+
+        Livewire.on('products-chunk-progress', (e) => {
+            // e: { page, hasMore, perPage }
+            if (e.hasMore) {
+                page = e.page + 1;
+                // استدعاء الصفحة التالية مباشرة (أو بعد setTimeout بسيط إذا بدك تخفيف الحمل)
+                fetchNextChunk();
+            }
+        });
+
+        Livewire.on('products-chunk-finished', () => {
+            console.log('✅ اكتمل جلب كل المنتجات.');
+        });
+
+        Livewire.on('store-products', ({ products }) => {
+            // خزّن الدفعة في IndexedDB أو state عندك
+            // saveToIndexedDB(products)
+        });
+    });
 </script>

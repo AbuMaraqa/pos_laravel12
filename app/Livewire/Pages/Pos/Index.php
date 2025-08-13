@@ -92,45 +92,52 @@ class Index extends Component
     }
 
     #[On('fetch-products-from-api')]
-    public function fetchProductsFromAPI()
+    public function fetchProductsFromAPI(int $page = 1, int $perPage = 100): void
     {
-        $perPage = 100; // عدد المنتجات في كل دفعة
-        $page = 1;
-        $allProducts = [];
+        // اجلب صفحة واحدة فقط ثم ارجع فورًا
+        $response = $this->wooService->getProducts([
+            'per_page' => $perPage,
+            'page'     => $page,
+        ]);
 
-        do {
-            $response = $this->wooService->getProducts([
-                'per_page' => $perPage,
-                'page' => $page,
-            ]);
+        $products   = $response['data'] ?? $response;
+        $totalPages = $response['total_pages'] ?? null;
 
-            $products = $response['data'] ?? $response;
+        $chunk = [];
 
-            foreach ($products as $product) {
-                $allProducts[] = $product;
+        foreach ($products as $product) {
+            $chunk[] = $product;
 
-                if ($product['type'] === 'variable' && !empty($product['variations'])) {
-                    foreach ($product['variations'] as $variationId) {
-                        $variation = $this->wooService->getProduct($variationId);
-                        if ($variation) {
-                            $variation['product_id'] = $product['id'];
-                            $allProducts[] = $variation;
-                        }
+            // في حال المتغيرات، اجلبها لكن انتبه: هذا قد يطوّل
+            // إذا لاحظت بطء، خليه بخطوة ثانية مستقلة للمتغيرات
+            if ($product['type'] === 'variable' && !empty($product['variations'])) {
+                foreach ($product['variations'] as $variationId) {
+                    $variation = $this->wooService->getProduct($variationId);
+                    if ($variation) {
+                        $variation['product_id'] = $product['id'];
+                        $chunk[] = $variation;
                     }
                 }
             }
+        }
 
-            // إذا النظام بيرجع total_pages نستفيد منه
-            $totalPages = $response['total_pages'] ?? null;
-            $hasMore = $totalPages
-                ? $page < $totalPages
-                : (is_array($products) && count($products) === $perPage);
+        // خزّن الدفعة في الواجهة (IndexedDB مثلاً)
+        $this->dispatch('store-products', products: $chunk);
 
-            $page++;
-        } while ($hasMore);
+        // هل يوجد صفحات لاحقة؟
+        $hasMore = $totalPages
+            ? $page < (int) $totalPages
+            : (is_array($products) && count($products) === $perPage);
 
-        $this->dispatch('store-products', products: $allProducts);
+        // أبلغ الواجهة لتقرر إن كانت ستستدعي الصفحة التالية
+        $this->dispatch('products-chunk-progress', page: $page, hasMore: $hasMore, perPage: $perPage);
+
+        if (!$hasMore) {
+            $this->dispatch('products-chunk-finished');
+        }
     }
+
+
     #[On('fetch-categories-from-api')]
     public function fetchCategoriesFromAPI()
     {
