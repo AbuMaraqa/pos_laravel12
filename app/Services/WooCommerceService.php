@@ -1015,10 +1015,23 @@ class WooCommerceService
         ])['data'];
     }
 
-    public function getProductVariations($productId , $query = []): array
+    public function getProductVariations($productId, $query = []): array
     {
-        // جلب المتغيرات للمنتج المحدد
-        return $this->get("products/{$productId}/variations", $query)['data'];
+        $resp = $this->get("products/{$productId}/variations", array_merge([
+            'per_page' => 100,
+            'status'   => 'publish',
+        ], $query));
+
+        $data = (is_array($resp) && isset($resp['data'])) ? $resp['data'] : $resp;
+
+        // ثبّت product_id على كل variation لتوافق التخزين والفهرسة بالواجهة
+        foreach ($data as &$v) {
+            if (!isset($v['product_id'])) {
+                $v['product_id'] = (int) $productId;
+            }
+        }
+
+        return $data ?? [];
     }
 
     private function filterUniqueTerms(array $terms, string $preferredLang = 'en'): array

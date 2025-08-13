@@ -193,7 +193,7 @@ class Index extends Component
 
                 // إرسال إلى JavaScript لتخزينهم
                 $this->dispatch('store-variations', [
-                    'product_id' => $productId,
+                    'product_id' => $product['id'],
                     'variations' => $variations,
                 ]);
             }
