@@ -6,7 +6,9 @@ use App\Models\Subscription;
 use GuzzleHttp\Client;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Curl;
-use Illuminate\Support\Facades\Log; // تأكد من استيراد Log
+use Illuminate\Support\Facades\Log;
+
+// تأكد من استيراد Log
 
 class WooCommerceService
 {
@@ -235,7 +237,24 @@ class WooCommerceService
 
     public function getProducts(array $query = []): array
     {
-        return $this->get('products', $query);
+        try {
+            $response = $this->get('products', $query);
+
+            // إذا كانت الاستجابة تحتوي على مفتاح 'data'، فهذا يعني أن البيانات مغلفة
+            if (is_array($response) && isset($response['data'])) {
+                return $response; // إرجاع الاستجابة كاملة مع metadata
+            }
+
+            // إذا كانت الاستجابة مجرد array من المنتجات
+            return $response;
+        } catch (\Exception $e) {
+            logger()->error('Error fetching products', [
+                'query' => $query,
+                'error' => $e->getMessage()
+            ]);
+
+            return [];
+        }
     }
 
     public function deleteProductById($id): array
@@ -243,9 +262,116 @@ class WooCommerceService
         return $this->delete('products/' . $id);
     }
 
-    public function getProductsById($id): array
+    public function findProductForPOSWithVariations(string $term): ?array
     {
-        return $this->get('products/' . $id);
+        try {
+            $foundProduct = null;
+
+            // البحث بالـ ID
+            if (is_numeric($term)) {
+                $foundProduct = $this->getProductsById((int)$term);
+            }
+
+            // البحث بـ SKU
+            if (!$foundProduct) {
+                $bySku = $this->getProducts(['sku' => $term, 'per_page' => 1]);
+                $skuData = isset($bySku['data']) ? $bySku['data'] : $bySku;
+                if (!empty($skuData)) {
+                    $foundProduct = $this->getProductsById($skuData[0]['id']);
+                }
+            }
+
+            // البحث بالاسم
+            if (!$foundProduct) {
+                $bySearch = $this->getProducts(['search' => $term, 'per_page' => 5]);
+                $searchData = isset($bySearch['data']) ? $bySearch['data'] : $bySearch;
+                if (!empty($searchData)) {
+                    $foundProduct = $this->getProductsById($searchData[0]['id']);
+                }
+            }
+
+            // البحث في المتغيرات
+            if (!$foundProduct) {
+                $foundProduct = $this->searchProductByVariation($term);
+            }
+
+            if ($foundProduct) {
+                return $this->normalizeProductForPOS($foundProduct);
+            }
+
+            return null;
+        } catch (\Exception $e) {
+            logger()->error('Error in findProductForPOSWithVariations', [
+                'term' => $term,
+                'error' => $e->getMessage()
+            ]);
+
+            return null;
+        }
+    }
+
+    private function searchProductByVariation(string $term): ?array
+    {
+        try {
+            $variableProducts = $this->getProducts([
+                'type' => 'variable',
+                'per_page' => 50,
+                'status' => 'publish'
+            ]);
+
+            $products = isset($variableProducts['data']) ? $variableProducts['data'] : $variableProducts;
+
+            foreach ($products as $product) {
+                if (!empty($product['variations'])) {
+                    $variations = $this->getProductVariations($product['id']);
+
+                    foreach ($variations as $variation) {
+                        $skuMatch = !empty($variation['sku']) && strcasecmp($variation['sku'], $term) === 0;
+                        $idMatch = ctype_digit($term) && $variation['id'] == (int)$term;
+
+                        if ($skuMatch || $idMatch) {
+                            // إرجاع المنتج الأب مع تفاصيل المتغيرات
+                            $parentProduct = $this->getProductsById($product['id']);
+                            return $parentProduct;
+                        }
+                    }
+                }
+            }
+
+            return null;
+        } catch (\Exception $e) {
+            logger()->error('Error searching by variation', [
+                'term' => $term,
+                'error' => $e->getMessage()
+            ]);
+            return null;
+        }
+    }
+
+    public function getProductsById($id): ?array
+    {
+        try {
+            $response = $this->get('products/' . $id);
+
+            if (isset($response['id'])) {
+                // إذا كان المنتج متغير، نجلب المتغيرات مباشرة
+                if ($response['type'] === 'variable' && !empty($response['variations'])) {
+                    $variations = $this->getProductVariations($response['id']);
+                    $response['variations_details'] = $variations;
+                }
+
+                return $response;
+            }
+
+            return null;
+        } catch (\Exception $e) {
+            logger()->error('Error fetching product by ID', [
+                'id' => $id,
+                'error' => $e->getMessage()
+            ]);
+
+            return null;
+        }
     }
 
     public function getCategories(array $query = []): array
@@ -436,7 +562,7 @@ class WooCommerceService
             $terms = $response['data'] ?? $response;
 
             // فلترة المصطلحات بناءً على اللغة المطلوبة
-            $langSpecificTerms = array_filter($terms, function($term) use ($lang) {
+            $langSpecificTerms = array_filter($terms, function ($term) use ($lang) {
                 return ($term['lang'] ?? 'en') === $lang;
             });
 
@@ -446,7 +572,7 @@ class WooCommerceService
             }
 
             // ترتيب المصطلحات
-            usort($langSpecificTerms, function($a, $b) {
+            usort($langSpecificTerms, function ($a, $b) {
                 $nameA = $a['name'] ?? '';
                 $nameB = $b['name'] ?? '';
 
@@ -625,6 +751,7 @@ class WooCommerceService
             ];
         }
     }
+
     public function uploadImage($file)
     {
         try {
@@ -781,10 +908,55 @@ class WooCommerceService
         }
     }
 
-    public function getCustomerById($id)
+    public function getCustomerById($id): ?array
     {
-        $response = $this->client->get('customers/' . $id);
-        return json_decode($response->getBody()->getContents(), true);
+        try {
+            logger()->info('Fetching customer from WooCommerce', ['customer_id' => $id]);
+
+            $response = $this->get('customers/' . $id);
+
+            if (!$response || !isset($response['id'])) {
+                logger()->warning('Customer not found in WooCommerce', [
+                    'customer_id' => $id,
+                    'response' => $response
+                ]);
+                return null;
+            }
+
+            logger()->info('Customer found in WooCommerce', [
+                'customer_id' => $response['id'],
+                'customer_email' => $response['email'] ?? 'no_email'
+            ]);
+
+            // إضافة بيانات افتراضية إذا لم تكن موجودة
+            if (!isset($response['billing'])) {
+                $response['billing'] = [
+                    'first_name' => $response['first_name'] ?? '',
+                    'last_name' => $response['last_name'] ?? '',
+                    'email' => $response['email'] ?? '',
+                    'phone' => '',
+                    'address_1' => '',
+                    'city' => '',
+                    'state' => '',
+                    'postcode' => '',
+                    'country' => 'PS'
+                ];
+            }
+
+            if (!isset($response['shipping'])) {
+                $response['shipping'] = $response['billing'];
+            }
+
+            return $response;
+
+        } catch (\Exception $e) {
+            logger()->error('Error fetching customer from WooCommerce', [
+                'customer_id' => $id,
+                'error' => $e->getMessage()
+            ]);
+
+            return null;
+        }
     }
 
     public function updateOrderStatus($id, $status)
@@ -1017,21 +1189,52 @@ class WooCommerceService
 
     public function getProductVariations($productId, $query = []): array
     {
-        $resp = $this->get("products/{$productId}/variations", array_merge([
-            'per_page' => 100,
-            'status'   => 'publish',
-        ], $query));
+        try {
+            $response = $this->get("products/{$productId}/variations", array_merge([
+                'per_page' => 100,
+                'status' => 'publish',
+            ], $query));
 
-        $data = (is_array($resp) && isset($resp['data'])) ? $resp['data'] : $resp;
+            $variations = (is_array($response) && isset($response['data'])) ? $response['data'] : $response;
 
-        // ثبّت product_id على كل variation لتوافق التخزين والفهرسة بالواجهة
-        foreach ($data as &$v) {
-            if (!isset($v['product_id'])) {
-                $v['product_id'] = (int) $productId;
+            // إضافة product_id لكل متغير وتحسين البيانات
+            foreach ($variations as &$variation) {
+                $variation['product_id'] = (int)$productId;
+
+                // التأكد من وجود البيانات الأساسية
+                if (!isset($variation['price']) || $variation['price'] === '') {
+                    $variation['price'] = $variation['regular_price'] ?? 0;
+                }
+
+                // التأكد من وجود SKU
+                if (!isset($variation['sku'])) {
+                    $variation['sku'] = '';
+                }
+
+                // التأكد من وجود الصور
+                if (!isset($variation['images']) || empty($variation['images'])) {
+                    $variation['images'] = isset($variation['image']) ? [$variation['image']] : [];
+                }
+
+                // التأكد من وجود الخصائص
+                if (!isset($variation['attributes'])) {
+                    $variation['attributes'] = [];
+                }
             }
-        }
 
-        return $data ?? [];
+            logger()->info('Retrieved variations for product', [
+                'productId' => $productId,
+                'count' => count($variations)
+            ]);
+
+            return $variations ?? [];
+        } catch (\Exception $e) {
+            logger()->error('Failed to get variations', [
+                'productId' => $productId,
+                'error' => $e->getMessage()
+            ]);
+            return [];
+        }
     }
 
     private function filterUniqueTerms(array $terms, string $preferredLang = 'en'): array
@@ -1120,7 +1323,7 @@ class WooCommerceService
         }
 
         // ترتيب المصطلحات حسب الاسم (رقمياً إذا كانت أرقام)
-        usort($uniqueTerms, function($a, $b) {
+        usort($uniqueTerms, function ($a, $b) {
             $nameA = $a['name'] ?? '';
             $nameB = $b['name'] ?? '';
 
@@ -1148,6 +1351,7 @@ class WooCommerceService
 
         return array_values($uniqueTerms);
     }
+
     public function updateVariationMrbpRole($variationId, $roleId, $value)
     {
         // For variations, we need to update directly on the target product/variation
@@ -1514,16 +1718,13 @@ class WooCommerceService
             // إذا كانت القيمة رقمية (بما في ذلك الصفر كرقم أو كنص)، حولها إلى integer
             if (is_numeric($variation['stock_quantity'])) {
                 $stockQuantity = (int)$variation['stock_quantity'];
-            }
-            // إذا كانت موجودة ولكنها فارغة (سلسلة نصية فارغة)، اجعلها null
+            } // إذا كانت موجودة ولكنها فارغة (سلسلة نصية فارغة)، اجعلها null
             else if ($variation['stock_quantity'] === '') {
                 $stockQuantity = null;
-            }
-            // إذا كانت null، اجعلها null
+            } // إذا كانت null، اجعلها null
             else if (is_null($variation['stock_quantity'])) {
                 $stockQuantity = null;
-            }
-            // لأي حالات أخرى غير متوقعة، استخدم القيمة كما هي
+            } // لأي حالات أخرى غير متوقعة، استخدم القيمة كما هي
             else {
                 $stockQuantity = $variation['stock_quantity'];
             }
@@ -1595,6 +1796,7 @@ class WooCommerceService
 
         return $cleanData;
     }
+
     private function sanitizeAttributes(array $attributes): array
     {
         $sanitized = [];
@@ -1725,7 +1927,101 @@ class WooCommerceService
 
     public function getCustomers(array $query = []): array
     {
-        return $this->get('customers', $query);
+        try {
+            // إضافة معاملات افتراضية
+            $defaultQuery = [
+                'per_page' => 100,
+                'orderby' => 'date',
+                'order' => 'desc'
+            ];
+
+            $finalQuery = array_merge($defaultQuery, $query);
+
+            logger()->info('Fetching customers list', ['query' => $finalQuery]);
+
+            $response = $this->get('customers', $finalQuery);
+
+            // التعامل مع البيانات المغلفة أو غير المغلفة
+            $customers = isset($response['data']) ? $response['data'] : $response;
+
+            if (!is_array($customers)) {
+                logger()->warning('Invalid customers response', ['response' => $response]);
+                return [];
+            }
+
+            // فلترة العملاء الصالحين فقط
+            $validCustomers = array_filter($customers, function($customer) {
+                return isset($customer['id']) && !empty($customer['id']);
+            });
+
+            logger()->info('Customers fetched successfully', [
+                'total_customers' => count($validCustomers),
+                'sample_customer' => !empty($validCustomers) ? [
+                    'id' => $validCustomers[0]['id'],
+                    'email' => $validCustomers[0]['email'] ?? 'no_email'
+                ] : 'no_customers'
+            ]);
+
+            return $validCustomers;
+
+        } catch (\Exception $e) {
+            logger()->error('Error fetching customers', [
+                'query' => $query,
+                'error' => $e->getMessage()
+            ]);
+
+            return [];
+        }
+    }
+
+    public function createCustomer(array $customerData): ?array
+    {
+        try {
+            logger()->info('Creating new customer in WooCommerce', [
+                'email' => $customerData['email'] ?? 'no_email'
+            ]);
+
+            // تنظيف البيانات
+            $cleanData = [
+                'email' => $customerData['email'] ?? 'guest-' . time() . '@pos.local',
+                'first_name' => $customerData['first_name'] ?? 'عميل',
+                'last_name' => $customerData['last_name'] ?? 'POS',
+                'username' => $customerData['username'] ?? 'customer_' . time(),
+                'billing' => [
+                    'first_name' => $customerData['first_name'] ?? 'عميل',
+                    'last_name' => $customerData['last_name'] ?? 'POS',
+                    'email' => $customerData['email'] ?? 'guest-' . time() . '@pos.local',
+                    'phone' => $customerData['phone'] ?? '',
+                    'address_1' => $customerData['address_1'] ?? '',
+                    'city' => $customerData['city'] ?? '',
+                    'state' => $customerData['state'] ?? '',
+                    'postcode' => $customerData['postcode'] ?? '',
+                    'country' => $customerData['country'] ?? 'PS',
+                ]
+            ];
+
+            $response = $this->post('customers', $cleanData);
+
+            if (!$response || !isset($response['id'])) {
+                logger()->error('Failed to create customer', ['response' => $response]);
+                return null;
+            }
+
+            logger()->info('Customer created successfully', [
+                'customer_id' => $response['id'],
+                'customer_email' => $response['email']
+            ]);
+
+            return $response;
+
+        } catch (\Exception $e) {
+            logger()->error('Error creating customer', [
+                'customer_data' => $customerData,
+                'error' => $e->getMessage()
+            ]);
+
+            return null;
+        }
     }
 
     public function getLastPageFromHeaders(): int
@@ -1777,5 +2073,156 @@ class WooCommerceService
     public function createUser($data)
     {
         return $this->post('customers', $data);
+    }
+
+    // داخل App\Services\WooCommerceService;
+
+    public function findOneProductForPOS(string $term): ?array
+    {
+        try {
+            $term = trim($term);
+
+            // 1) محاولة ID رقمي مباشر
+            if (ctype_digit($term)) {
+                $byId = $this->getProductsById((int)$term);
+                if ($byId) {
+                    return $this->normalizeProductForPOS($byId);
+                }
+            }
+
+            // 2) محاولة SKU (دقيقة)
+            $bySku = $this->getProducts(['sku' => $term, 'per_page' => 1]);
+            $skuData = isset($bySku['data']) ? $bySku['data'] : $bySku;
+            if (!empty($skuData[0])) {
+                return $this->normalizeProductForPOS($skuData[0]);
+            }
+
+            // 3) بحث بالاسم (أو أي حقل تدعمه واجهتك)
+            $bySearch = $this->getProducts(['search' => $term, 'per_page' => 5]);
+            $searchData = isset($bySearch['data']) ? $bySearch['data'] : $bySearch;
+            if (!empty($searchData[0])) {
+                return $this->normalizeProductForPOS($searchData[0]);
+            }
+
+            // 4) البحث في المتغيرات
+            $variationResult = $this->searchInVariations($term);
+            if ($variationResult) {
+                return $variationResult;
+            }
+
+            return null;
+        } catch (\Exception $e) {
+            logger()->error('Error in findOneProductForPOS', [
+                'term' => $term,
+                'error' => $e->getMessage()
+            ]);
+
+            return null;
+        }
+    }
+
+    private function searchInVariations(string $term): ?array
+    {
+        try {
+            // جلب المنتجات القابلة للتغيير
+            $variableProducts = $this->getProducts([
+                'type' => 'variable',
+                'per_page' => 50,
+                'status' => 'publish'
+            ]);
+
+            $products = isset($variableProducts['data']) ? $variableProducts['data'] : $variableProducts;
+
+            foreach ($products as $product) {
+                if (!empty($product['variations'])) {
+                    // البحث في متغيرات هذا المنتج
+                    $variations = $this->getVariationsByProductId($product['id']);
+
+                    foreach ($variations as $variation) {
+                        // فحص SKU للمتغير
+                        if (!empty($variation['sku']) && strcasecmp($variation['sku'], $term) === 0) {
+                            return $this->normalizeProductForPOS($product);
+                        }
+
+                        // فحص ID للمتغير
+                        if (ctype_digit($term) && $variation['id'] == (int)$term) {
+                            return $this->normalizeProductForPOS($product);
+                        }
+                    }
+                }
+            }
+
+            return null;
+        } catch (\Exception $e) {
+            logger()->error('Error searching in variations', [
+                'term' => $term,
+                'error' => $e->getMessage()
+            ]);
+            return null;
+        }
+    }
+
+    protected function normalizeProductForPOS(array $product): array
+    {
+        $normalized = [
+            'id' => $product['id'],
+            'name' => $product['name'] ?? '',
+            'sku' => $product['sku'] ?? '',
+            'price' => $product['price'] ?? $product['regular_price'] ?? 0,
+            'type' => $product['type'] ?? 'simple',
+            'images' => $product['images'] ?? [],
+            'categories' => $product['categories'] ?? [],
+            'stock_status' => $product['stock_status'] ?? 'instock',
+            'description' => $product['description'] ?? '',
+            'short_description' => $product['short_description'] ?? '',
+        ];
+
+        // إذا كان المنتج متغير
+        if ($product['type'] === 'variable') {
+            $normalized['variations'] = $product['variations'] ?? [];
+
+            // إذا كانت تفاصيل المتغيرات متوفرة
+            if (isset($product['variations_details'])) {
+                $variationsFull = [];
+
+                foreach ($product['variations_details'] as $variation) {
+                    $variationsFull[] = [
+                        'id' => $variation['id'],
+                        'name' => $this->composeVariationName($product['name'], $variation['attributes'] ?? []),
+                        'sku' => $variation['sku'] ?? '',
+                        'price' => $variation['price'] ?? $variation['regular_price'] ?? 0,
+                        'images' => $variation['images'] ?: $product['images'],
+                        'attributes' => $variation['attributes'] ?? [],
+                        'stock_status' => $variation['stock_status'] ?? 'instock',
+                        'stock_quantity' => $variation['stock_quantity'] ?? 0,
+                        'type' => 'variation',
+                        'product_id' => $product['id']
+                    ];
+                }
+
+                $normalized['variations_full'] = $variationsFull;
+            }
+        }
+
+        return $normalized;
+    }
+
+    /** تهيئة المنتج والمتحولات لصيغة POS */
+
+    protected function composeVariationName(string $parentName, array $attributes): string
+    {
+        if (empty($attributes)) {
+            return $parentName;
+        }
+
+        $parts = [];
+        foreach ($attributes as $attribute) {
+            $value = $attribute['option'] ?? $attribute['value'] ?? null;
+            if ($value) {
+                $parts[] = $value;
+            }
+        }
+
+        return empty($parts) ? $parentName : $parentName . ' - ' . implode(', ', $parts);
     }
 }
