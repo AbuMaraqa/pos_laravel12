@@ -320,7 +320,7 @@ class Index extends Component
     #[On('fetch-products-from-api')]
     public function fetchProductsFromAPI()
     {
-        $products = $this->wooService->getProducts(['per_page' => 5])['data'];
+        $products = $this->wooService->getProducts(['per_page' => 15])['data'];
         $allProducts = [];
         foreach ($products as $product) {
             $allProducts[] = $product;
