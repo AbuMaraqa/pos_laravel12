@@ -73,6 +73,12 @@ class WooCommerceService
         return $data;
     }
 
+    public function getProduct($id): array
+    {
+        return $this->get('products/' . $id)['data'];
+    }
+
+
     public function getWithHeaders(string $endpoint, array $query = []): array
     {
         $response = $this->client->get($endpoint, ['query' => $query]);
