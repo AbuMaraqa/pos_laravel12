@@ -1941,7 +1941,6 @@ class WooCommerceService
             // إضافة معاملات افتراضية
             $defaultQuery = [
                 'per_page' => 100,
-                'orderby' => 'date',
                 'order' => 'desc'
             ];
 
@@ -1949,8 +1948,7 @@ class WooCommerceService
 
             logger()->info('Fetching customers list', ['query' => $finalQuery]);
 
-            $response = $this->get('customers', $finalQuery);
-
+            $response = $this->get('customers', $finalQuery)['data'];
             // التعامل مع البيانات المغلفة أو غير المغلفة
             $customers = isset($response['data']) ? $response['data'] : $response;
 
@@ -2270,5 +2268,413 @@ class WooCommerceService
         }
 
         return empty($parts) ? $parentName : $parentName . ' - ' . implode(', ', $parts);
+    }
+
+    public function findProductOrVariation(string $searchTerm): ?array
+    {
+        try {
+            logger()->info('Enhanced search started', ['term' => $searchTerm]);
+
+            // 1. البحث في المنتجات الرئيسية أولاً
+            $mainProduct = $this->findMainProduct($searchTerm);
+            if ($mainProduct) {
+                return [
+                    'type' => 'product',
+                    'product' => $mainProduct,
+                    'variation' => null
+                ];
+            }
+
+            // 2. البحث في المتغيرات
+            $variationResult = $this->findSpecificVariation($searchTerm);
+            if ($variationResult) {
+                return [
+                    'type' => 'variation',
+                    'product' => $variationResult['parent_product'],
+                    'variation' => $variationResult['variation']
+                ];
+            }
+
+            return null;
+        } catch (\Exception $e) {
+            logger()->error('Enhanced search failed', [
+                'term' => $searchTerm,
+                'error' => $e->getMessage()
+            ]);
+            return null;
+        }
+    }
+
+    private function findMainProduct(string $searchTerm): ?array
+    {
+        try {
+            // البحث بالـ ID
+            if (is_numeric($searchTerm)) {
+                $product = $this->getProductsById((int)$searchTerm);
+                if ($product) {
+                    return $product;
+                }
+            }
+
+            // البحث بالـ SKU
+            $bySku = $this->getProducts(['sku' => $searchTerm, 'per_page' => 1]);
+            $skuData = isset($bySku['data']) ? $bySku['data'] : $bySku;
+            if (!empty($skuData)) {
+                return $skuData[0];
+            }
+
+            // البحث بالاسم
+            $byName = $this->getProducts(['search' => $searchTerm, 'per_page' => 5]);
+            $nameData = isset($byName['data']) ? $byName['data'] : $byName;
+            if (!empty($nameData)) {
+                return $nameData[0];
+            }
+
+            return null;
+        } catch (\Exception $e) {
+            logger()->error('Main product search failed', [
+                'term' => $searchTerm,
+                'error' => $e->getMessage()
+            ]);
+            return null;
+        }
+    }
+
+    private function findSpecificVariation(string $searchTerm): ?array
+    {
+        try {
+            // جلب المنتجات المتغيرة مع تحسين الاستعلام
+            $variableProducts = $this->getProducts([
+                'type' => 'variable',
+                'per_page' => 100,
+                'status' => 'publish',
+                'orderby' => 'date',
+                'order' => 'desc'
+            ]);
+
+            $products = isset($variableProducts['data']) ? $variableProducts['data'] : $variableProducts;
+
+            foreach ($products as $product) {
+                if (empty($product['variations'])) {
+                    continue;
+                }
+
+                // جلب متغيرات هذا المنتج
+                $variations = $this->getProductVariations($product['id']);
+
+                foreach ($variations as $variation) {
+                    if ($this->isVariationMatch($variation, $searchTerm)) {
+                        // تحسين بيانات المتغير
+                        $enhancedVariation = $this->enhanceVariationData($variation, $product);
+
+                        logger()->info('Variation match found', [
+                            'parent_product' => $product['name'],
+                            'variation_id' => $variation['id'],
+                            'variation_sku' => $variation['sku'] ?? '',
+                            'search_term' => $searchTerm
+                        ]);
+
+                        return [
+                            'parent_product' => $product,
+                            'variation' => $enhancedVariation
+                        ];
+                    }
+                }
+            }
+
+            return null;
+        } catch (\Exception $e) {
+            logger()->error('Variation search failed', [
+                'term' => $searchTerm,
+                'error' => $e->getMessage()
+            ]);
+            return null;
+        }
+    }
+
+    private function isVariationMatch(array $variation, string $searchTerm): bool
+    {
+        $lowerSearchTerm = strtolower(trim($searchTerm));
+
+        // مطابقة SKU (دقيقة)
+        if (!empty($variation['sku']) && strtolower($variation['sku']) === $lowerSearchTerm) {
+            return true;
+        }
+
+        // مطابقة ID (دقيقة)
+        if (ctype_digit($searchTerm) && $variation['id'] == (int)$searchTerm) {
+            return true;
+        }
+
+        // مطابقة الاسم (جزئية)
+        if (!empty($variation['name']) && stripos($variation['name'], $searchTerm) !== false) {
+            return true;
+        }
+
+        // مطابقة الخصائص (attributes)
+        if (!empty($variation['attributes'])) {
+            foreach ($variation['attributes'] as $attribute) {
+                $attributeValue = $attribute['option'] ?? $attribute['value'] ?? '';
+                if (!empty($attributeValue) && stripos($attributeValue, $searchTerm) !== false) {
+                    return true;
+                }
+            }
+        }
+
+        // مطابقة وصف المتغير
+        if (!empty($variation['description']) && stripos($variation['description'], $searchTerm) !== false) {
+            return true;
+        }
+
+        return false;
+    }
+
+    private function enhanceVariationData(array $variation, array $parentProduct): array
+    {
+        // إضافة معلومات المنتج الأب
+        $variation['parent_product_id'] = $parentProduct['id'];
+        $variation['parent_product_name'] = $parentProduct['name'];
+
+        // تحسين اسم المتغير للعرض
+        if (empty($variation['name']) || $variation['name'] === $parentProduct['name']) {
+            $variation['display_name'] = $this->generateVariationDisplayName($parentProduct['name'], $variation['attributes'] ?? []);
+        } else {
+            $variation['display_name'] = $variation['name'];
+        }
+
+        // إضافة معلومات المخزون المحسنة
+        $variation['stock_info'] = $this->getStockInfo($variation);
+
+        // إضافة معلومات السعر المحسنة
+        $variation['price_info'] = $this->getPriceInfo($variation);
+
+        // إضافة معلومات الخصائص المنسقة
+        $variation['formatted_attributes'] = $this->formatAttributes($variation['attributes'] ?? []);
+
+        return $variation;
+    }
+
+    private function generateVariationDisplayName(string $parentName, array $attributes): string
+    {
+        if (empty($attributes)) {
+            return $parentName;
+        }
+
+        $attributeValues = [];
+        foreach ($attributes as $attribute) {
+            $value = $attribute['option'] ?? $attribute['value'] ?? '';
+            if (!empty($value)) {
+                $attributeValues[] = $value;
+            }
+        }
+
+        if (empty($attributeValues)) {
+            return $parentName;
+        }
+
+        return $parentName . ' - ' . implode(', ', $attributeValues);
+    }
+
+    private function getStockInfo(array $variation): array
+    {
+        $stockStatus = $variation['stock_status'] ?? 'instock';
+        $stockQuantity = $variation['stock_quantity'] ?? null;
+
+        $info = [
+            'status' => $stockStatus,
+            'quantity' => $stockQuantity,
+            'is_available' => $stockStatus === 'instock',
+            'display_text' => ''
+        ];
+
+        if ($stockStatus === 'outofstock') {
+            $info['display_text'] = 'نفدت الكمية';
+            $info['color_class'] = 'text-red-600';
+        } elseif ($stockQuantity !== null) {
+            if ($stockQuantity > 10) {
+                $info['display_text'] = "متوفر: {$stockQuantity}";
+                $info['color_class'] = 'text-green-600';
+            } elseif ($stockQuantity > 0) {
+                $info['display_text'] = "كمية محدودة: {$stockQuantity}";
+                $info['color_class'] = 'text-yellow-600';
+            } else {
+                $info['display_text'] = 'نفدت الكمية';
+                $info['color_class'] = 'text-red-600';
+                $info['is_available'] = false;
+            }
+        } else {
+            $info['display_text'] = 'متوفر';
+            $info['color_class'] = 'text-green-600';
+        }
+
+        return $info;
+    }
+
+    private function getPriceInfo(array $variation): array
+    {
+        $regularPrice = floatval($variation['regular_price'] ?? 0);
+        $salePrice = floatval($variation['sale_price'] ?? 0);
+        $currentPrice = floatval($variation['price'] ?? $regularPrice);
+
+        $info = [
+            'regular_price' => $regularPrice,
+            'sale_price' => $salePrice,
+            'current_price' => $currentPrice,
+            'is_on_sale' => $salePrice > 0 && $salePrice < $regularPrice,
+            'formatted_price' => number_format($currentPrice, 2) . ' ₪'
+        ];
+
+        if ($info['is_on_sale']) {
+            $info['formatted_price'] = number_format($salePrice, 2) . ' ₪';
+            $info['discount_amount'] = $regularPrice - $salePrice;
+            $info['discount_percentage'] = round(($info['discount_amount'] / $regularPrice) * 100);
+        }
+
+        return $info;
+    }
+
+    private function formatAttributes(array $attributes): array
+    {
+        $formatted = [];
+
+        foreach ($attributes as $attribute) {
+            $name = $attribute['name'] ?? '';
+            $value = $attribute['option'] ?? $attribute['value'] ?? '';
+
+            if (!empty($name) && !empty($value)) {
+                $formatted[] = [
+                    'name' => $name,
+                    'value' => $value,
+                    'display' => "{$name}: {$value}"
+                ];
+            }
+        }
+
+        return $formatted;
+    }
+
+    public function advancedSearch(string $searchTerm, int $limit = 10): array
+    {
+        try {
+            $results = [];
+
+            // البحث في المنتجات الرئيسية
+            $mainProducts = $this->getProducts([
+                'search' => $searchTerm,
+                'per_page' => $limit,
+                'status' => 'publish'
+            ]);
+
+            $products = isset($mainProducts['data']) ? $mainProducts['data'] : $mainProducts;
+
+            foreach ($products as $product) {
+                $results[] = [
+                    'type' => 'product',
+                    'id' => $product['id'],
+                    'name' => $product['name'],
+                    'sku' => $product['sku'] ?? '',
+                    'price' => $product['price'] ?? 0,
+                    'product_type' => $product['type'],
+                    'relevance_score' => $this->calculateRelevanceScore($product, $searchTerm)
+                ];
+            }
+
+            // البحث في المتغيرات إذا كان لدينا مساحة للمزيد
+            if (count($results) < $limit) {
+                $variationResults = $this->searchAllVariations($searchTerm, $limit - count($results));
+                $results = array_merge($results, $variationResults);
+            }
+
+            // ترتيب النتائج حسب درجة الصلة
+            usort($results, function($a, $b) {
+                return $b['relevance_score'] <=> $a['relevance_score'];
+            });
+
+            return array_slice($results, 0, $limit);
+        } catch (\Exception $e) {
+            logger()->error('Advanced search failed', [
+                'term' => $searchTerm,
+                'error' => $e->getMessage()
+            ]);
+            return [];
+        }
+    }
+
+    private function calculateRelevanceScore(array $item, string $searchTerm): float
+    {
+        $score = 0;
+        $lowerSearchTerm = strtolower($searchTerm);
+
+        // مطابقة دقيقة للاسم
+        if (isset($item['name']) && strtolower($item['name']) === $lowerSearchTerm) {
+            $score += 100;
+        }
+
+        // مطابقة دقيقة للـ SKU
+        if (isset($item['sku']) && strtolower($item['sku']) === $lowerSearchTerm) {
+            $score += 95;
+        }
+
+        // مطابقة جزئية للاسم
+        if (isset($item['name']) && stripos($item['name'], $searchTerm) !== false) {
+            $score += 50;
+        }
+
+        // مطابقة في بداية الاسم
+        if (isset($item['name']) && stripos($item['name'], $searchTerm) === 0) {
+            $score += 25;
+        }
+
+        return $score;
+    }
+
+    private function searchAllVariations(string $searchTerm, int $limit): array
+    {
+        $results = [];
+        $found = 0;
+
+        try {
+            $variableProducts = $this->getProducts([
+                'type' => 'variable',
+                'per_page' => 50,
+                'status' => 'publish'
+            ]);
+
+            $products = isset($variableProducts['data']) ? $variableProducts['data'] : $variableProducts;
+
+            foreach ($products as $product) {
+                if ($found >= $limit) break;
+
+                if (!empty($product['variations'])) {
+                    $variations = $this->getProductVariations($product['id']);
+
+                    foreach ($variations as $variation) {
+                        if ($found >= $limit) break;
+
+                        if ($this->isVariationMatch($variation, $searchTerm)) {
+                            $results[] = [
+                                'type' => 'variation',
+                                'id' => $variation['id'],
+                                'name' => $this->generateVariationDisplayName($product['name'], $variation['attributes'] ?? []),
+                                'sku' => $variation['sku'] ?? '',
+                                'price' => $variation['price'] ?? 0,
+                                'product_type' => 'variation',
+                                'parent_id' => $product['id'],
+                                'parent_name' => $product['name'],
+                                'relevance_score' => $this->calculateRelevanceScore($variation, $searchTerm)
+                            ];
+                            $found++;
+                        }
+                    }
+                }
+            }
+        } catch (\Exception $e) {
+            logger()->error('Variation search failed', [
+                'term' => $searchTerm,
+                'error' => $e->getMessage()
+            ]);
+        }
+
+        return $results;
     }
 }

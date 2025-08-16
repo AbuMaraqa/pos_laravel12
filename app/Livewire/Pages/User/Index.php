@@ -32,11 +32,11 @@ class Index extends Component
 
     public function mount()
     {
-        dd('asd');
         $this->name = '';
         $this->last_name = '';
         $this->email = '';
         $this->customers = $this->customers();
+//        dd($this->customers());
     }
 
     #[Computed()]
@@ -63,6 +63,7 @@ class Index extends Component
 
         try {
             $response = $this->wooService->getCustomers($query);
+
             $customers = is_array($response) && isset($response['data']) ? $response['data'] : $response;
 
             // إذا كان هناك فلتر بريد إلكتروني، نقوم بتصفية النتائج يدوياً
