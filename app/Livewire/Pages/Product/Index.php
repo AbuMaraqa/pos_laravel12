@@ -137,12 +137,15 @@ class Index extends Component
             $this->sale_price = $product['sale_price'];
             $this->main_price = $product['regular_price'];
             $this->main_sale_price = $product['sale_price'];
-
-            foreach ($product['meta_data'] as $meta) {
-                if ($meta['key'] == 'mrbp_metabox_user_role_enable') {
-                    $this->showVariationTable = $meta['value'] == 'yes';
+            $metaData = $product['meta_data'] ?? [];
+            if (is_array($metaData)) {
+                foreach ($metaData as $meta) {
+                    if ($meta['key'] == 'mrbp_metabox_user_role_enable') {
+                        $this->showVariationTable = $meta['value'] == 'yes';
+                    }
                 }
             }
+
             // تسجيل البيانات المستلمة من API للتصحيح
             logger()->info('Product data from API', [
                 'productId' => $productId,

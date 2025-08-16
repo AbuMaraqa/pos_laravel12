@@ -419,7 +419,9 @@
                                 <!-- أيقونة اللودينغ (تظهر فقط أثناء التحميل) -->
                                 <div wire:loading wire:target="openListVariationsModal({{ $product['id'] }})">
                                     <flux:icon.loading variant="mini"/>
-                                </div>                                @foreach ($product['meta_data'] as $meta)
+                                </div>
+                                @if (!empty($product['meta_data']) && is_array($product['meta_data']))
+                                    @foreach ($product['meta_data'] as $meta)
                                     @if ($meta['key'] == 'mrbp_role')
                                         @foreach ($meta['value'] as $area)
                                             <flux:badge color="lime">
@@ -446,6 +448,7 @@
                                         @endforeach
                                     @endif
                                 @endforeach
+                                @endif
                             </div>
                         </td>
                         <td class="px-6 py-4 text-center font-medium">
