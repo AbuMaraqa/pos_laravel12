@@ -291,11 +291,42 @@
             });
 
             if (matched) {
-                console.log("✅ تم العثور على المنتج في IndexedDB:", matched);
+                // حالة المنتج الأب/البسيط كما هي
+                if (matched.type === 'variable' || (!matched.product_id && matched.type !== 'variation')) {
+                    handleFoundProduct(matched);
+                    clearSearchInput();
+                    return;
+                }
+
+                // لو نتيجة البحث كانت متغيّر (ابن)
+                if (matched.product_id) {
+                    const ptx = db.transaction("products", "readonly");
+                    const pstore = ptx.objectStore("products");
+                    const pReq = pstore.get(parseInt(matched.product_id));
+
+                    pReq.onsuccess = function () {
+                        const parent = pReq.result;
+                        if (parent && parent.type === 'variable') {
+                            addVariationUnderParentToCart(parent, matched);
+                            clearSearchInput();
+                        } else {
+                            // الأب غير موجود محلياً → جيبه من API ثم أضف الابن بعد التخزين
+                            searchProductFromAPI(matched.product_id.toString());
+                            // ملاحظة: سنغطي حالة API في (C)
+                        }
+                    };
+                    pReq.onerror = function () {
+                        showNotification("تعذر جلب المنتج الأب", 'error');
+                    };
+
+                    return;
+                }
+
+                // fallback
                 handleFoundProduct(matched);
                 clearSearchInput();
             } else {
-                console.log('🔍 لم يتم العثور على المنتج في IndexedDB، جاري البحث في API...');
+                // كما هي
                 searchProductFromAPI(searchTerm);
             }
         };
@@ -668,64 +699,80 @@
             if (!container || !totalElement) return;
 
             if (cartItems.length === 0) {
-                container.innerHTML = `
-                <div class="flex flex-col items-center justify-center text-center text-gray-500 py-8 space-y-2">
-                    <div class="text-4xl">🛒</div>
-                    <p class="text-lg font-semibold">السلة فارغة</p>
-                    <p class="text-sm text-gray-400">لم تقم بإضافة أي منتجات بعد</p>
-                </div>
-            `;
+                container.innerHTML = `...`; // كما كان
                 totalElement.textContent = "0.00 ₪";
                 return;
             }
 
             container.innerHTML = '';
             let total = 0;
-            let highlightElement = null;
 
             cartItems.forEach(item => {
-                total += item.price * item.quantity;
+                let itemTotal = 0;
+                if (item.type === 'variable' && Array.isArray(item.variations)) {
+                    itemTotal = item.variations.reduce((sum, v) => sum + (parseFloat(v.price || 0) * (v.quantity || 0)), 0);
+                } else {
+                    itemTotal = (parseFloat(item.price || 0) * (item.quantity || 0));
+                }
+                total += itemTotal;
 
                 const div = document.createElement("div");
-                div.id = `cart-item-${item.id}`;
-                div.className = "flex justify-between items-center bg-gray-100 p-2 rounded transition duration-300";
+                div.className = "bg-gray-100 rounded p-2 mb-2";
 
-                div.innerHTML = `
-                <div class="flex items-center gap-2">
-                    <div>
+                if (item.type === 'variable' && Array.isArray(item.variations)) {
+                    // سطر رأس للأب
+                    div.innerHTML = `
+                    <div class="flex justify-between items-center">
                         <p class="font-semibold">${item.name}</p>
-                        <div class="flex items-center gap-2">
-                            <button onclick="updateQuantity(${item.id}, -1)" class="bg-gray-300 px-2 rounded hover:bg-gray-400">−</button>
-                            <span>${item.quantity}</span>
-                            <button onclick="updateQuantity(${item.id}, 1)" class="bg-gray-300 px-2 rounded hover:bg-gray-400">+</button>
+                        <div class="font-bold">${itemTotal.toFixed(2)} ₪
+                            <button onclick="removeFromCart(${item.id})" class="text-red-500 hover:text-red-700 ml-2">🗑️</button>
                         </div>
                     </div>
-                </div>
-                <div class="font-bold text-gray-800 flex items-center gap-2">
-                    <span>${(item.price * item.quantity).toFixed(2)} ₪</span>
-                    <button onclick="removeFromCart(${item.id})" class="text-red-500 hover:text-red-700">🗑️</button>
-                </div>
-            `;
+                    <div class="mt-2 space-y-2" id="children-of-${item.id}"></div>
+                `;
+
+                    const childrenContainer = div.querySelector(`#children-of-${item.id}`);
+                    item.variations.forEach(v => {
+                        const row = document.createElement('div');
+                        row.className = "flex justify-between items-center bg-white p-2 rounded border";
+                        row.innerHTML = `
+                        <div>
+                            <p class="text-sm">${v.name}</p>
+                            <div class="flex items-center gap-2 text-sm">
+                                <button onclick="updateVariationQuantity(${item.id}, ${v.id}, -1)" class="bg-gray-300 px-2 rounded">−</button>
+                                <span>${v.quantity}</span>
+                                <button onclick="updateVariationQuantity(${item.id}, ${v.id}, 1)" class="bg-gray-300 px-2 rounded">+</button>
+                                <button onclick="removeVariationFromCart(${item.id}, ${v.id})" class="text-red-500 hover:text-red-700 ml-2">🗑️</button>
+                            </div>
+                        </div>
+                        <div class="font-semibold">${(parseFloat(v.price || 0) * (v.quantity || 0)).toFixed(2)} ₪</div>
+                    `;
+                        childrenContainer.appendChild(row);
+                    });
+                } else {
+                    // السلوك القديم للـ simple
+                    div.innerHTML = `
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <p class="font-semibold">${item.name}</p>
+                            <div class="flex items-center gap-2">
+                                <button onclick="updateQuantity(${item.id}, -1)" class="bg-gray-300 px-2 rounded">−</button>
+                                <span>${item.quantity}</span>
+                                <button onclick="updateQuantity(${item.id}, 1)" class="bg-gray-300 px-2 rounded">+</button>
+                            </div>
+                        </div>
+                        <div class="font-bold text-gray-800 flex items-center gap-2">
+                            <span>${(parseFloat(item.price || 0) * (item.quantity || 0)).toFixed(2)} ₪</span>
+                            <button onclick="removeFromCart(${item.id})" class="text-red-500 hover:text-red-700">🗑️</button>
+                        </div>
+                    </div>
+                `;
+                }
 
                 container.appendChild(div);
-
-                if (highlightId && item.id === highlightId) {
-                    highlightElement = div;
-                }
             });
 
-            totalElement.textContent = total.toFixed(2) + " ₪";
-
-            if (highlightElement) {
-                highlightElement.classList.add("bg-yellow-200");
-                setTimeout(() => {
-                    highlightElement.scrollIntoView({
-                        behavior: 'smooth',
-                        block: 'start'
-                    });
-                    highlightElement.classList.remove("bg-yellow-200");
-                }, 100);
-            }
+            totalElement.textContent = `${total.toFixed(2)} ₪`;
         };
 
         request.onerror = function () {
@@ -874,6 +921,44 @@
         });
     }
 
+    function updateVariationQuantity(parentId, variationId, change) {
+        const tx = db.transaction("cart", "readwrite");
+        const store = tx.objectStore("cart");
+        const req = store.get(parentId);
+
+        req.onsuccess = function(){
+            const item = req.result;
+            if (!item || !Array.isArray(item.variations)) return;
+
+            const idx = item.variations.findIndex(v => v.id === variationId);
+            if (idx === -1) return;
+
+            item.variations[idx].quantity += change;
+
+            // لو أصبحت 0 احذف الابن
+            if (item.variations[idx].quantity <= 0) {
+                item.variations.splice(idx, 1);
+            }
+
+            // لو لم يبقَ أي ابن احذف الأب كله
+            if (item.variations.length === 0) {
+                store.delete(parentId);
+            } else {
+                store.put(item);
+            }
+            renderCart(parentId);
+        };
+    }
+
+    function removeVariationFromCart(parentId, variationId) {
+        updateVariationQuantity(parentId, variationId, -9999); // اختصار للحذف
+    }
+
+    // تعريضها للعالمية إن لزم
+    window.updateVariationQuantity = updateVariationQuantity;
+    window.removeVariationFromCart = removeVariationFromCart;
+
+
     function showVariationsModal(variations) {
         const modal = Flux.modal('variations-modal');
         const container = document.getElementById("variationsTableBody");
@@ -1002,45 +1087,31 @@
             const variation = request.result;
 
             if (!variation || !variation.id) {
-                console.error("❌ Variation not found:", variationId);
                 showNotification("لم يتم العثور على هذا المتغير", 'error');
                 return;
             }
-
             if (variation.stock_status === 'outofstock') {
                 showNotification("هذا المتغير غير متوفر حالياً", 'warning');
                 return;
             }
 
-            const cartTx = db.transaction("cart", "readwrite");
-            const cartStore = cartTx.objectStore("cart");
-            const getCartItem = cartStore.get(variation.id);
+            const ptx = db.transaction("products", "readonly");
+            const pstore = ptx.objectStore("products");
+            const pReq = pstore.get(parseInt(variation.product_id));
 
-            getCartItem.onsuccess = function () {
-                const existing = getCartItem.result;
-
-                if (existing) {
-                    existing.quantity += 1;
-                    cartStore.put(existing);
+            pReq.onsuccess = function(){
+                const parent = pReq.result;
+                if (parent && parent.type === 'variable') {
+                    addVariationUnderParentToCart(parent, variation);
+                    Flux.modal('variations-modal').close();
                 } else {
-                    cartStore.put({
-                        id: variation.id,
-                        name: variation.name,
-                        price: variation.price || 0,
-                        quantity: 1,
-                        image: variation.images?.[0]?.src || '',
-                        sku: variation.sku || '',
-                        type: 'variation'
-                    });
+                    showNotification("تعذر تحديد المنتج الأب للمتغير", 'error');
                 }
-
-                renderCart();
-                Flux.modal('variations-modal').close();
             };
+            pReq.onerror = function(){ showNotification("تعذر جلب المنتج الأب", 'error'); };
         };
 
         request.onerror = function () {
-            console.error("❌ Failed to fetch variation:", variationId);
             showNotification("حدث خطأ أثناء إضافة المتغير", 'error');
         };
     }
@@ -1378,17 +1449,36 @@
 
         store.add(newCustomer);
 
+// بعد tx.oncomplete = () => { ... }
         tx.oncomplete = () => {
-            Flux.modal('add-customer-modal').close();
-            renderCustomersDropdown();
-            setTimeout(() => {
-                const dropdown = document.getElementById("customerSelect");
-                if (dropdown) {
-                    dropdown.value = newCustomer.id;
+            console.log("✅ تم تخزين المنتج والمتغيرات في IndexedDB");
+            renderProductsFromIndexedDB(currentSearchTerm, selectedCategoryId);
+
+            if (product.type === 'simple') {
+                addToCart(cleanedProduct);
+                showNotification(`تم العثور على "${product.name}" وإضافته للسلة`, 'success');
+            } else if (product.type === 'variable') {
+                const matchedId = product.matched_variation_id || null;
+
+                if (matchedId && Array.isArray(product.variations_full)) {
+                    const matchedVar = product.variations_full.find(v => v.id === matchedId);
+                    if (matchedVar) {
+                        addVariationUnderParentToCart(cleanedProduct, matchedVar);
+                        clearSearchInput();
+                        return; // انتهى
+                    }
                 }
-            }, 300);
-            nameInput.value = '';
-            showNotification(`تم إضافة العميل "${name}" بنجاح`, 'success');
+
+                // إن لم نعرف الابن المطابق نرجع للسلوك السابق (فتح المودال)
+                if (product.variations_full && product.variations_full.length > 0) {
+                    showVariationsModal(product.variations_full);
+                    showNotification(`تم العثور على "${product.name}" مع ${product.variations_full.length} متغير`, 'success');
+                } else {
+                    showNotification(`تم العثور على "${product.name}" لكن لا توجد متغيرات متاحة`, 'warning');
+                }
+            }
+
+            clearSearchInput();
         };
 
         tx.onerror = () => {
@@ -2090,13 +2180,13 @@
                 btn.id = 'completeOrderBtn';
                 btn.className = 'mt-4 w-full bg-blue-500 text-white py-2 px-4 rounded hover:bg-blue-600 transition-colors';
                 btn.textContent = 'إتمام الطلب';
-                btn.onclick = function() {
+                btn.onclick = function () {
                     // إعادة ربط وظيفة إتمام الطلب
                     setupOrderButton();
                     // محاولة فتح المودال
                     try {
                         Flux.modal('confirm-order-modal').show();
-                    } catch(e) {
+                    } catch (e) {
                         alert('يرجى إعادة تحميل الصفحة لاستكمال الطلب');
                     }
                 };
@@ -2118,7 +2208,7 @@
 
         // إعادة ربط listeners الجديدة
         document.querySelectorAll('.product-card').forEach(card => {
-            card.addEventListener('click', function() {
+            card.addEventListener('click', function () {
                 const productId = this.getAttribute('data-product-id');
                 if (productId) {
                     // البحث عن المنتج في IndexedDB
@@ -2126,7 +2216,7 @@
                     const store = tx.objectStore("products");
                     const request = store.get(parseInt(productId));
 
-                    request.onsuccess = function() {
+                    request.onsuccess = function () {
                         const product = request.result;
                         if (product) {
                             addToCartWithDebug(product);
@@ -2151,7 +2241,7 @@
         const store = tx.objectStore("cart");
         const request = store.getAll();
 
-        request.onsuccess = function() {
+        request.onsuccess = function () {
             const cartItems = request.result;
             console.log("📦 فحص", cartItems.length, "عنصر في السلة");
 
@@ -2280,6 +2370,75 @@
             alert("فشل في الإصلاح. يرجى إعادة تحميل الصفحة.");
         }
     }
+
+    // أضف هذا
+    function addVariationUnderParentToCart(parent, variation) {
+        // parent: كائن المنتج الأب (id, name, ...)
+        // variation: كائن المتغيّر (id, name, price, sku, attributes, product_id, ...)
+
+        if (!parent || !parent.id || !variation || !variation.id) {
+            showNotification("بيانات المتغيّر/الأب غير مكتملة", 'error');
+            return;
+        }
+
+        const cartTx = db.transaction("cart", "readwrite");
+        const cartStore = cartTx.objectStore("cart");
+        const getParentCartItem = cartStore.get(parent.id);
+
+        getParentCartItem.onsuccess = function () {
+            const existingParent = getParentCartItem.result;
+
+            // نحضّر عنصر السلة للأب بصيغة Grouped
+            if (!existingParent) {
+                const newParentItem = {
+                    id: parent.id,
+                    name: parent.name,
+                    type: 'variable',         // مهم لعرض السلة بشكل متداخل
+                    quantity: 1,              // لن يُستخدم للحساب، لكن نتركه 1
+                    price: 0,                 // الإجمالي يُحسب من الأبناء
+                    variations: []            // قائمة الأبناء داخل هذا الأب
+                };
+                // أدخل/حدّث الابن
+                newParentItem.variations.push({
+                    id: variation.id,
+                    name: variation.name || (parent.name + ' - ' + (variation.sku || '')),
+                    price: parseFloat(variation.price || 0),
+                    quantity: 1,
+                    sku: variation.sku || '',
+                    attributes: variation.attributes || []
+                });
+                cartStore.put(newParentItem);
+            } else {
+                if (!Array.isArray(existingParent.variations)) {
+                    existingParent.variations = [];
+                }
+                const idx = existingParent.variations.findIndex(v => v.id === variation.id);
+                if (idx > -1) {
+                    existingParent.variations[idx].quantity += 1;
+                } else {
+                    existingParent.variations.push({
+                        id: variation.id,
+                        name: variation.name || (parent.name + ' - ' + (variation.sku || '')),
+                        price: parseFloat(variation.price || 0),
+                        quantity: 1,
+                        sku: variation.sku || '',
+                        attributes: variation.attributes || []
+                    });
+                }
+                cartStore.put(existingParent);
+            }
+
+            renderCart(parent.id); // لإعادة الرسم
+            showNotification(`تم إضافة "${variation.name || variation.sku}" تحت "${parent.name}"`, 'success');
+        };
+
+        getParentCartItem.onerror = function () {
+            showNotification("فشل الوصول إلى السلة", 'error');
+        };
+    }
+
+    // (اختياري) تعريضها للعالمية:
+    window.addVariationUnderParentToCart = addVariationUnderParentToCart;
 
     console.log("✅ تم تحميل جميع وظائف نظام POS المحسن");
 </script>
