@@ -494,6 +494,15 @@ class WooCommerceService
         return $response['data'] ?? [];
     }
 
+    /**
+     * ✅ الدالة المفقودة: getProduct
+     * هذه الدالة تجلب تفاصيل منتج واحد باستخدام ID أو SKU
+     */
+    public function getProduct($id): array
+    {
+        return $this->get('products/' . $id);
+    }
+
     public function getVariationById($id): ?array
     {
         try {
