@@ -1825,8 +1825,16 @@
         // استقبال المنتج الموجود من API
         Livewire.on('product-found-from-api', (data) => {
             hideLoadingIndicator();
-            const product = data[0].product;
-            console.log("✅ تم العثور على المنتج من API:", product);
+            const product = data[0]?.product;
+            const searchTerm = data[0]?.search_term;
+            const hasTargetVariation = data[0]?.has_target_variation;
+
+            console.log("✅ تم العثور على المنتج من API:", {
+                product_id: product?.id,
+                product_type: product?.type,
+                has_target_variation: hasTargetVariation,
+                target_variation: product?.target_variation
+            });
 
             // تنظيف المنتج من الصور قبل التخزين
             const cleanedProduct = {
@@ -1857,12 +1865,20 @@
                 console.log("✅ تم تخزين المنتج والمتغيرات في IndexedDB");
                 renderProductsFromIndexedDB(currentSearchTerm, selectedCategoryId);
 
-                // معالجة المنتج حسب نوعه
+                // 🔥 معالجة المنتج حسب نوعه مع التركيز على المتغير المحدد
                 if (product.type === 'simple') {
                     addToCart(cleanedProduct);
                     showNotification(`تم العثور على "${product.name}" وإضافته للسلة`, 'success');
                 } else if (product.type === 'variable') {
-                    if (product.variations_full && product.variations_full.length > 0) {
+                    // 🔥 إذا كان هناك متغير محدد من البحث
+                    if (hasTargetVariation && product.target_variation) {
+                        console.log("🎯 تم العثور على متغير محدد:", product.target_variation);
+
+                        // عرض المودال مع تمييز المتغير المستهدف
+                        showVariationsModalWithTarget(product.variations_full, product.target_variation);
+                        showNotification(`تم العثور على "${product.target_variation.name}"`, 'success');
+                    } else if (product.variations_full && product.variations_full.length > 0) {
+                        // عرض المودال العادي
                         showVariationsModal(product.variations_full);
                         showNotification(`تم العثور على "${product.name}" مع ${product.variations_full.length} متغير`, 'success');
                     } else {
@@ -1944,6 +1960,170 @@
             showNotification(errorMessage, 'error', 5000);
         });
     });
+
+    function showVariationsModalWithTarget(variations, targetVariation) {
+        const modal = Flux.modal('variations-modal');
+        const container = document.getElementById("variationsTableBody");
+        if (!container) return;
+
+        container.innerHTML = '';
+
+        if (!variations || variations.length === 0) {
+            const message = document.createElement("div");
+            message.className = "text-center text-gray-500 py-8";
+            message.innerHTML = `
+            <div class="text-4xl mb-4">📦</div>
+            <p class="text-lg font-semibold">لا يوجد متغيرات متاحة</p>
+        `;
+            container.appendChild(message);
+            modal.show();
+            return;
+        }
+
+        // عنوان المودال
+        const header = document.createElement("div");
+        header.className = "text-center mb-4 p-4 bg-blue-50 rounded-lg";
+        header.innerHTML = `
+        <h3 class="text-lg font-bold text-blue-800">اختر من المتغيرات المتاحة</h3>
+        <p class="text-sm text-blue-600">عدد المتغيرات: ${variations.length}</p>
+        ${targetVariation ? `<p class="text-sm text-green-600 font-semibold">🎯 تم العثور على: ${targetVariation.name}</p>` : ''}
+    `;
+        container.appendChild(header);
+
+        const grid = document.createElement("div");
+        grid.className = "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 p-4";
+
+        // 🔥 ترتيب المتغيرات بحيث يكون المستهدف أولاً
+        const sortedVariations = [...variations];
+        if (targetVariation) {
+            const targetIndex = sortedVariations.findIndex(v => v.id === targetVariation.id);
+            if (targetIndex > -1) {
+                // نقل المتغير المستهدف للمقدمة
+                const target = sortedVariations.splice(targetIndex, 1)[0];
+                sortedVariations.unshift(target);
+            }
+        }
+
+        sortedVariations.forEach((variation, index) => {
+            const card = document.createElement("div");
+            const isTarget = targetVariation && variation.id === targetVariation.id;
+            const isOutOfStock = variation.stock_status === 'outofstock';
+
+            // 🔥 تمييز المتغير المستهدف
+            const baseCardClass = "relative bg-white rounded-lg shadow-md overflow-hidden cursor-pointer hover:shadow-xl transition-all border";
+            const targetHighlight = isTarget ? "border-4 border-green-500 bg-green-50 ring-2 ring-green-200" : "border-gray-200 hover:border-blue-300";
+
+            card.className = `${baseCardClass} ${targetHighlight}`;
+
+            // إضافة شارة للمتغير المستهدف
+            const targetBadge = isTarget ? `
+            <div class="absolute top-0 right-0 bg-green-500 text-white text-xs px-2 py-1 rounded-bl-lg z-20">
+                🎯 الهدف
+            </div>
+        ` : '';
+
+            card.onmouseenter = () => card.classList.add('transform', 'scale-105');
+            card.onmouseleave = () => card.classList.remove('transform', 'scale-105');
+
+            card.onclick = () => {
+                if (isOutOfStock) {
+                    showNotification('هذا المتغير غير متوفر حالياً', 'warning');
+                    return;
+                }
+                addVariationToCart(variation.id);
+                showNotification(`تم إضافة "${variation.name}" للسلة`, 'success');
+            };
+
+            // تحضير معلومات الخصائص
+            let attributesText = '';
+            if (variation.attributes && variation.attributes.length > 0) {
+                const attrs = variation.attributes.map(attr => attr.option || attr.value).filter(Boolean);
+                attributesText = attrs.length > 0 ? attrs.join(' • ') : '';
+            }
+
+            // تحضير معلومات المخزون
+            let stockInfo = 'متوفر';
+            let stockClass = 'bg-green-500';
+            if (isOutOfStock) {
+                stockInfo = 'نفدت الكمية';
+                stockClass = 'bg-red-500';
+            } else if (variation.stock_quantity !== undefined && variation.stock_quantity !== null) {
+                stockInfo = `متوفر: ${variation.stock_quantity}`;
+                stockClass = variation.stock_quantity > 10 ? 'bg-green-500' : 'bg-yellow-500';
+            }
+
+            card.innerHTML = `
+            ${targetBadge}
+            <div class="absolute top-2 left-2 bg-black text-white text-xs px-2 py-1 rounded z-10 opacity-75">
+                #${variation.id}
+            </div>
+            <div class="absolute top-2 right-2 ${stockClass} text-white text-xs px-2 py-1 rounded z-10">
+                ${stockInfo}
+            </div>
+            <div class="relative h-48 bg-gray-100 flex items-center justify-center">
+                <div class="text-gray-400 text-4xl">📦</div>
+                <div class="absolute bottom-2 left-2 bg-blue-600 text-white px-3 py-1 rounded-full font-bold text-sm">
+                    ${variation.price || 0} ₪
+                </div>
+            </div>
+            <div class="p-3 space-y-2">
+                <h4 class="font-semibold text-sm text-gray-800 line-clamp-2" title="${variation.name || 'متغير'}">
+                    ${variation.name || 'متغير'}
+                </h4>
+                ${attributesText ? `
+                    <div class="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded">
+                        ${attributesText}
+                    </div>
+                ` : ''}
+                ${variation.sku ? `
+                    <div class="text-xs text-gray-500">
+                        SKU: ${variation.sku}
+                    </div>
+                ` : ''}
+                <button class="w-full mt-2 ${isOutOfStock ? 'bg-gray-400 cursor-not-allowed' : isTarget ? 'bg-green-600 hover:bg-green-700' : 'bg-green-500 hover:bg-green-600'} text-white py-2 px-3 rounded-md text-sm font-semibold transition-colors">
+                    ${isOutOfStock ? 'غير متوفر' : isTarget ? '🎯 إضافة المستهدف' : 'إضافة للسلة'}
+                </button>
+            </div>
+        `;
+
+            if (isOutOfStock) {
+                card.classList.add('opacity-60');
+            }
+
+            grid.appendChild(card);
+        });
+
+        container.appendChild(grid);
+
+        // footer للمودال
+        const footer = document.createElement("div");
+        footer.className = "text-center mt-4 p-3 bg-gray-50 rounded-lg text-xs text-gray-600";
+        footer.innerHTML = `
+        ${targetVariation ?
+            `🎯 تم العثور على المتغير المطلوب وتمييزه باللون الأخضر` :
+            'اضغط على أي متغير متوفر لإضافته إلى السلة'
+        }
+    `;
+        container.appendChild(footer);
+
+        modal.show();
+
+        // 🔥 إذا كان هناك متغير مستهدف، قم بالتمرير إليه
+        if (targetVariation) {
+            setTimeout(() => {
+                const targetCard = grid.querySelector('.border-green-500');
+                if (targetCard) {
+                    targetCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+                    // إضافة تأثير وميض للفت الانتباه
+                    targetCard.classList.add('animate-pulse');
+                    setTimeout(() => {
+                        targetCard.classList.remove('animate-pulse');
+                    }, 2000);
+                }
+            }, 300);
+        }
+    }
 
     // ============================================
     // تهيئة التطبيق

@@ -107,29 +107,47 @@ class Index extends Component
 
             $foundProduct = null;
             $foundVariation = null;
+            $specificVariation = null; // 🔥 المتغير المحدد الذي تم العثور عليه
 
             // ================================================
-            // ✅ تم تعديل هذا الجزء من الكود.
-            //    نقوم الآن بالبحث عن الـ variation مباشرةً قبل أي شيء آخر.
+            // ✅ البحث المباشر عن المتغير أولاً
             // ================================================
             try {
-                // البحث مباشرة عن المتغير باستخدام getProduct()
-                $foundVariation = $this->wooService->getProduct($searchTerm);
-                if ($foundVariation && isset($foundVariation['type']) && $foundVariation['type'] === 'variation') {
-                    logger()->info('Variation found directly by ID/SKU', ['id' => $foundVariation['id']]);
-                    // إذا وجدنا variation مباشرة، نرسله للواجهة
-                    $this->dispatch('product-found-from-api', [
-                        'product' => $this->wooService->normalizeProductForPOS($foundVariation)
-                    ]);
-                    return $foundVariation;
+                $searchResult = $this->wooService->getProduct($searchTerm);
+
+                if ($searchResult && isset($searchResult['type']) && $searchResult['type'] === 'variation') {
+                    logger()->info('Variation found directly by ID/SKU', ['id' => $searchResult['id']]);
+
+                    // 🔥 احفظ تفاصيل المتغير المحدد
+                    $specificVariation = $searchResult;
+
+                    // 🔥 اجلب المنتج الأب للمتغير
+                    $parentProductId = $searchResult['parent_id'] ?? null;
+                    if ($parentProductId) {
+                        $foundProduct = $this->wooService->getProductsById($parentProductId);
+                        logger()->info('Parent product found for variation', [
+                            'variation_id' => $searchResult['id'],
+                            'parent_id' => $parentProductId
+                        ]);
+                    } else {
+                        // إذا لم نجد parent_id، ابحث عنه في جميع المنتجات المتغيرة
+                        $foundProduct = $this->findParentProductForVariation($searchResult['id']);
+                    }
+
+                    if ($foundProduct) {
+                        // ✅ إرسال المنتج مع المتغير المحدد مباشرة
+                        return $this->sendFoundProductWithSpecificVariation($foundProduct, $specificVariation, $searchTerm);
+                    }
                 }
             } catch (\Exception $e) {
-                // تجاهل الخطأ ومتابعة البحث
-                $foundVariation = null;
+                logger()->warning('Direct variation search failed, continuing with product search', [
+                    'term' => $searchTerm,
+                    'error' => $e->getMessage()
+                ]);
             }
 
             // ================================================
-            // ⬅️ إذا لم يتم العثور على متغير، نعود للبحث عن المنتج الأب
+            // إذا لم يتم العثور على متغير، ابحث عن المنتج الأب
             // ================================================
 
             // 1. البحث بالـ ID أولاً (للباركود)
@@ -154,7 +172,6 @@ class Index extends Component
 
                 if (!empty($searchResults)) {
                     $data = isset($searchResults['data']) ? $searchResults['data'] : $searchResults;
-
                     if (count($data) > 0) {
                         $foundProduct = $data[0];
                         logger()->info('Product found by search', ['product_id' => $foundProduct['id']]);
@@ -170,7 +187,6 @@ class Index extends Component
 
                     if (!empty($skuResults)) {
                         $data = isset($skuResults['data']) ? $skuResults['data'] : $skuResults;
-
                         if (count($data) > 0) {
                             $foundProduct = $data[0];
                             logger()->info('Product found by SKU', ['product_id' => $foundProduct['id']]);
@@ -180,44 +196,28 @@ class Index extends Component
             }
 
             // 3. إذا لم نجد المنتج، نحاول البحث في المتغيرات
-            // هذا هو الجزء الذي يجلب المنتج الأب من المتغير
             if (!$foundProduct) {
-                // دالة searchInVariationsAPI هي التي تجد المنتج الأب للمتغير
-                $foundProduct = $this->searchInVariationsAPI($searchTerm);
+                $variationSearchResult = $this->searchInVariationsAPI($searchTerm);
+
+                if ($variationSearchResult) {
+                    $foundProduct = $variationSearchResult['parent_product'];
+                    $specificVariation = $variationSearchResult['found_variation'];
+
+                    logger()->info('Product found through variation search', [
+                        'parent_product_id' => $foundProduct['id'],
+                        'found_variation_id' => $specificVariation['id']
+                    ]);
+                }
             }
 
             if ($foundProduct) {
-                // ✅ إذا كان المنتج متغير، نجلب متغيراته كاملة
-                if ($foundProduct['type'] === 'variable' && !empty($foundProduct['variations'])) {
-                    $variationsData = $this->fetchCompleteVariations($foundProduct['id'], $foundProduct['variations']);
-
-                    // إضافة المتغيرات للمنتج
-                    $foundProduct['variations_full'] = $variationsData['variations_full'];
-
-                    // إرسال المتغيرات للتخزين في IndexedDB
-                    if (!empty($variationsData['for_storage'])) {
-                        $this->dispatch('store-variations', [
-                            'product_id' => $foundProduct['id'],
-                            'variations' => $variationsData['for_storage'],
-                        ]);
-                    }
-                }
-
-                // إرسال المنتج الموجود للـ JavaScript
-                $this->dispatch('product-found-from-api', [
-                    'product' => $foundProduct
-                ]);
-
-                return $foundProduct;
+                return $this->sendFoundProductWithSpecificVariation($foundProduct, $specificVariation, $searchTerm);
             } else {
                 logger()->info('Product not found in API', ['term' => $searchTerm]);
-
-                $this->dispatch('product-not-found', [
-                    'term' => $searchTerm
-                ]);
-
+                $this->dispatch('product-not-found', ['term' => $searchTerm]);
                 return null;
             }
+
         } catch (\Exception $e) {
             logger()->error('Error searching product from API', [
                 'term' => $searchTerm,
@@ -232,6 +232,98 @@ class Index extends Component
             return null;
         }
     }
+
+    private function sendFoundProductWithSpecificVariation($foundProduct, $specificVariation, $searchTerm)
+    {
+        try {
+            // ✅ إذا كان المنتج متغير، اجلب متغيراته كاملة
+            if ($foundProduct['type'] === 'variable' && !empty($foundProduct['variations'])) {
+                $variationsData = $this->fetchCompleteVariations($foundProduct['id'], $foundProduct['variations']);
+
+                // إضافة المتغيرات للمنتج
+                $foundProduct['variations_full'] = $variationsData['variations_full'];
+
+                // 🔥 إذا تم العثور على متغير محدد، ضعه في المقدمة
+                if ($specificVariation) {
+                    $foundProduct['target_variation'] = [
+                        'id' => $specificVariation['id'],
+                        'name' => $this->generateVariationName($specificVariation),
+                        'price' => $specificVariation['price'] ?? $specificVariation['regular_price'] ?? 0,
+                        'sku' => $specificVariation['sku'] ?? '',
+                        'attributes' => $specificVariation['attributes'] ?? [],
+                        'stock_status' => $specificVariation['stock_status'] ?? 'instock',
+                        'stock_quantity' => $specificVariation['stock_quantity'] ?? 0,
+                        'type' => 'variation',
+                        'product_id' => $foundProduct['id']
+                    ];
+
+                    logger()->info('Product prepared with target variation', [
+                        'product_id' => $foundProduct['id'],
+                        'target_variation_id' => $specificVariation['id'],
+                        'search_term' => $searchTerm
+                    ]);
+                }
+
+                // إرسال المتغيرات للتخزين في IndexedDB
+                if (!empty($variationsData['for_storage'])) {
+                    $this->dispatch('store-variations', [
+                        'product_id' => $foundProduct['id'],
+                        'variations' => $variationsData['for_storage'],
+                    ]);
+                }
+            }
+
+            // إرسال المنتج الموجود للـ JavaScript
+            $this->dispatch('product-found-from-api', [
+                'product' => $foundProduct,
+                'search_term' => $searchTerm,
+                'has_target_variation' => isset($foundProduct['target_variation'])
+            ]);
+
+            return $foundProduct;
+
+        } catch (\Exception $e) {
+            logger()->error('Error preparing found product', [
+                'product_id' => $foundProduct['id'] ?? 'unknown',
+                'error' => $e->getMessage()
+            ]);
+            throw $e;
+        }
+    }
+
+    private function findParentProductForVariation($variationId)
+    {
+        try {
+            // البحث في المنتجات المتغيرة للعثور على المنتج الأب
+            $variableProducts = $this->wooService->getProducts([
+                'type' => 'variable',
+                'per_page' => 100,
+                'status' => 'publish'
+            ]);
+
+            $products = isset($variableProducts['data']) ? $variableProducts['data'] : $variableProducts;
+
+            foreach ($products as $product) {
+                if (!empty($product['variations']) && in_array($variationId, $product['variations'])) {
+                    logger()->info('Parent product found for variation', [
+                        'variation_id' => $variationId,
+                        'parent_product_id' => $product['id']
+                    ]);
+                    return $product;
+                }
+            }
+
+            logger()->warning('Parent product not found for variation', ['variation_id' => $variationId]);
+            return null;
+        } catch (\Exception $e) {
+            logger()->error('Error finding parent product for variation', [
+                'variation_id' => $variationId,
+                'error' => $e->getMessage()
+            ]);
+            return null;
+        }
+    }
+
 
     private function fetchCompleteVariations($productId, $variationIds)
     {
@@ -332,11 +424,16 @@ class Index extends Component
                         $idMatch = ctype_digit($searchTerm) && $variation['id'] == (int)$searchTerm;
 
                         if ($skuMatch || $idMatch) {
-                            logger()->info('Product found by variation', [
+                            logger()->info('Variation found in search', [
                                 'parent_product_id' => $product['id'],
-                                'variation_id' => $variation['id']
+                                'variation_id' => $variation['id'],
+                                'variation_sku' => $variation['sku'] ?? 'no_sku'
                             ]);
-                            return $product; // إرجاع المنتج الأب
+
+                            return [
+                                'parent_product' => $product,
+                                'found_variation' => $variation
+                            ];
                         }
                     }
                 }
