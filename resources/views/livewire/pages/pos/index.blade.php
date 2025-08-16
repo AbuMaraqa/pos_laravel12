@@ -285,9 +285,9 @@
 
             // أولاً: البحث في المنتجات الرئيسية
             const mainProductMatch = products.find(item => {
-                const nameMatch = item.name?.toLowerCase().includes(searchTerm);
+                const nameMatch = item.name?.toLowerCase().includes(searchTerm.toLowerCase());
                 const barcodeMatch = item.id?.toString() === searchTerm;
-                const skuMatch = item.sku?.toLowerCase() === searchTerm;
+                const skuMatch = item.sku?.toLowerCase() === searchTerm.toLowerCase();
                 return nameMatch || barcodeMatch || skuMatch;
             });
 
@@ -355,22 +355,22 @@
             // البحث في متغيرات هذا المنتج
             for (const variationId of product.variations) {
                 // البحث عن المتغير في قاعدة البيانات
-                const variation = products.find(p => p.id === variationId && p.type === 'variation');
+                const variation = products.find(p => p.id === variationId && (p.type === 'variation' || p.product_id === product.id));
 
                 if (variation) {
                     // البحث بالـ SKU
                     if (variation.sku && variation.sku.toLowerCase() === lowerSearchTerm) {
-                        return {variation, parentProduct: product};
+                        return { variation, parentProduct: product };
                     }
 
                     // البحث بالـ ID
                     if (variation.id?.toString() === searchTerm) {
-                        return {variation, parentProduct: product};
+                        return { variation, parentProduct: product };
                     }
 
                     // البحث بالاسم
                     if (variation.name && variation.name.toLowerCase().includes(lowerSearchTerm)) {
-                        return {variation, parentProduct: product};
+                        return { variation, parentProduct: product };
                     }
 
                     // البحث في الخصائص (attributes)
@@ -380,7 +380,7 @@
                         );
 
                         if (attributeMatch) {
-                            return {variation, parentProduct: product};
+                            return { variation, parentProduct: product };
                         }
                     }
                 }
@@ -2188,9 +2188,8 @@
             variationId: targetVariation.id
         });
 
-        // خيار 1: إضافة المتغير مباشرة للسلة
+        // إضافة المتغير للسلة مباشرة
         if (targetVariation.stock_status !== 'outofstock') {
-            // إضافة المتغير للسلة مباشرة
             const cartTx = db.transaction("cart", "readwrite");
             const cartStore = cartTx.objectStore("cart");
             const getCartItem = cartStore.get(targetVariation.id);
@@ -2219,11 +2218,21 @@
         } else {
             showNotification(`المتغير "${targetVariation.name || 'المتغير'}" غير متوفر حالياً`, 'warning');
         }
+    }
 
-        // خيار 2: فتح المودال مع تمييز المتغير (يمكن تفعيله حسب الحاجة)
-        // if (parentProduct.variations_full && parentProduct.variations_full.length > 0) {
-        //     showVariationsModal(parentProduct.variations_full, targetVariation.id);
-        // }
+    function handleFoundVariation(variation, parentProduct) {
+        console.log("🎯 معالجة المتغير الموجود:", {
+            variation: variation.name,
+            parent: parentProduct.name
+        });
+
+        // إضافة المتغير مباشرة للسلة
+        if (variation.stock_status !== 'outofstock') {
+            addVariationToCart(variation.id);
+            showNotification(`تم إضافة "${variation.name || generateVariationDisplayName(variation)}" للسلة مباشرة`, 'success');
+        } else {
+            showNotification(`المتغير "${variation.name || 'المتغير'}" غير متوفر حالياً`, 'warning');
+        }
     }
 
     function generateVariationDisplayName(variation) {
