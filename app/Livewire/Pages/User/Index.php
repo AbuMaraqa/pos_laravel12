@@ -32,6 +32,7 @@ class Index extends Component
 
     public function mount()
     {
+        dd('asd');
         $this->name = '';
         $this->last_name = '';
         $this->email = '';

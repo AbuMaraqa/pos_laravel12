@@ -616,11 +616,6 @@
     // إدارة السلة
     // ============================================
     function addToCart(product) {
-        if (product.stock_status === 'outofstock') {
-            showNotification("هذا المنتج غير متوفر حالياً", 'warning');
-            return;
-        }
-
         const tx = db.transaction("cart", "readwrite");
         const store = tx.objectStore("cart");
         const getRequest = store.get(product.id);
@@ -631,22 +626,20 @@
             if (existing) {
                 existing.quantity += 1;
                 store.put(existing);
-                showNotification(`تم زيادة كمية "${product.name}"`, 'success');
             } else {
                 store.put({
                     id: product.id,
                     name: product.name,
-                    price: product.price || 0,
+                    price: product.price,
                     image: product.images?.[0]?.src ?? '',
-                    quantity: 1,
-                    type: product.type || 'simple'
+                    quantity: 1
                 });
-                showNotification(`تم إضافة "${product.name}" للسلة`, 'success');
             }
 
             console.log("✅ تم إضافة المنتج إلى السلة:", product.name);
             renderCart(product.id);
 
+            // تمرير سلس إلى المنتج الجديد في السلة
             setTimeout(() => {
                 const container = document.getElementById("cartItemsContainer");
                 if (container) {
@@ -655,12 +648,11 @@
                         behavior: 'smooth'
                     });
                 }
-            }, 100);
+            }, 50);
         };
 
         getRequest.onerror = function () {
-            console.error("❌ فشل في إضافة المنتج للسلة");
-            showNotification("حدث خطأ أثناء إضافة المنتج", 'error');
+            console.error("❌ فشل في جلب بيانات المنتج من السلة.");
         };
     }
 
@@ -677,12 +669,12 @@
 
             if (cartItems.length === 0) {
                 container.innerHTML = `
-                    <div class="flex flex-col items-center justify-center text-center text-gray-500 py-8 space-y-2">
-                        <div class="text-4xl">🛒</div>
-                        <p class="text-lg font-semibold">السلة فارغة</p>
-                        <p class="text-sm text-gray-400">لم تقم بإضافة أي منتجات بعد</p>
-                    </div>
-                `;
+                <div class="flex flex-col items-center justify-center text-center text-gray-500 py-8 space-y-2">
+                    <div class="text-4xl">🛒</div>
+                    <p class="text-lg font-semibold">السلة فارغة</p>
+                    <p class="text-sm text-gray-400">لم تقم بإضافة أي منتجات بعد</p>
+                </div>
+            `;
                 totalElement.textContent = "0.00 ₪";
                 return;
             }
@@ -692,29 +684,28 @@
             let highlightElement = null;
 
             cartItems.forEach(item => {
-                total += (item.price || 0) * (item.quantity || 1);
+                total += item.price * item.quantity;
 
                 const div = document.createElement("div");
                 div.id = `cart-item-${item.id}`;
-                div.className = "flex justify-between items-center bg-gray-100 p-2 rounded transition duration-300 hover:bg-gray-200";
+                div.className = "flex justify-between items-center bg-gray-100 p-2 rounded transition duration-300";
 
                 div.innerHTML = `
-                    <div class="flex items-center gap-2 flex-1">
-                        <div class="flex-1">
-                            <p class="font-semibold text-sm truncate" title="${item.name}">${item.name}</p>
-                            <p class="text-xs text-gray-500">${(item.price || 0).toFixed(2)} ₪ × ${item.quantity}</p>
-                            <div class="flex items-center gap-1 mt-1">
-                                <button onclick="updateQuantity(${item.id}, -1)" class="bg-red-500 text-white px-2 py-1 rounded text-xs hover:bg-red-600 transition-colors">−</button>
-                                <span class="mx-2 font-bold">${item.quantity}</span>
-                                <button onclick="updateQuantity(${item.id}, 1)" class="bg-green-500 text-white px-2 py-1 rounded text-xs hover:bg-green-600 transition-colors">+</button>
-                            </div>
+                <div class="flex items-center gap-2">
+                    <div>
+                        <p class="font-semibold">${item.name}</p>
+                        <div class="flex items-center gap-2">
+                            <button onclick="updateQuantity(${item.id}, -1)" class="bg-gray-300 px-2 rounded hover:bg-gray-400">−</button>
+                            <span>${item.quantity}</span>
+                            <button onclick="updateQuantity(${item.id}, 1)" class="bg-gray-300 px-2 rounded hover:bg-gray-400">+</button>
                         </div>
                     </div>
-                    <div class="text-left">
-                        <div class="font-bold text-gray-800">${((item.price || 0) * (item.quantity || 1)).toFixed(2)} ₪</div>
-                        <button onclick="removeFromCart(${item.id})" class="text-red-500 hover:text-red-700 mt-1 text-sm">🗑️</button>
-                    </div>
-                `;
+                </div>
+                <div class="font-bold text-gray-800 flex items-center gap-2">
+                    <span>${(item.price * item.quantity).toFixed(2)} ₪</span>
+                    <button onclick="removeFromCart(${item.id})" class="text-red-500 hover:text-red-700">🗑️</button>
+                </div>
+            `;
 
                 container.appendChild(div);
 
@@ -732,15 +723,13 @@
                         behavior: 'smooth',
                         block: 'start'
                     });
-                    setTimeout(() => {
-                        highlightElement.classList.remove("bg-yellow-200");
-                    }, 1000);
+                    highlightElement.classList.remove("bg-yellow-200");
                 }, 100);
             }
         };
 
         request.onerror = function () {
-            console.error("❌ فشل في تحميل محتوى السلة");
+            console.error("❌ فشل في تحميل محتوى السلة.");
         };
     }
 
@@ -751,34 +740,27 @@
 
         request.onsuccess = function () {
             console.log("🗑️ تم حذف المنتج من السلة");
-            showNotification("تم حذف المنتج من السلة", 'info');
             renderCart();
         };
 
         request.onerror = function () {
             console.error("❌ فشل في حذف المنتج من السلة");
-            showNotification("فشل في حذف المنتج", 'error');
         };
     }
 
-    function clearCart() {
-        if (!confirm("هل أنت متأكد من حذف جميع المنتجات من السلة؟")) {
-            return;
-        }
 
+    function clearCart() {
         const tx = db.transaction("cart", "readwrite");
         const store = tx.objectStore("cart");
         const clearRequest = store.clear();
 
         clearRequest.onsuccess = function () {
             console.log("🧹 تم حذف جميع المنتجات من السلة");
-            showNotification("تم حذف جميع المنتجات من السلة", 'info');
             renderCart();
         };
 
         clearRequest.onerror = function () {
             console.error("❌ فشل في حذف السلة");
-            showNotification("فشل في حذف السلة", 'error');
         };
     }
 
@@ -795,7 +777,6 @@
 
             if (item.quantity <= 0) {
                 store.delete(productId);
-                showNotification("تم حذف المنتج من السلة", 'info');
             } else {
                 store.put(item);
             }
@@ -807,6 +788,55 @@
             console.error("❌ فشل في تحديث كمية المنتج");
         };
     }
+
+    function resetToOriginalCode() {
+        console.log("🔄 إعادة ضبط إلى الكود الأصلي...");
+
+        // إعادة تعريف جميع الدوال في النطاق العام
+        window.addToCart = addToCart;
+        window.renderCart = renderCart;
+        window.removeFromCart = removeFromCart;
+        window.updateQuantity = updateQuantity;
+        window.clearCart = clearCart;
+
+        // إعادة تهيئة قاعدة البيانات إذا لزم الأمر
+        if (!db) {
+            const openRequest = indexedDB.open(dbName, 5);
+
+            openRequest.onsuccess = function (event) {
+                db = event.target.result;
+                window.db = db;
+                renderCart();
+                console.log("✅ تم إعادة تهيئة قاعدة البيانات");
+            };
+
+            openRequest.onerror = function () {
+                console.error("❌ خطأ في فتح قاعدة البيانات");
+            };
+        } else {
+            renderCart();
+        }
+
+        console.log("✅ تم إعادة الضبط للكود الأصلي");
+    }
+
+    // دالة اختبار بسيطة
+    function testOriginalCart() {
+        console.log("🧪 اختبار الكود الأصلي...");
+
+        const testProduct = {
+            id: 99999,
+            name: "منتج اختبار",
+            price: 25.00,
+            images: []
+        };
+
+        addToCart(testProduct);
+    }
+
+    // تشغيل تلقائي
+    window.resetToOriginalCode = resetToOriginalCode;
+    window.testOriginalCart = testOriginalCart;
 
     // ============================================
     // إدارة المتغيرات المحسنة
@@ -1981,6 +2011,275 @@
     setTimeout(() => {
         setupConfirmOrderButton();
     }, 1000);
+
+    function reinitializeDatabase() {
+        console.log("🔄 إعادة تهيئة قاعدة البيانات...");
+
+        if (db) {
+            db.close();
+        }
+
+        const openRequest = indexedDB.open("POSProductsDB", 5);
+
+        openRequest.onupgradeneeded = function (event) {
+            db = event.target.result;
+            createObjectStores(db);
+            console.log("✅ تم إنشاء هياكل قاعدة البيانات");
+        };
+
+        openRequest.onsuccess = function (event) {
+            db = event.target.result;
+            console.log("✅ تم فتح قاعدة البيانات بنجاح");
+            renderCartWithDebug();
+        };
+
+        openRequest.onerror = function () {
+            console.error("❌ فشل في فتح قاعدة البيانات");
+        };
+    }
+
+    function recreateCartElements() {
+        console.log("🔄 إعادة إنشاء عناصر السلة...");
+
+        // البحث عن الحاوية الرئيسية
+        let cartContainer = document.getElementById("cartItemsContainer");
+
+        if (!cartContainer) {
+            console.log("🏗️ إنشاء حاوية السلة المفقودة...");
+
+            // البحث عن الحاوية الأب
+            const parentContainer = document.querySelector('.col-span-2 .bg-white');
+
+            if (parentContainer) {
+                // إنشاء حاوية السلة
+                const newCartContainer = document.createElement('div');
+                newCartContainer.id = 'cartItemsContainer';
+                newCartContainer.className = 'space-y-2 overflow-y-auto max-h-[500px] flex-1';
+
+                // إنشاء عنصر المجموع إذا لم يكن موجوداً
+                let totalElement = document.getElementById("cartTotal");
+                if (!totalElement) {
+                    const totalDiv = document.createElement('div');
+                    totalDiv.className = 'mt-4 border-t pt-4 text-right';
+                    totalDiv.innerHTML = '<p class="font-bold text-xl">المجموع: <span id="cartTotal">0 ₪</span></p>';
+                    parentContainer.appendChild(totalDiv);
+                }
+
+                // إدراج الحاوية في المكان الصحيح
+                const titleElement = parentContainer.querySelector('h2');
+                if (titleElement) {
+                    titleElement.parentNode.insertBefore(newCartContainer, titleElement.nextSibling.nextSibling);
+                } else {
+                    parentContainer.appendChild(newCartContainer);
+                }
+
+                console.log("✅ تم إنشاء حاوية السلة");
+            } else {
+                console.error("❌ لم يتم العثور على الحاوية الأب للسلة");
+            }
+        }
+
+        // التحقق من وجود زر إتمام الطلب
+        let completeOrderBtn = document.getElementById("completeOrderBtn");
+        if (!completeOrderBtn) {
+            console.log("🏗️ إنشاء زر إتمام الطلب المفقود...");
+
+            const parentContainer = document.querySelector('.col-span-2 .bg-white');
+            if (parentContainer) {
+                const btn = document.createElement('button');
+                btn.id = 'completeOrderBtn';
+                btn.className = 'mt-4 w-full bg-blue-500 text-white py-2 px-4 rounded hover:bg-blue-600 transition-colors';
+                btn.textContent = 'إتمام الطلب';
+                btn.onclick = function() {
+                    // إعادة ربط وظيفة إتمام الطلب
+                    setupOrderButton();
+                    // محاولة فتح المودال
+                    try {
+                        Flux.modal('confirm-order-modal').show();
+                    } catch(e) {
+                        alert('يرجى إعادة تحميل الصفحة لاستكمال الطلب');
+                    }
+                };
+
+                parentContainer.appendChild(btn);
+                console.log("✅ تم إنشاء زر إتمام الطلب");
+            }
+        }
+    }
+
+    function cleanupEventListeners() {
+        console.log("🧹 تنظيف event listeners...");
+
+        // إزالة listeners القديمة من المنتجات
+        document.querySelectorAll('.product-card').forEach(card => {
+            const newCard = card.cloneNode(true);
+            card.parentNode.replaceChild(newCard, card);
+        });
+
+        // إعادة ربط listeners الجديدة
+        document.querySelectorAll('.product-card').forEach(card => {
+            card.addEventListener('click', function() {
+                const productId = this.getAttribute('data-product-id');
+                if (productId) {
+                    // البحث عن المنتج في IndexedDB
+                    const tx = db.transaction("products", "readonly");
+                    const store = tx.objectStore("products");
+                    const request = store.get(parseInt(productId));
+
+                    request.onsuccess = function() {
+                        const product = request.result;
+                        if (product) {
+                            addToCartWithDebug(product);
+                        }
+                    };
+                }
+            });
+        });
+
+        console.log("✅ تم تنظيف وإعادة ربط event listeners");
+    }
+
+    function cleanupCorruptedCartData() {
+        console.log("🧹 تنظيف بيانات السلة التالفة...");
+
+        if (!db) {
+            console.error("❌ قاعدة البيانات غير متاحة");
+            return;
+        }
+
+        const tx = db.transaction("cart", "readwrite");
+        const store = tx.objectStore("cart");
+        const request = store.getAll();
+
+        request.onsuccess = function() {
+            const cartItems = request.result;
+            console.log("📦 فحص", cartItems.length, "عنصر في السلة");
+
+            let cleanedItems = [];
+            let corruptedCount = 0;
+
+            cartItems.forEach(item => {
+                // فحص صحة البيانات
+                if (item.id && item.name && typeof item.price !== 'undefined' && item.quantity > 0) {
+                    // تنظيف البيانات
+                    const cleanedItem = {
+                        id: parseInt(item.id),
+                        name: String(item.name),
+                        price: parseFloat(item.price) || 0,
+                        quantity: parseInt(item.quantity) || 1,
+                        image: item.image || '',
+                        type: item.type || 'simple',
+                        sku: item.sku || '',
+                        added_at: item.added_at || new Date().toISOString()
+                    };
+                    cleanedItems.push(cleanedItem);
+                } else {
+                    console.warn("⚠️ عنصر تالف:", item);
+                    corruptedCount++;
+                    // حذف العنصر التالف
+                    store.delete(item.id);
+                }
+            });
+
+            if (corruptedCount > 0) {
+                console.log(`🗑️ تم حذف ${corruptedCount} عنصر تالف`);
+
+                // إعادة حفظ العناصر السليمة
+                cleanedItems.forEach(item => {
+                    store.put(item);
+                });
+            }
+
+            console.log("✅ تم تنظيف بيانات السلة");
+            renderCartWithDebug();
+        };
+    }
+
+    function fixCartStyling() {
+        console.log("🎨 إصلاح تصميم السلة...");
+
+        const cartContainer = document.getElementById("cartItemsContainer");
+        if (cartContainer) {
+            // التأكد من وجود الأنماط الصحيحة
+            cartContainer.className = "space-y-2 overflow-y-auto max-h-[500px] flex-1";
+
+            // إضافة أنماط مخصصة إذا لزم الأمر
+            const style = document.createElement('style');
+            style.textContent = `
+            #cartItemsContainer {
+                min-height: 200px;
+                background: #ffffff;
+                border-radius: 8px;
+                padding: 8px;
+            }
+
+            .cart-item {
+                transition: all 0.3s ease;
+                border: 1px solid #e5e7eb;
+                margin-bottom: 8px;
+            }
+
+            .cart-item:hover {
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            }
+
+            #cartTotal {
+                color: #059669;
+                font-weight: bold;
+            }
+        `;
+
+            if (!document.head.querySelector('#cart-custom-styles')) {
+                style.id = 'cart-custom-styles';
+                document.head.appendChild(style);
+            }
+
+            console.log("✅ تم إصلاح تصميم السلة");
+        }
+    }
+
+    function emergencyCartFix() {
+        console.log("🚨 === بدء الإصلاح الطارئ للسلة ===");
+
+        try {
+            // 1. إعادة تهيئة قاعدة البيانات
+            console.log("1️⃣ إعادة تهيئة قاعدة البيانات...");
+            reinitializeDatabase();
+
+            setTimeout(() => {
+                // 2. إعادة إنشاء عناصر HTML
+                console.log("2️⃣ إعادة إنشاء عناصر HTML...");
+                recreateCartElements();
+
+                // 3. تنظيف البيانات التالفة
+                console.log("3️⃣ تنظيف البيانات التالفة...");
+                cleanupCorruptedCartData();
+
+                // 4. إصلاح التصميم
+                console.log("4️⃣ إصلاح التصميم...");
+                fixCartStyling();
+
+                // 5. تنظيف event listeners
+                console.log("5️⃣ تنظيف event listeners...");
+                cleanupEventListeners();
+
+                setTimeout(() => {
+                    // 6. اختبار نهائي
+                    console.log("6️⃣ اختبار نهائي...");
+                    fullCartDiagnostic();
+
+                    console.log("✅ === انتهى الإصلاح الطارئ ===");
+                    alert("تم إصلاح السلة! جرب إضافة منتج الآن.");
+
+                }, 1000);
+
+            }, 1000);
+
+        } catch (error) {
+            console.error("❌ فشل في الإصلاح الطارئ:", error);
+            alert("فشل في الإصلاح. يرجى إعادة تحميل الصفحة.");
+        }
+    }
 
     console.log("✅ تم تحميل جميع وظائف نظام POS المحسن");
 </script>
