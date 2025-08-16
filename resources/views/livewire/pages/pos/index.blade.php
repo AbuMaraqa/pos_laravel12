@@ -842,11 +842,7 @@
     // إدارة المتغيرات المحسنة
     // ============================================
     function handleFoundProduct(product) {
-        if (product.type === 'simple') {
-            addToCart(product);
-        } else if (product.type === 'variable') {
-            fetchVariationsAndShowModal(product);
-        }
+        handleFoundProductEnhanced(product);
     }
 
     function fetchVariationsAndShowModal(product) {
@@ -994,55 +990,8 @@
     }
 
     function addVariationToCart(variationId) {
-        const tx = db.transaction("products", "readonly");
-        const store = tx.objectStore("products");
-        const request = store.get(variationId);
-
-        request.onsuccess = function () {
-            const variation = request.result;
-
-            if (!variation || !variation.id) {
-                console.error("❌ Variation not found:", variationId);
-                showNotification("لم يتم العثور على هذا المتغير", 'error');
-                return;
-            }
-
-            if (variation.stock_status === 'outofstock') {
-                showNotification("هذا المتغير غير متوفر حالياً", 'warning');
-                return;
-            }
-
-            const cartTx = db.transaction("cart", "readwrite");
-            const cartStore = cartTx.objectStore("cart");
-            const getCartItem = cartStore.get(variation.id);
-
-            getCartItem.onsuccess = function () {
-                const existing = getCartItem.result;
-
-                if (existing) {
-                    existing.quantity += 1;
-                    cartStore.put(existing);
-                } else {
-                    cartStore.put({
-                        id: variation.id,
-                        name: variation.name,
-                        price: variation.price || 0,
-                        quantity: 1,
-                        image: variation.images?.[0]?.src || '',
-                        sku: variation.sku || '',
-                        type: 'variation'
-                    });
-                }
-
-                renderCart();
-                Flux.modal('variations-modal').close();
-            };
-        };
-
-        request.onerror = function () {
-            console.error("❌ Failed to fetch variation:", variationId);
-            showNotification("حدث خطأ أثناء إضافة المتغير", 'error');
-        };
+        // استخدام الدالة المحسنة الجديدة
+        addVariationToCartEnhanced(variationId, null, true);
     }
 
     // ============================================
@@ -1960,6 +1909,216 @@
             showNotification(errorMessage, 'error', 5000);
         });
     });
+
+    function addVariationToCartEnhanced(variationId, productName = null, directAdd = false) {
+        const tx = db.transaction("products", "readonly");
+        const store = tx.objectStore("products");
+        const request = store.get(variationId);
+
+        request.onsuccess = function () {
+            const variation = request.result;
+
+            if (!variation || !variation.id) {
+                console.error("❌ Variation not found:", variationId);
+                showNotification("لم يتم العثور على هذا المتغير", 'error');
+                return;
+            }
+
+            if (variation.stock_status === 'outofstock') {
+                showNotification("هذا المتغير غير متوفر حالياً", 'warning');
+                return;
+            }
+
+            const cartTx = db.transaction("cart", "readwrite");
+            const cartStore = cartTx.objectStore("cart");
+            const getCartItem = cartStore.get(variation.id);
+
+            getCartItem.onsuccess = function () {
+                const existing = getCartItem.result;
+
+                // تحضير اسم المنتج
+                let displayName = variation.name || productName || 'منتج متغير';
+
+                // إضافة معلومات الخصائص للاسم إذا كانت متوفرة
+                if (variation.attributes && variation.attributes.length > 0) {
+                    const attributesParts = variation.attributes
+                        .map(attr => attr.option || attr.value)
+                        .filter(Boolean);
+
+                    if (attributesParts.length > 0) {
+                        displayName += ' (' + attributesParts.join(', ') + ')';
+                    }
+                }
+
+                if (existing) {
+                    existing.quantity += 1;
+                    existing.updated_at = new Date().toISOString();
+                    cartStore.put(existing);
+                    console.log("✅ تم تحديث كمية المتغير في السلة:", displayName);
+                } else {
+                    const cartItem = {
+                        id: variation.id,
+                        name: displayName,
+                        price: variation.price || 0,
+                        quantity: 1,
+                        image: variation.images?.[0]?.src || '',
+                        sku: variation.sku || '',
+                        type: 'variation',
+                        product_id: variation.product_id || null,
+                        attributes: variation.attributes || [],
+                        added_at: new Date().toISOString()
+                    };
+
+                    cartStore.put(cartItem);
+                    console.log("✅ تم إضافة المتغير للسلة:", displayName);
+                }
+
+                // تحديث عرض السلة
+                renderCart(variation.id);
+
+                // إغلاق المودال إذا كانت الإضافة مباشرة
+                if (directAdd) {
+                    try {
+                        Flux.modal('variations-modal').close();
+                    } catch (e) {
+                        console.log("المودال مغلق مسبقاً");
+                    }
+                }
+
+                // عرض إشعار النجاح
+                showNotification(`تم إضافة "${displayName}" للسلة`, 'success');
+            };
+
+            getCartItem.onerror = function () {
+                console.error("❌ فشل في إضافة المتغير للسلة");
+                showNotification("حدث خطأ أثناء إضافة المنتج", 'error');
+            };
+        };
+
+        request.onerror = function () {
+            console.error("❌ Failed to fetch variation:", variationId);
+            showNotification("حدث خطأ أثناء إضافة المتغير", 'error');
+        };
+    }
+
+    function addTargetVariationDirectly(targetVariation, showModal = false) {
+        if (!targetVariation || !targetVariation.id) {
+            console.error("❌ Invalid target variation:", targetVariation);
+            showNotification("بيانات المتغير غير صالحة", 'error');
+            return;
+        }
+
+        console.log("🎯 إضافة المتغير المستهدف مباشرة:", targetVariation);
+
+        // تخزين المتغير في IndexedDB أولاً إذا لم يكن موجوداً
+        const tx = db.transaction("products", "readwrite");
+        const store = tx.objectStore("products");
+
+        // تنظيف بيانات المتغير
+        const cleanVariation = {
+            ...targetVariation,
+            images: [], // تبسيط للتخزين
+            description: ''
+        };
+
+        store.put(cleanVariation);
+
+        tx.oncomplete = () => {
+            if (showModal) {
+                // إذا كان المطلوب عرض المودال
+                showVariationsModalWithTarget([targetVariation], targetVariation);
+            } else {
+                // إضافة مباشرة للسلة
+                addVariationToCartEnhanced(targetVariation.id, targetVariation.name, true);
+            }
+        };
+
+        tx.onerror = () => {
+            console.error("❌ فشل في تخزين المتغير");
+            showNotification("فشل في تخزين بيانات المتغير", 'error');
+        };
+    }
+
+    function handleFoundProductEnhanced(product) {
+        console.log("🔍 معالجة المنتج الموجود:", {
+            type: product.type,
+            id: product.id,
+            has_target_variation: !!product.target_variation,
+            variations_count: product.variations_full?.length || 0
+        });
+
+        if (product.type === 'simple') {
+            // منتج بسيط - إضافة مباشرة
+            addToCart(product);
+            showNotification(`تم إضافة "${product.name}" للسلة`, 'success');
+
+        } else if (product.type === 'variable') {
+
+            if (product.target_variation) {
+                // 🎯 تم العثور على متغير محدد
+                console.log("🎯 تم العثور على متغير مستهدف:", product.target_variation);
+
+                // خيار للمستخدم: إضافة مباشرة أم عرض المودال
+                const userPreference = getUserVariationPreference();
+
+                if (userPreference === 'direct') {
+                    addTargetVariationDirectly(product.target_variation, false);
+                } else {
+                    addTargetVariationDirectly(product.target_variation, true);
+                }
+
+            } else if (product.variations_full && product.variations_full.length > 0) {
+                // عرض جميع المتغيرات
+                showVariationsModal(product.variations_full);
+                showNotification(`تم العثور على "${product.name}" مع ${product.variations_full.length} متغير`, 'success');
+
+            } else {
+                showNotification(`تم العثور على "${product.name}" لكن لا توجد متغيرات متاحة`, 'warning');
+            }
+
+        } else if (product.type === 'variation') {
+            // متغير مباشر
+            addVariationToCartEnhanced(product.id, product.name, true);
+        }
+    }
+
+    function getUserVariationPreference() {
+        try {
+            return localStorage.getItem('pos_variation_preference') || 'modal';
+        } catch (e) {
+            return 'modal'; // افتراضي: عرض المودال
+        }
+    }
+
+    function setUserVariationPreference(preference) {
+        try {
+            localStorage.setItem('pos_variation_preference', preference);
+            showNotification(`تم تعيين تفضيل المتغيرات: ${preference === 'direct' ? 'إضافة مباشرة' : 'عرض الخيارات'}`, 'info');
+        } catch (e) {
+            console.warn('Cannot save user preference');
+        }
+    }
+
+    function addVariationPreferenceControls() {
+        // يمكن إضافة هذه الأزرار في مكان مناسب في الواجهة
+        const controlsHTML = `
+        <div class="variation-preferences bg-gray-100 p-2 rounded mb-2">
+            <label class="text-xs text-gray-600">عند العثور على متغير:</label>
+            <div class="flex gap-2 mt-1">
+                <button onclick="setUserVariationPreference('direct')"
+                        class="text-xs px-2 py-1 bg-green-500 text-white rounded hover:bg-green-600">
+                    إضافة مباشرة
+                </button>
+                <button onclick="setUserVariationPreference('modal')"
+                        class="text-xs px-2 py-1 bg-blue-500 text-white rounded hover:bg-blue-600">
+                    عرض الخيارات
+                </button>
+            </div>
+        </div>
+    `;
+
+        return controlsHTML;
+    }
 
     function showVariationsModalWithTarget(variations, targetVariation) {
         const modal = Flux.modal('variations-modal');
