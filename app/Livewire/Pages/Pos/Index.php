@@ -101,7 +101,6 @@ class Index extends Component
             logger()->info('Searching for product in API', ['term' => $searchTerm]);
 
             $foundProduct = null;
-            $foundVariation = null; // متغير جديد لحفظ المتغير الموجود
 
             // البحث بالـ ID أولاً (للباركود)
             if (is_numeric($searchTerm)) {
@@ -150,22 +149,13 @@ class Index extends Component
                 }
             }
 
-            // البحث المحسن في المتغيرات
+            // إذا لم نجد المنتج، نحاول البحث في المتغيرات
             if (!$foundProduct) {
-                $variationResult = $this->searchInVariationsAPI($searchTerm);
-                if ($variationResult) {
-                    $foundProduct = $variationResult['parent_product'];
-                    $foundVariation = $variationResult['variation'];
-                    logger()->info('Product found by variation', [
-                        'parent_product_id' => $foundProduct['id'],
-                        'variation_id' => $foundVariation['id'],
-                        'variation_name' => $foundVariation['name'] ?? 'unknown'
-                    ]);
-                }
+                $foundProduct = $this->searchInVariationsAPI($searchTerm);
             }
 
             if ($foundProduct) {
-                // إذا كان المنتج متغير ونريد جلب متغيراته كاملة
+                // ✅ إذا كان المنتج متغير، نجلب متغيراته كاملة
                 if ($foundProduct['type'] === 'variable' && !empty($foundProduct['variations'])) {
                     $variationsData = $this->fetchCompleteVariations($foundProduct['id'], $foundProduct['variations']);
 
@@ -181,20 +171,10 @@ class Index extends Component
                     }
                 }
 
-                // إرسال المنتج الموجود للـ JavaScript مع معلومات المتغير المحدد
-                $responseData = [
+                // إرسال المنتج الموجود للـ JavaScript
+                $this->dispatch('product-found-from-api', [
                     'product' => $foundProduct
-                ];
-
-                // إضافة معلومات المتغير المحدد إذا وُجد
-                if ($foundVariation) {
-                    $responseData['target_variation'] = $foundVariation;
-                    $responseData['search_type'] = 'variation';
-                } else {
-                    $responseData['search_type'] = 'product';
-                }
-
-                $this->dispatch('product-found-from-api', $responseData);
+                ]);
 
                 return $foundProduct;
             } else {
@@ -220,6 +200,7 @@ class Index extends Component
             return null;
         }
     }
+
     private function fetchCompleteVariations($productId, $variationIds)
     {
         $variationsForDisplay = [];
@@ -311,39 +292,16 @@ class Index extends Component
                     $variations = $this->wooService->getProductVariations($product['id']);
 
                     foreach ($variations as $variation) {
-                        // فحص SKU للمتغير
+                        // فحص SKU أو ID للمتغير
                         $skuMatch = !empty($variation['sku']) && strcasecmp($variation['sku'], $searchTerm) === 0;
-
-                        // فحص ID للمتغير
                         $idMatch = ctype_digit($searchTerm) && $variation['id'] == (int)$searchTerm;
 
-                        // فحص اسم المتغير
-                        $nameMatch = !empty($variation['name']) &&
-                            stripos($variation['name'], $searchTerm) !== false;
-
-                        // فحص الخصائص (attributes)
-                        $attributeMatch = false;
-                        if (!empty($variation['attributes'])) {
-                            foreach ($variation['attributes'] as $attribute) {
-                                $attributeValue = $attribute['option'] ?? $attribute['value'] ?? '';
-                                if (!empty($attributeValue) && stripos($attributeValue, $searchTerm) !== false) {
-                                    $attributeMatch = true;
-                                    break;
-                                }
-                            }
-                        }
-
-                        if ($skuMatch || $idMatch || $nameMatch || $attributeMatch) {
-                            logger()->info('Variation found', [
+                        if ($skuMatch || $idMatch) {
+                            logger()->info('Product found by variation', [
                                 'parent_product_id' => $product['id'],
-                                'variation_id' => $variation['id'],
-                                'match_type' => $skuMatch ? 'sku' : ($idMatch ? 'id' : ($nameMatch ? 'name' : 'attribute'))
+                                'variation_id' => $variation['id']
                             ]);
-
-                            return [
-                                'parent_product' => $product,
-                                'variation' => $variation
-                            ];
+                            return $product; // إرجاع المنتج الأب
                         }
                     }
                 }
