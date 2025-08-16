@@ -242,11 +242,14 @@ class WooCommerceService
 
             // إذا كانت الاستجابة تحتوي على مفتاح 'data'، فهذا يعني أن البيانات مغلفة
             if (is_array($response) && isset($response['data'])) {
+                // تنظيف البيانات وإزالة الصور
+                $response['data'] = $this->removeImagesFromProducts($response['data']);
                 return $response; // إرجاع الاستجابة كاملة مع metadata
             }
 
             // إذا كانت الاستجابة مجرد array من المنتجات
-            return $response;
+            $cleanedProducts = $this->removeImagesFromProducts($response);
+            return $cleanedProducts;
         } catch (\Exception $e) {
             logger()->error('Error fetching products', [
                 'query' => $query,
@@ -256,7 +259,6 @@ class WooCommerceService
             return [];
         }
     }
-
     public function deleteProductById($id): array
     {
         return $this->delete('products/' . $id);
@@ -354,9 +356,18 @@ class WooCommerceService
             $response = $this->get('products/' . $id);
 
             if (isset($response['id'])) {
+                // إزالة الصور
+                unset($response['images']);
+                $response['images'] = [];
+
                 // إذا كان المنتج متغير، نجلب المتغيرات مباشرة
                 if ($response['type'] === 'variable' && !empty($response['variations'])) {
                     $variations = $this->getProductVariations($response['id']);
+                    // تنظيف المتغيرات من الصور
+                    foreach ($variations as &$variation) {
+                        unset($variation['images']);
+                        $variation['images'] = [];
+                    }
                     $response['variations_details'] = $variations;
                 }
 
@@ -373,7 +384,6 @@ class WooCommerceService
             return null;
         }
     }
-
     public function getCategories(array $query = []): array
     {
         return $this->get('products/categories', $query)['data'];
@@ -2023,6 +2033,42 @@ class WooCommerceService
             return null;
         }
     }
+
+    private function removeImagesFromProducts(array $products): array
+    {
+        foreach ($products as &$product) {
+            // إزالة الصور من المنتج الرئيسي
+            unset($product['images']);
+            $product['images'] = []; // مصفوفة فارغة بدلاً من null
+
+            // إزالة الصور من المتغيرات إذا كانت موجودة
+            if (isset($product['variations_details'])) {
+                foreach ($product['variations_details'] as &$variation) {
+                    unset($variation['images']);
+                    $variation['images'] = [];
+                }
+            }
+
+            // إزالة الصور من المتغيرات الكاملة
+            if (isset($product['variations_full'])) {
+                foreach ($product['variations_full'] as &$variation) {
+                    unset($variation['images']);
+                    $variation['images'] = [];
+                }
+            }
+
+            // إزالة بيانات غير ضرورية أخرى لتسريع الاستجابة
+            unset($product['description']);
+            unset($product['meta_data']);
+            unset($product['tags']);
+            unset($product['related_ids']);
+            unset($product['cross_sell_ids']);
+            unset($product['upsell_ids']);
+        }
+
+        return $products;
+    }
+
 
     public function getLastPageFromHeaders(): int
     {
