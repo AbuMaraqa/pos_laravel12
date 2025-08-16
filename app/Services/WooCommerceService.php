@@ -179,7 +179,7 @@ class WooCommerceService
         // تنظيف البيانات بشكل متكرر
         foreach ($data as $key => $value) {
             // إذا كانت قيمة فارغة، نتخطاها
-            if ($value === null || $value === '') {
+            if (is_null($value) || $value === '') {
                 continue;
             }
 
@@ -1071,32 +1071,1208 @@ class WooCommerceService
                     $variationData = $this->sanitizeVariationData($variation);
 
                     // تحديث أو إنشاء
-                    if (isset($cleanVariation['id']) && !empty($cleanVariation['id'])) {
-                        $variationUpdates['update'][] = $cleanVariation;
+                    if (isset($variationData['id']) && !empty($variationData['id'])) {
+                        // Add to update batch
+                        $batchData['update'][] = $variationData;
+
+                        // Remove from existingVariationsMap to track which ones should be deleted
+                        if (isset($existingVariationsMap[$variationData['id']])) {
+                            unset($existingVariationsMap[$variationData['id']]);
+                        }
                     } else {
-                        $variationUpdates['create'][] = $cleanVariation;
+                        // Add to create batch
+                        $batchData['create'][] = $variationData;
                     }
-                } catch (\Exception $ve) {
-                    logger()->error('Failed to process variation', [
-                        'variation_index' => $index,
-                        'error' => $ve->getMessage()
+                } catch (\Exception $e) {
+                    logger()->error('Failed to prepare variation for batch operation', [
+                        'variation' => $variation,
+                        'error' => $e->getMessage()
                     ]);
-                    $errors[] = "Failed to process variation at index {$index}: " . $ve->getMessage();
                 }
             }
 
-            // Add to appropriate batch operation
-            if (isset($cleanVariation['id']) && !empty($cleanVariation['id'])) {
-                $variationUpdates['update'][] = $cleanVariation;
-            } else {
-                $variationUpdates['create'][] = $cleanVariation;
+            // Add remaining variations to delete batch
+            foreach ($existingVariationsMap as $id => $variation) {
+                $batchData['delete'][] = $id;
             }
-        } catch (\Exception $ve) {
-            logger()->error('Failed to process variation', [
-                'variation_index' => $index,
-                'error' => $ve->getMessage()
+
+            logger()->info('Prepared batch operation for variations', [
+                'productId' => $productId,
+                'create_count' => count($batchData['create']),
+                'update_count' => count($batchData['update']),
+                'delete_count' => count($batchData['delete'])
             ]);
-            $errors[] = "Failed to process variation at index {$index}: " . $ve->getMessage();
+
+            // Execute batch operation if there's anything to do
+            if (!empty($batchData['create']) || !empty($batchData['update']) || !empty($batchData['delete'])) {
+                $batchResult = $this->batchUpdateVariations($productId, $batchData);
+
+                // Count results
+                $results['created'] = count($batchResult['create'] ?? []);
+                $results['updated'] = count($batchResult['update'] ?? []);
+                $results['deleted'] = count($batchResult['delete'] ?? []);
+
+                logger()->info('Batch operation completed', [
+                    'created' => $results['created'],
+                    'updated' => $results['updated'],
+                    'deleted' => $results['deleted']
+                ]);
+            } else {
+                logger()->info('No variations to process in batch operation');
+            }
+
+            return [
+                'success' => true,
+                'message' => sprintf(
+                    'Variations synced successfully via batch API: updated %d, created %d, deleted %d',
+                    $results['updated'],
+                    $results['created'],
+                    $results['deleted']
+                ),
+                'updated' => $results['updated'],
+                'created' => $results['created'],
+                'deleted' => $results['deleted']
+            ];
+        } catch (\Exception $e) {
+            logger()->error('Failed to sync variations', [
+                'productId' => $productId,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return [
+                'success' => false,
+                'message' => $e->getMessage(),
+                'updated' => 0,
+                'created' => 0,
+                'deleted' => 0
+            ];
         }
+    }
+
+    public function updateProductFeatured($productId, $featured)
+    {
+        return $this->put("products/{$productId}", [
+            'featured' => $featured
+        ]);
+    }
+
+    public function shippingMethods()
+    {
+        return $this->get('shipping_methods');
+    }
+
+    public function updateShippingMethod($methodId, $settings)
+    {
+        return $this->put("shipping/methods/{$methodId}", [
+            'settings' => $settings
+        ]);
+    }
+
+    public function shippingZones()
+    {
+        return $this->get('shipping/zones')['data'];
+    }
+
+    public function shippingZoneById($zoneId)
+    {
+        return $this->get("shipping/zones/{$zoneId}");
+    }
+
+    public function shippingZoneMethods($zoneId)
+    {
+        return $this->get("shipping/zones/{$zoneId}/methods")['data'];
+    }
+
+    public function updateShippingZoneMethod($zoneId, $methodId, $settings)
+    {
+        return $this->put("shipping/zones/{$zoneId}/methods/{$methodId}", [
+            'settings' => $settings
+        ])['data'];
+    }
+
+    public function getProductVariations($productId, $query = []): array
+    {
+        try {
+            $response = $this->get("products/{$productId}/variations", array_merge([
+                'per_page' => 100,
+                'status' => 'publish',
+            ], $query));
+
+            $variations = (is_array($response) && isset($response['data'])) ? $response['data'] : $response;
+
+            // إضافة product_id لكل متغير وتحسين البيانات
+            foreach ($variations as &$variation) {
+                $variation['product_id'] = (int)$productId;
+
+                // التأكد من وجود البيانات الأساسية
+                if (!isset($variation['price']) || $variation['price'] === '') {
+                    $variation['price'] = $variation['regular_price'] ?? 0;
+                }
+
+                // التأكد من وجود SKU
+                if (!isset($variation['sku'])) {
+                    $variation['sku'] = '';
+                }
+
+                // التأكد من وجود الصور
+                if (!isset($variation['images']) || empty($variation['images'])) {
+                    $variation['images'] = isset($variation['image']) ? [$variation['image']] : [];
+                }
+
+                // التأكد من وجود الخصائص
+                if (!isset($variation['attributes'])) {
+                    $variation['attributes'] = [];
+                }
+            }
+
+            logger()->info('Retrieved variations for product', [
+                'productId' => $productId,
+                'count' => count($variations)
+            ]);
+
+            return $variations ?? [];
+        } catch (\Exception $e) {
+            logger()->error('Failed to get variations', [
+                'productId' => $productId,
+                'error' => $e->getMessage()
+            ]);
+            return [];
+        }
+    }
+
+    private function filterUniqueTerms(array $terms, string $preferredLang = 'en'): array
+    {
+        if (empty($terms)) {
+            return [];
+        }
+
+        // تسجيل البيانات الأولية
+        Log::info('بدء فلترة المصطلحات:', [
+            'total_terms' => count($terms),
+            'preferred_lang' => $preferredLang,
+            'sample_terms' => array_slice($terms, 0, 5)
+        ]);
+
+        $uniqueTerms = [];
+        $seenNames = [];
+        $duplicatesLog = [];
+
+        foreach ($terms as $index => $term) {
+            $termName = $term['name'] ?? '';
+            $termId = $term['id'] ?? null;
+            $termLang = $term['lang'] ?? $preferredLang;
+
+            Log::debug("معالجة المصطلح {$index}:", [
+                'id' => $termId,
+                'name' => $termName,
+                'lang' => $termLang
+            ]);
+
+            // إذا كان الاسم فارغ، تجاهله
+            if (empty($termName)) {
+                Log::warning("تجاهل مصطلح بدون اسم:", ['term' => $term]);
+                continue;
+            }
+
+            // إذا لم نر هذا الاسم من قبل
+            if (!isset($seenNames[$termName])) {
+                $uniqueTerms[] = $term;
+                $seenNames[$termName] = [
+                    'id' => $termId,
+                    'lang' => $termLang,
+                    'index' => count($uniqueTerms) - 1
+                ];
+
+                Log::debug("✅ تمت إضافة مصطلح جديد:", [
+                    'name' => $termName,
+                    'id' => $termId,
+                    'lang' => $termLang
+                ]);
+            } else {
+                // المصطلح موجود، تحقق من اللغة
+                $existingInfo = $seenNames[$termName];
+
+                $duplicatesLog[] = [
+                    'name' => $termName,
+                    'existing_id' => $existingInfo['id'],
+                    'existing_lang' => $existingInfo['lang'],
+                    'new_id' => $termId,
+                    'new_lang' => $termLang
+                ];
+
+                // إذا كانت اللغة الجديدة هي المفضلة، استبدل الموجود
+                if ($termLang === $preferredLang && $existingInfo['lang'] !== $preferredLang) {
+                    $uniqueTerms[$existingInfo['index']] = $term;
+                    $seenNames[$termName] = [
+                        'id' => $termId,
+                        'lang' => $termLang,
+                        'index' => $existingInfo['index']
+                    ];
+
+                    Log::info("🔄 تم استبدال المصطلح باللغة المفضلة:", [
+                        'name' => $termName,
+                        'old_id' => $existingInfo['id'],
+                        'new_id' => $termId,
+                        'preferred_lang' => $preferredLang
+                    ]);
+                } else {
+                    Log::debug("تجاهل مصطلح مكرر:", [
+                        'name' => $termName,
+                        'existing_id' => $existingInfo['id'],
+                        'duplicate_id' => $termId
+                    ]);
+                }
+            }
+        }
+
+        // ترتيب المصطلحات حسب الاسم (رقمياً إذا كانت أرقام)
+        usort($uniqueTerms, function ($a, $b) {
+            $nameA = $a['name'] ?? '';
+            $nameB = $b['name'] ?? '';
+
+            // إذا كانت الأسماء أرقام، قارن رقمياً
+            if (is_numeric($nameA) && is_numeric($nameB)) {
+                return (int)$nameA - (int)$nameB;
+            }
+
+            // وإلا قارن أبجدياً
+            return strcmp($nameA, $nameB);
+        });
+
+        // تسجيل النتائج
+        Log::info('انتهاء فلترة المصطلحات:', [
+            'original_count' => count($terms),
+            'filtered_count' => count($uniqueTerms),
+            'removed_count' => count($terms) - count($uniqueTerms),
+            'duplicates_found' => count($duplicatesLog),
+            'final_terms' => array_column($uniqueTerms, 'name')
+        ]);
+
+        if (!empty($duplicatesLog)) {
+            Log::info('المصطلحات المكررة التي تم معالجتها:', $duplicatesLog);
+        }
+
+        return array_values($uniqueTerms);
+    }
+
+    public function updateVariationMrbpRole($variationId, $roleId, $value)
+    {
+        // For variations, we need to update directly on the target product/variation
+        try {
+            // Get all products (limited to 50 for performance)
+            $products = $this->getProducts(['per_page' => 50]);
+
+            // Find the parent product containing this variation
+            $parentProductId = null;
+            foreach ($products as $product) {
+                if (isset($product['variations']) && is_array($product['variations']) && in_array($variationId, $product['variations'])) {
+                    $parentProductId = $product['id'];
+                    break;
+                }
+            }
+
+            if (!$parentProductId) {
+                throw new \Exception("Parent product not found for variation ID: {$variationId}");
+            }
+
+            // Get the current variation data
+            $variation = $this->get("products/{$parentProductId}/variations/{$variationId}");
+
+            // Prepare meta data update
+            $metaData = $variation['meta_data'] ?? [];
+
+            // Check if mrbp_role exists in meta_data
+            $mrbpRoleFound = false;
+            foreach ($metaData as &$meta) {
+                if ($meta['key'] === 'mrbp_role') {
+                    $mrbpRoleFound = true;
+
+                    // تحديث القيم بنفس التنسيق الجديد
+                    if (!is_array($meta['value'])) {
+                        $meta['value'] = [];
+                    }
+
+                    // أولاً نزيل أي إدخال موجود لهذا الدور
+                    $newRoleValues = [];
+                    $roleEntryExists = false;
+
+                    foreach ($meta['value'] as $roleEntry) {
+                        if (isset($roleEntry[$roleId])) {
+                            $roleEntryExists = true;
+                            // تحديث القيم
+                            $newRoleValues[] = [
+                                $roleId => ucfirst($roleId),
+                                'mrbp_regular_price' => $value,
+                                'mrbp_sale_price' => $value,
+                                'mrbp_make_empty_price' => ""
+                            ];
+                        } else {
+                            $newRoleValues[] = $roleEntry;
+                        }
+                    }
+
+                    if (!$roleEntryExists) {
+                        $newRoleValues[] = [
+                            $roleId => ucfirst($roleId),
+                            'mrbp_regular_price' => $value,
+                            'mrbp_sale_price' => $value,
+                            'mrbp_make_empty_price' => ""
+                        ];
+                    }
+
+                    $meta['value'] = $newRoleValues;
+                    break;
+                }
+            }
+
+            // If mrbp_role doesn't exist, add it
+            if (!$mrbpRoleFound) {
+                $metaData[] = [
+                    'key' => 'mrbp_role',
+                    'value' => [
+                        [
+                            $roleId => ucfirst($roleId),
+                            'mrbp_regular_price' => $value,
+                            'mrbp_sale_price' => $value,
+                            'mrbp_make_empty_price' => ""
+                        ]
+                    ]
+                ];
+            }
+
+            // Log the update for debugging
+            logger()->info('Updating variation meta_data', [
+                'variationId' => $variationId,
+                'parentProductId' => $parentProductId,
+                'metaData' => $metaData
+            ]);
+
+            // Update the variation
+            $result = $this->put("products/{$parentProductId}/variations/{$variationId}", [
+                'meta_data' => $metaData
+            ]);
+
+            return $result;
+        } catch (\Exception $e) {
+            logger()->error('Error updating variation price role', [
+                'variationId' => $variationId,
+                'roleId' => $roleId,
+                'value' => $value,
+                'error' => $e->getMessage()
+            ]);
+            throw $e;
+        }
+    }
+
+    /**
+     * الحصول على متغيرات المنتج مع قيم الـ roles
+     */
+    public function getProductVariationsWithRoles($productId)
+    {
+        try {
+            // جلب جميع متغيرات المنتج مرة واحدة
+            $variations = $this->get("products/{$productId}/variations", [
+                'per_page' => 100 // الحد الأقصى للمتغيرات
+            ])['data'];
+
+            // إضافة قيم roles لكل متغير
+            foreach ($variations as &$variation) {
+                // تهيئة قيم roles
+                $variation['role_values'] = [];
+
+                // البحث عن meta_data للـ mrbp_role
+                if (isset($variation['meta_data']) && is_array($variation['meta_data'])) {
+                    foreach ($variation['meta_data'] as $meta) {
+                        if ($meta['key'] === 'mrbp_role' && is_array($meta['value'])) {
+                            // استخراج قيم الـ roles
+                            foreach ($meta['value'] as $roleEntry) {
+                                if (is_array($roleEntry)) {
+                                    $roleKey = array_key_first($roleEntry);
+                                    if ($roleKey) {
+                                        // Formato directo
+                                        $variation['role_values'][$roleKey] = $roleEntry['mrbp_regular_price'] ?? '';
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            logger()->info('Retrieved variations with roles', [
+                'productId' => $productId,
+                'count' => count($variations)
+            ]);
+
+            return $variations;
+        } catch (\Exception $e) {
+            logger()->error('Error getting variations with roles', [
+                'productId' => $productId,
+                'error' => $e->getMessage()
+            ]);
+            return [];
+        }
+    }
+
+    /**
+     * تحديث سعر الدور للمنتج الأساسي
+     */
+    public function updateProductMrbpRole($productId, $roleId, $value)
+    {
+        try {
+            // الحصول على بيانات المنتج الحالية
+            $product = $this->getProduct($productId);
+
+            // تحضير بيانات meta_data
+            $metaData = $product['meta_data'] ?? [];
+
+            // التحقق مما إذا كانت القيمة فارغة أو صفر - في هذه الحالة سنقوم بحذف الدور
+            $shouldRemoveRole = empty($value) || $value == '0' || $value === 0;
+
+            // إذا كنا بحاجة إلى حذف الدور ولا توجد بيانات meta، نعود
+            if ($shouldRemoveRole && empty($metaData)) {
+                logger()->info('No meta data to remove role from', [
+                    'productId' => $productId,
+                    'roleId' => $roleId
+                ]);
+                return ['success' => true, 'message' => 'No role to remove'];
+            }
+
+            // البحث عن mrbp_role في meta_data
+            $mrbpRoleFound = false;
+            $roleRemoved = false;
+
+            foreach ($metaData as $index => &$meta) {
+                if ($meta['key'] === 'mrbp_role') {
+                    $mrbpRoleFound = true;
+
+                    // إذا كان يجب إزالة الدور
+                    if ($shouldRemoveRole) {
+                        // إذا كانت القيمة مصفوفة مباشرة من الأدوار
+                        if (isset($meta['value']) && is_array($meta['value'])) {
+                            $newRoleValues = [];
+                            foreach ($meta['value'] as $roleEntry) {
+                                // تخطي الدور الذي نريد إزالته
+                                if (!isset($roleEntry[$roleId])) {
+                                    $newRoleValues[] = $roleEntry;
+                                } else {
+                                    $roleRemoved = true;
+                                }
+                            }
+
+                            // تحديث الأدوار المصفاة أو إزالتها تمامًا إذا كانت فارغة
+                            if (!empty($newRoleValues)) {
+                                $meta['value'] = $newRoleValues;
+                            } else {
+                                // إزالة mrbp_role بالكامل إذا لم تكن هناك أدوار أخرى
+                                unset($metaData[$index]);
+                                $metaData = array_values($metaData); // إعادة فهرسة المصفوفة
+                            }
+                        }
+                    } else {
+                        // عدم الإزالة - منطق التحديث
+                        // التحويل إلى التنسيق المناسب إذا لم تكن مصفوفة بالفعل
+                        if (!is_array($meta['value'])) {
+                            $meta['value'] = [];
+                        }
+
+                        // أولاً نزيل أي إدخال موجود لهذا الدور
+                        $newRoleValues = [];
+                        $roleEntryExists = false;
+
+                        foreach ($meta['value'] as $roleEntry) {
+                            if (isset($roleEntry[$roleId])) {
+                                $roleEntryExists = true;
+
+                                // تحديث بالتنسيق الجديد المباشر
+                                $newRoleValues[] = [
+                                    $roleId => ucfirst($roleId),
+                                    'mrbp_regular_price' => $value,
+                                    'mrbp_sale_price' => $value,
+                                    'mrbp_make_empty_price' => ""
+                                ];
+                            } else {
+                                $newRoleValues[] = $roleEntry;
+                            }
+                        }
+
+                        // إذا لم يتم العثور على الدور، أضفه
+                        if (!$roleEntryExists) {
+                            // إنشاء قيمة جديدة بالتنسيق المباشر
+                            $newRoleValues[] = [
+                                'id' => $roleId, // إضافة ID للدور
+                                'name' => ucfirst($roleId),
+                                'mrbp_regular_price' => $value,
+                                'mrbp_sale_price' => $value,
+                                'mrbp_make_empty_price' => ""
+                            ];
+                        }
+
+                        $meta['value'] = $newRoleValues;
+                    }
+                    break;
+                }
+            }
+
+            // إذا كان mrbp_role غير موجود ولسنا نحاول إزالته، نضيفه
+            if (!$mrbpRoleFound && !$shouldRemoveRole) {
+                $metaData[] = [
+                    'key' => 'mrbp_role',
+                    'value' => [
+                        [
+                            'id' => $roleId, // إضافة ID للدور
+                            'name' => ucfirst($roleId),
+                            'mrbp_regular_price' => $value,
+                            'mrbp_sale_price' => $value,
+                            'mrbp_make_empty_price' => ""
+                        ]
+                    ]
+                ];
+            }
+
+            // تسجيل التحديث للتصحيح
+            logger()->info('Updating product meta_data', [
+                'productId' => $productId,
+                'shouldRemoveRole' => $shouldRemoveRole,
+                'roleRemoved' => $roleRemoved,
+                'metaData' => $metaData
+            ]);
+
+            // تحديث المنتج
+            $result = $this->put("products/{$productId}", [
+                'meta_data' => $metaData
+            ]);
+
+            return $result;
+        } catch (\Exception $e) {
+            logger()->error('Error updating product price role', [
+                'productId' => $productId,
+                'roleId' => $roleId,
+                'value' => $value,
+                'error' => $e->getMessage()
+            ]);
+            throw $e;
+        }
+    }
+
+    /**
+     * تحديث سعر الدور للمنتج - واجهة بديلة لـ updateProductMrbpRole
+     */
+    public function updateProductRolePrice($productId, $roleId, $value)
+    {
+        return $this->updateProductMrbpRole($productId, $roleId, $value);
+    }
+
+    public function updateProductVariation($productId, $variationId, $query = [])
+    {
+        return $this->put("products/{$productId}/variations/{$variationId}", $query);
+    }
+
+    public function updateMainProductPrice($productId, $price)
+    {
+        return $this->put("products/{$productId}", [
+            'regular_price' => $price
+        ]);
+    }
+
+    public function updateMainSalePrice($productId, $price)
+    {
+        return $this->put("products/{$productId}", [
+            'sale_price' => $price
+        ]);
+    }
+
+    public function updateMrbpMetaboxUserRoleEnable($productId, $yes)
+    {
+        return $this->put("products/{$productId}", [
+            'meta_data' => [
+                [
+                    'key' => 'mrbp_metabox_user_role_enable',
+                    'value' => $yes
+                ]
+            ]
+        ]);
+    }
+
+    public function updateProductStatus($productId, $status)
+    {
+        return $this->put("products/{$productId}", [
+            'status' => $status
+        ]);
+    }
+
+    public function getProductTranslations($productId)
+    {
+        return $this->get('products/' . $productId . '/translations');
+    }
+
+    private function sanitizeVariationData(array $variation): array
+    {
+        $cleanData = [];
+
+        // Required fields
+        if (isset($variation['regular_price'])) {
+            $cleanData['regular_price'] = (string)$variation['regular_price'];
+        }
+
+        // --- تعديل هنا لمعالجة stock_quantity كـ integer أو null ---
+        $stockQuantity = null;
+        if (isset($variation['stock_quantity'])) {
+            // إذا كانت القيمة رقمية (بما في ذلك الصفر كرقم أو كنص)، حولها إلى integer
+            if (is_numeric($variation['stock_quantity'])) {
+                $stockQuantity = (int)$variation['stock_quantity'];
+            } // إذا كانت موجودة ولكنها فارغة (سلسلة نصية فارغة)، اجعلها null
+            else if ($variation['stock_quantity'] === '') {
+                $stockQuantity = null;
+            } // إذا كانت null، اجعلها null
+            else if (is_null($variation['stock_quantity'])) {
+                $stockQuantity = null;
+            } // لأي حالات أخرى غير متوقعة، استخدم القيمة كما هي
+            else {
+                $stockQuantity = $variation['stock_quantity'];
+            }
+        }
+
+        // ✅ إجباري: تفعيل إدارة المخزون للمتغيرات
+        $cleanData['manage_stock'] = true;
+
+        // Crucial: If stock is managed, send 0 instead of null for empty quantities
+        if (is_null($stockQuantity)) {
+            $stockQuantity = 0; // تحويل null إلى 0 عند تفعيل إدارة المخزون
+            Log::info('WooCommerceService->sanitizeVariationData: Converted null stock_quantity to 0 (manage_stock is true).', [
+                'final_stock_quantity_after_conversion' => $stockQuantity
+            ]);
+        }
+
+        $cleanData['stock_quantity'] = $stockQuantity;
+
+        // --- إضافة stock_status بناءً على الكمية ---
+        $stockStatus = 'instock';
+        if ($cleanData['stock_quantity'] <= 0) {
+            $stockStatus = 'outofstock';
+        }
+        $cleanData['stock_status'] = $stockStatus;
+
+        // باقي الحقول
+        if (isset($variation['sku'])) {
+            $cleanData['sku'] = (string)$variation['sku'];
+        }
+
+        // Optional fields
+        if (isset($variation['id'])) {
+            $cleanData['id'] = (int)$variation['id'];
+        }
+
+        if (!empty($variation['sale_price'])) {
+            $cleanData['sale_price'] = (string)$variation['sale_price'];
+        }
+
+        if (!empty($variation['description'])) {
+            $cleanData['description'] = (string)$variation['description'];
+        }
+
+        // Process attributes
+        if (isset($variation['attributes']) && is_array($variation['attributes'])) {
+            $cleanData['attributes'] = [];
+            foreach ($variation['attributes'] as $attribute) {
+                if (isset($attribute['id']) && isset($attribute['option'])) {
+                    $cleanData['attributes'][] = [
+                        'id' => (int)$attribute['id'],
+                        'option' => (string)$attribute['option']
+                    ];
+                }
+            }
+        }
+
+        // Process image
+        if (isset($variation['image']) && !empty($variation['image'])) {
+            if (is_string($variation['image'])) {
+                $cleanData['image'] = ['src' => $variation['image']];
+            } else if (is_array($variation['image']) && isset($variation['image']['src'])) {
+                $cleanData['image'] = ['src' => $variation['image']['src']];
+            }
+        }
+
+        Log::info('WooCommerceService->sanitizeVariationData: Final cleaned data with manage_stock=true.', [
+            'final_cleaned_data' => $cleanData
+        ]);
+
+        return $cleanData;
+    }
+
+    private function sanitizeAttributes(array $attributes): array
+    {
+        $sanitized = [];
+        foreach ($attributes as $attribute) {
+            if (isset($attribute['id']) && isset($attribute['option'])) {
+                $sanitized[] = [
+                    'id' => (int)$attribute['id'],
+                    'option' => (string)$attribute['option']
+                ];
+            }
+        }
+        return $sanitized;
+    }
+
+    private function sanitizeImage($image): array
+    {
+        if (is_string($image)) {
+            return ['src' => $image];
+        } else if (is_array($image) && isset($image['src'])) {
+            return ['src' => $image['src']];
+        }
+        return [];
+    }
+
+    public function batchUpdateProducts(array $data): array
+    {
+        try {
+            logger()->info('Sending batch update to WooCommerce API', [
+                'create_count' => count($data['create'] ?? []),
+                'update_count' => count($data['update'] ?? []),
+                'delete_count' => count($data['delete'] ?? [])
+            ]);
+
+            return $this->post('products/batch', $data);
+        } catch (\Exception $e) {
+            logger()->error('Failed to process batch update', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            throw $e;
+        }
+    }
+
+    public function batchUpdateVariations($productId, array $data): array
+    {
+        try {
+            Log::info('WooCommerceService->batchUpdateVariations: Sending batch variation update payload.', [
+                'productId' => $productId,
+                'payload_data' => $data // Log the full payload being sent
+            ]);
+
+            return $this->post("products/{$productId}/variations/batch", $data);
+        } catch (\Exception $e) {
+            logger()->error('Failed to process batch variation update', [
+                'productId' => $productId,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            throw $e;
+        }
+    }
+
+    public function getOrdersReportData()
+    {
+        return $this->get('reports/orders/totals');
+    }
+
+    public function getAllVariations(): array
+    {
+        $allVariations = [];
+
+        try {
+            // 1. جلب كل المنتجات القابلة للتغيير (variable)
+            $page = 1;
+            do {
+                $response = $this->get('products', [
+                    'type' => 'variable',
+                    'per_page' => 100,
+                    'page' => $page,
+                    'status' => 'publish'
+                ]);
+
+                $products = is_array($response) && isset($response['data']) ? $response['data'] : $response;
+
+                foreach ($products as $product) {
+                    $productId = $product['id'];
+
+                    // 2. جلب المتغيرات الخاصة بهذا المنتج
+                    $variations = $this->getVariationsByProductId($productId);
+
+                    foreach ($variations as &$variation) {
+                        $variation['product_id'] = $productId; // نضيف معرف المنتج لسهولة الاستخدام
+                    }
+
+                    $allVariations = array_merge($allVariations, $variations);
+                }
+
+                // 3. تحقق من وجود صفحات أخرى
+                $totalPages = $response['total_pages'] ?? 1;
+                $page++;
+            } while ($page <= $totalPages);
+
+            logger()->info("✅ All variations fetched", ['total' => count($allVariations)]);
+            return $allVariations;
+        } catch (\Exception $e) {
+            logger()->error('❌ Error fetching all variations', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return [];
+        }
+    }
+
+    public function getVariableProductsPaginated(int $page = 1, int $perPage = 100): array
+    {
+        return $this->get('products', [
+            'type' => 'variable',
+            'status' => 'publish',
+            'per_page' => $perPage,
+            'page' => $page,
+        ]);
+    }
+
+    public function getShippingMethods(): array
+    {
+        return $this->get('shipping_methods');
+    }
+
+    /**
+     * ✅ دالة جلب العملاء
+     * هذا هو المكان الذي كان فيه الخطأ المحتمل في نسختك
+     */
+    public function getCustomers(array $query = []): array
+    {
+        try {
+            // إضافة معاملات افتراضية
+            $defaultQuery = [
+                'per_page' => 100,
+                'orderby' => 'date',
+                'order' => 'desc'
+            ];
+
+            $finalQuery = array_merge($defaultQuery, $query);
+
+            logger()->info('Fetching customers list', ['query' => $finalQuery]);
+
+            $response = $this->get('customers', $finalQuery);
+
+            // التعامل مع البيانات المغلفة أو غير المغلفة
+            $customers = isset($response['data']) ? $response['data'] : $response;
+
+            if (!is_array($customers)) {
+                logger()->warning('Invalid customers response', ['response' => $response]);
+                return [];
+            }
+
+            // فلترة العملاء الصالحين فقط
+            $validCustomers = array_filter($customers, function($customer) {
+                return isset($customer['id']) && !empty($customer['id']);
+            });
+
+            logger()->info('Customers fetched successfully', [
+                'total_customers' => count($validCustomers),
+                'sample_customer' => !empty($validCustomers) ? [
+                    'id' => $validCustomers[0]['id'],
+                    'email' => $validCustomers[0]['email'] ?? 'no_email'
+                ] : 'no_customers'
+            ]);
+
+            return $validCustomers;
+
+        } catch (\Exception $e) {
+            logger()->error('Error fetching customers', [
+                'query' => $query,
+                'error' => $e->getMessage()
+            ]);
+
+            return [];
+        }
+    }
+
+    public function createCustomer(array $customerData): ?array
+    {
+        try {
+            logger()->info('Creating new customer in WooCommerce', [
+                'email' => $customerData['email'] ?? 'no_email'
+            ]);
+
+            // تنظيف البيانات
+            $cleanData = [
+                'email' => $customerData['email'] ?? 'guest-' . time() . '@pos.local',
+                'first_name' => $customerData['first_name'] ?? 'عميل',
+                'last_name' => $customerData['last_name'] ?? 'POS',
+                'username' => $customerData['username'] ?? 'customer_' . time(),
+                'billing' => [
+                    'first_name' => $customerData['first_name'] ?? 'عميل',
+                    'last_name' => $customerData['last_name'] ?? 'POS',
+                    'email' => $customerData['email'] ?? 'guest-' . time() . '@pos.local',
+                    'phone' => $customerData['phone'] ?? '',
+                    'address_1' => $customerData['address_1'] ?? '',
+                    'city' => $customerData['city'] ?? '',
+                    'state' => $customerData['state'] ?? '',
+                    'postcode' => $customerData['postcode'] ?? '',
+                    'country' => $customerData['country'] ?? 'PS',
+                ]
+            ];
+
+            $response = $this->post('customers', $cleanData);
+
+            if (!$response || !isset($response['id'])) {
+                logger()->error('Failed to create customer', ['response' => $response]);
+                return null;
+            }
+
+            logger()->info('Customer created successfully', [
+                'customer_id' => $response['id'],
+                'customer_email' => $response['email']
+            ]);
+
+            return $response;
+
+        } catch (\Exception $e) {
+            logger()->error('Error creating customer', [
+                'customer_data' => $customerData,
+                'error' => $e->getMessage()
+            ]);
+
+            return null;
+        }
+    }
+
+    public function getLastPageFromHeaders(): int
+    {
+        $headers = $this->client->getHeaders();
+        $lastPage = 1;
+        if (isset($headers['X-WP-TotalPages'])) {
+            $lastPage = (int)$headers['X-WP-TotalPages'][0];
+        }
+        return $lastPage;
+    }
+
+    public function getCustomersCount()
+    {
+        $response = $this->get('customers', [
+            'per_page' => 1 // لا داعي لجلب 100 عنصر
+        ]);
+
+        // إذا كانت استجابة فيها total => نرجع العدد من الهيدر
+        return is_array($response) && isset($response['total'])
+            ? $response['total']
+            : count($response);
+    }
+
+    public function getProductsCount()
+    {
+        $response = $this->get('products', [
+            'per_page' => 1 // فقط لمعرفة العدد
+        ]);
+
+        return is_array($response) && isset($response['total'])
+            ? $response['total']
+            : count($response);
+    }
+
+    public function getLowStockProducts()
+    {
+        $response = $this->get('products', [
+            'per_page' => 100,
+            'status' => 'publish',
+            'stock_quantity' => [
+                'lte' => 5
+            ]
+        ]);
+
+        return $response['data'] ?? $response;
+    }
+
+    public function createUser($data)
+    {
+        return $this->post('customers', $data);
+    }
+
+    // داخل App\Services\WooCommerceService;
+
+    public function findOneProductForPOS(string $term): ?array
+    {
+        try {
+            $term = trim($term);
+
+            // 1) محاولة ID رقمي مباشر
+            if (ctype_digit($term)) {
+                $byId = $this->getProductsById((int)$term);
+                if ($byId) {
+                    return $this->normalizeProductForPOS($byId);
+                }
+            }
+
+            // 2) محاولة SKU (دقيقة)
+            $bySku = $this->getProducts(['sku' => $term, 'per_page' => 1]);
+            $skuData = isset($bySku['data']) ? $bySku['data'] : $bySku;
+            if (!empty($skuData[0])) {
+                return $this->normalizeProductForPOS($skuData[0]);
+            }
+
+            // 3) بحث بالاسم (أو أي حقل تدعمه واجهتك)
+            $bySearch = $this->getProducts(['search' => $term, 'per_page' => 5]);
+            $searchData = isset($bySearch['data']) ? $bySearch['data'] : $bySearch;
+            if (!empty($searchData[0])) {
+                return $this->normalizeProductForPOS($searchData[0]);
+            }
+
+            // 4) البحث في المتغيرات
+            $variationResult = $this->searchInVariations($term);
+            if ($variationResult) {
+                return $variationResult;
+            }
+
+            return null;
+        } catch (\Exception $e) {
+            logger()->error('Error in findOneProductForPOS', [
+                'term' => $term,
+                'error' => $e->getMessage()
+            ]);
+
+            return null;
+        }
+    }
+
+    private function searchInVariations(string $term): ?array
+    {
+        try {
+            // جلب المنتجات القابلة للتغيير
+            $variableProducts = $this->getProducts([
+                'type' => 'variable',
+                'per_page' => 50,
+                'status' => 'publish'
+            ]);
+
+            $products = isset($variableProducts['data']) ? $variableProducts['data'] : $variableProducts;
+
+            foreach ($products as $product) {
+                if (!empty($product['variations'])) {
+                    // البحث في متغيرات هذا المنتج
+                    $variations = $this->getVariationsByProductId($product['id']);
+
+                    foreach ($variations as $variation) {
+                        // فحص SKU للمتغير
+                        if (!empty($variation['sku']) && strcasecmp($variation['sku'], $term) === 0) {
+                            return $this->normalizeProductForPOS($product);
+                        }
+
+                        // فحص ID للمتغير
+                        if (ctype_digit($term) && $variation['id'] == (int)$term) {
+                            return $this->normalizeProductForPOS($product);
+                        }
+                    }
+                }
+            }
+
+            return null;
+        } catch (\Exception $e) {
+            logger()->error('Error searching in variations', [
+                'term' => $term,
+                'error' => $e->getMessage()
+            ]);
+            return null;
+        }
+    }
+
+    /**
+     * ✅ دالة جديدة للبحث عن متغير محدد بناءً على ID أو SKU
+     * هذا هو التعديل الأساسي الذي يخدم طلبك
+     */
+    public function findVariationByTerm(string $term): ?array
+    {
+        try {
+            $term = trim($term);
+
+            // 1. البحث بالـ ID
+            if (ctype_digit($term)) {
+                $variation = $this->getVariationById((int)$term);
+                if ($variation) {
+                    return $variation;
+                }
+            }
+
+            // 2. البحث بـ SKU
+            $variations = $this->getAllVariations();
+            foreach ($variations as $variation) {
+                if (!empty($variation['sku']) && strcasecmp($variation['sku'], $term) === 0) {
+                    // إذا وجدنا المتغير، نقوم بجلب بياناته الكاملة
+                    return $this->getVariationById($variation['id']);
+                }
+            }
+
+            return null;
+
+        } catch (\Exception $e) {
+            logger()->error('Error in findVariationByTerm', [
+                'term' => $term,
+                'error' => $e->getMessage()
+            ]);
+            return null;
+        }
+    }
+
+    protected function normalizeProductForPOS(array $product): array
+    {
+        $normalized = [
+            'id' => $product['id'],
+            'name' => $product['name'] ?? '',
+            'sku' => $product['sku'] ?? '',
+            'price' => $product['price'] ?? $product['regular_price'] ?? 0,
+            'type' => $product['type'] ?? 'simple',
+            'images' => $product['images'] ?? [],
+            'categories' => $product['categories'] ?? [],
+            'stock_status' => $product['stock_status'] ?? 'instock',
+            'description' => $product['description'] ?? '',
+            'short_description' => $product['short_description'] ?? '',
+        ];
+
+        // إذا كان المنتج متغير
+        if ($product['type'] === 'variable') {
+            $normalized['variations'] = $product['variations'] ?? [];
+
+            // إذا كانت تفاصيل المتغيرات متوفرة
+            if (isset($product['variations_details'])) {
+                $variationsFull = [];
+
+                foreach ($product['variations_details'] as $variation) {
+                    $variationsFull[] = [
+                        'id' => $variation['id'],
+                        'name' => $this->composeVariationName($product['name'], $variation['attributes'] ?? []),
+                        'sku' => $variation['sku'] ?? '',
+                        'price' => $variation['price'] ?? $variation['regular_price'] ?? 0,
+                        'images' => $variation['images'] ?: $product['images'],
+                        'attributes' => $variation['attributes'] ?? [],
+                        'stock_status' => $variation['stock_status'] ?? 'instock',
+                        'stock_quantity' => $variation['stock_quantity'] ?? 0,
+                        'type' => 'variation',
+                        'product_id' => $product['id']
+                    ];
+                }
+
+                $normalized['variations_full'] = $variationsFull;
+            }
+        }
+
+        // إذا كان المنتج هو متغير بحد ذاته
+        if ($product['type'] === 'variation' && isset($product['product_id'])) {
+            $normalized['parent_id'] = $product['product_id'];
+        }
+
+        return $normalized;
+    }
+
+    /** تهيئة المنتج والمتحولات لصيغة POS */
+
+    protected function composeVariationName(string $parentName, array $attributes): string
+    {
+        if (empty($attributes)) {
+            return $parentName;
+        }
+
+        $parts = [];
+        foreach ($attributes as $attribute) {
+            $value = $attribute['option'] ?? $attribute['value'] ?? null;
+            if ($value) {
+                $parts[] = $value;
+            }
+        }
+
+        return empty($parts) ? $parentName : $parentName . ' - ' . implode(', ', $parts);
     }
 }

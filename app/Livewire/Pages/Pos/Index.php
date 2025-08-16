@@ -692,3 +692,8 @@ class Index extends Component
         return view('livewire.pages.pos.index');
     }
 }
+
+// ================================================
+// FILENAME: WooCommerceService.php
+// الوصف: يتعامل مع اتصالات API ويوفر دوال للخدمات
+//
