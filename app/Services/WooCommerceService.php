@@ -1470,7 +1470,7 @@ class WooCommerceService
             // جلب جميع متغيرات المنتج مرة واحدة
             $variations = $this->get("products/{$productId}/variations", [
                 'per_page' => 100 // الحد الأقصى للمتغيرات
-            ]);
+            ])['data'];
 
             // إضافة قيم roles لكل متغير
             foreach ($variations as &$variation) {
