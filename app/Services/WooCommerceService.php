@@ -267,6 +267,14 @@ class WooCommerceService
         try {
             $foundProduct = null;
 
+            // ================================================
+            // ✅ تم تعديل هذا الجزء للبحث عن الـ variation أولاً.
+            // ================================================
+            $foundVariation = $this->getVariationByTerm($term);
+            if ($foundVariation) {
+                return $this->normalizeProductForPOS($foundVariation);
+            }
+
             // البحث بالـ ID
             if (is_numeric($term)) {
                 $foundProduct = $this->getProductsById((int)$term);
@@ -290,11 +298,6 @@ class WooCommerceService
                 }
             }
 
-            // البحث في المتغيرات
-            if (!$foundProduct) {
-                $foundProduct = $this->searchProductByVariation($term);
-            }
-
             if ($foundProduct) {
                 return $this->normalizeProductForPOS($foundProduct);
             }
@@ -306,6 +309,50 @@ class WooCommerceService
                 'error' => $e->getMessage()
             ]);
 
+            return null;
+        }
+    }
+
+    /**
+     * ✅ دالة جديدة ومحسنة للبحث عن متغير محدد
+     * تبحث عن المتغير مباشرةً بالـ ID أو SKU
+     */
+    public function getVariationByTerm(string $term): ?array
+    {
+        try {
+            $term = trim($term);
+
+            // 1. البحث بالـ ID
+            if (ctype_digit($term)) {
+                $product = $this->getProductsById((int)$term);
+                if ($product && isset($product['type']) && $product['type'] === 'variation') {
+                    return $product;
+                }
+            }
+
+            // 2. البحث بـ SKU في كل المنتجات المتغيرة
+            $variableProducts = $this->getProducts([
+                'type' => 'variable',
+                'per_page' => 100, // يمكن زيادة هذا العدد إذا كانت هناك آلاف المنتجات
+                'status' => 'publish'
+            ])['data'] ?? [];
+
+            foreach ($variableProducts as $product) {
+                $variations = $this->getProductVariations($product['id']);
+                foreach ($variations as $variation) {
+                    if (!empty($variation['sku']) && strcasecmp($variation['sku'], $term) === 0) {
+                        return $variation;
+                    }
+                }
+            }
+
+            return null;
+
+        } catch (\Exception $e) {
+            logger()->error('Error in getVariationByTerm', [
+                'term' => $term,
+                'error' => $e->getMessage()
+            ]);
             return null;
         }
     }
@@ -447,29 +494,21 @@ class WooCommerceService
         return $response['data'] ?? [];
     }
 
-    public function getVariationById($id): array
+    public function getVariationById($id): ?array
     {
-        // For variations, we need to find the parent product first by searching all products for this variation
         try {
-            // Search for parent product containing this variation
-            $products = $this->getProducts(['per_page' => 50]);
-
-            foreach ($products as $product) {
-                if (isset($product['variations']) && is_array($product['variations']) && in_array($id, $product['variations'])) {
-                    // Found the parent product
-                    $productId = $product['id'];
-                    // Now get the variation details
-                    return $this->get("products/{$productId}/variations/{$id}");
-                }
+            // Get variation directly from its ID
+            $response = $this->get('products/' . $id);
+            if (isset($response['id']) && isset($response['type']) && $response['type'] === 'variation') {
+                return $response;
             }
-
-            throw new \Exception("Parent product not found for variation ID: {$id}");
+            return null;
         } catch (\Exception $e) {
             logger()->error('Failed to get variation', [
                 'variationId' => $id,
                 'error' => $e->getMessage()
             ]);
-            throw $e;
+            return null;
         }
     }
 
@@ -693,36 +732,47 @@ class WooCommerceService
                         // Add to appropriate batch operation
                         if (isset($cleanVariation['id']) && !empty($cleanVariation['id'])) {
                             $variationUpdates['update'][] = $cleanVariation;
+
+                            // Remove from existingVariationsMap to track which ones should be deleted
+                            if (isset($existingVariationsMap[$variationData['id']])) {
+                                unset($existingVariationsMap[$variationData['id']]);
+                            }
                         } else {
-                            $variationUpdates['create'][] = $cleanVariation;
+                            // Add to create batch
+                            $batchData['create'][] = $variationData;
                         }
-                    } catch (\Exception $ve) {
-                        logger()->error('Failed to process variation', [
-                            'variation_index' => $index,
-                            'error' => $ve->getMessage()
-                        ]);
-                        $errors[] = "Failed to process variation at index {$index}: " . $ve->getMessage();
-                    }
-                }
-
-                // Execute batch update if there are variations to update/create
-                $batchResults = null;
-                if (!empty($variationUpdates['update']) || !empty($variationUpdates['create'])) {
-                    try {
-                        $batchResults = $this->batchUpdateVariations($productId, $variationUpdates);
-
-                        logger()->info('Batch variation update completed', [
-                            'updated_count' => count($batchResults['update'] ?? []),
-                            'created_count' => count($batchResults['create'] ?? [])
-                        ]);
                     } catch (\Exception $e) {
-                        logger()->error('Batch variation update failed', [
+                        logger()->error('Failed to prepare variation for batch operation', [
+                            'variation' => $variation,
                             'error' => $e->getMessage()
                         ]);
-                        $errors[] = "Batch update failed: " . $e->getMessage();
                     }
                 }
+
+                // Add remaining variations to delete batch
+                foreach ($existingVariationsMap as $id => $variation) {
+                    $batchData['delete'][] = $id;
+                }
+
+                // Execute batch update if there's anything to do
+                if (!empty($batchData['create']) || !empty($batchData['update']) || !empty($batchData['delete'])) {
+                    $batchResult = $this->batchUpdateVariations($productId, $batchData);
+
+                    // Count results
+                    $results['created'] = count($batchResult['create'] ?? []);
+                    $results['updated'] = count($batchResult['update'] ?? []);
+                    $results['deleted'] = count($batchResult['delete'] ?? []);
+
+                    logger()->info('Batch operation completed', [
+                        'created' => $results['created'],
+                        'updated' => $results['updated'],
+                        'deleted' => $results['deleted']
+                    ]);
+                } else {
+                    logger()->info('No variations to process in batch operation');
+                }
             }
+
 
             if (!empty($errors)) {
                 return [
@@ -752,400 +802,6 @@ class WooCommerceService
             return [
                 'success' => false,
                 'message' => $e->getMessage()
-            ];
-        }
-    }
-
-    public function uploadImage($file)
-    {
-        try {
-            if (!$file || !$file->isValid()) {
-                logger()->error('Invalid file: ' . ($file ? $file->getClientOriginalName() : 'No file'));
-                throw new \Exception('الملف غير صالح');
-            }
-
-            logger()->info('Starting file upload: ' . $file->getClientOriginalName());
-
-            // تجهيز البيانات
-            $fileName = $file->getClientOriginalName();
-            $fileContent = file_get_contents($file->getRealPath());
-
-            // تجهيز URL
-            $url = $this->baseUrl . '/wp-json/wp/v2/media';
-
-            // إعداد CURL
-            $ch = curl_init();
-
-            // تجهيز المصادقة
-            $credentials = base64_encode(env('WORDPRESS_USERNAME') . ':' . env('WORDPRESS_APPLICATION_PASSWORD'));
-
-            // إعداد الهيدرز
-            $headers = [
-                'Authorization: Basic ' . $credentials,
-                'Content-Disposition: form-data; name="file"; filename="' . $fileName . '"',
-                'Content-Type: ' . $file->getMimeType(),
-            ];
-
-            // إعداد خيارات CURL
-            curl_setopt_array($ch, [
-                CURLOPT_URL => $url,
-                CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_POST => true,
-                CURLOPT_POSTFIELDS => $fileContent,
-                CURLOPT_HTTPHEADER => $headers,
-                CURLOPT_SSL_VERIFYPEER => false,
-                CURLOPT_SSL_VERIFYHOST => false,
-            ]);
-
-            // تنفيذ الطلب
-            $response = curl_exec($ch);
-            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-
-            // التحقق من الأخطاء
-            if (curl_errno($ch)) {
-                $error = curl_error($ch);
-                curl_close($ch);
-                logger()->error('CURL Error: ' . $error);
-                throw new \Exception($error);
-            }
-
-            curl_close($ch);
-
-            // التحقق من الاستجابة
-            if ($httpCode !== 201) {
-                logger()->error('Upload failed with status: ' . $httpCode);
-                logger()->error('Response: ' . $response);
-                throw new \Exception('فشل في رفع الصورة. رمز الحالة: ' . $httpCode);
-            }
-
-            $responseData = json_decode($response, true);
-
-            if (!isset($responseData['id'])) {
-                logger()->error('Invalid response data: ' . json_encode($responseData));
-                throw new \Exception('استجابة غير صالحة من الخادم');
-            }
-
-            logger()->info('Upload successful: ' . json_encode($responseData));
-
-            return [
-                'id' => $responseData['id'],
-                'src' => $responseData['source_url'] ?? '',
-                'name' => $fileName
-            ];
-        } catch (\Exception $e) {
-            logger()->error('Upload Error: ' . $e->getMessage());
-            throw new \Exception('فشل في رفع الصورة: ' . $e->getMessage());
-        }
-    }
-
-    public function uploadMedia($file)
-    {
-        return $this->uploadImage($file); // نستخدم نفس دالة uploadImage لأنها تقوم بنفس المهمة
-    }
-
-    public function getRoles()
-    {
-        try {
-            $response = $this->wpClient->get('roles');
-            return json_decode($response->getBody()->getContents(), true);
-        } catch (\Exception $e) {
-            logger()->error('WP API Error getting roles: ' . $e->getMessage());
-            return ['error' => $e->getMessage()];
-        }
-    }
-
-    public function getMrbpRoleById($id)
-    {
-        $product = $this->getProductsById($id);
-
-        if (!$product || empty($product['meta_data'])) {
-            return '';
-        }
-
-        foreach ($product['meta_data'] as $meta) {
-            if ($meta['key'] == 'mrbp_role') {
-                // Devolvemos una representación en texto del array
-                return json_encode($meta['value']);
-            }
-        }
-
-        return '';
-    }
-
-    public function addCategory($name, $parentId, $description)
-    {
-        return $this->post('products/categories', [
-            'name' => $name,
-            'parent' => $parentId,
-            'description' => $description
-        ]);
-    }
-
-    public function getUsers()
-    {
-        $response = $this->wpClient->get('users');
-        return json_decode($response->getBody()->getContents(), true);
-    }
-
-    public function getUserById($id)
-    {
-        $response = $this->wpClient->get('users/' . $id);
-        return json_decode($response->getBody()->getContents(), true);
-    }
-
-    public function updateUser($id, $query = [])
-    {
-        try {
-            $response = $this->wpClient->put("users/{$id}", [
-                'json' => $query,
-            ]);
-
-            $result = json_decode($response->getBody()->getContents(), true);
-            logger()->info('Update user success', $result);
-            return $result;
-        } catch (\Exception $e) {
-            logger()->error('Update user failed', [
-                'message' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
-            throw $e;
-        }
-    }
-
-    public function getCustomerById($id): ?array
-    {
-        try {
-            logger()->info('Fetching customer from WooCommerce', ['customer_id' => $id]);
-
-            $response = $this->get('customers/' . $id);
-
-            if (!$response || !isset($response['id'])) {
-                logger()->warning('Customer not found in WooCommerce', [
-                    'customer_id' => $id,
-                    'response' => $response
-                ]);
-                return null;
-            }
-
-            logger()->info('Customer found in WooCommerce', [
-                'customer_id' => $response['id'],
-                'customer_email' => $response['email'] ?? 'no_email'
-            ]);
-
-            // إضافة بيانات افتراضية إذا لم تكن موجودة
-            if (!isset($response['billing'])) {
-                $response['billing'] = [
-                    'first_name' => $response['first_name'] ?? '',
-                    'last_name' => $response['last_name'] ?? '',
-                    'email' => $response['email'] ?? '',
-                    'phone' => '',
-                    'address_1' => '',
-                    'city' => '',
-                    'state' => '',
-                    'postcode' => '',
-                    'country' => 'PS'
-                ];
-            }
-
-            if (!isset($response['shipping'])) {
-                $response['shipping'] = $response['billing'];
-            }
-
-            return $response;
-
-        } catch (\Exception $e) {
-            logger()->error('Error fetching customer from WooCommerce', [
-                'customer_id' => $id,
-                'error' => $e->getMessage()
-            ]);
-
-            return null;
-        }
-    }
-
-    public function updateOrderStatus($id, $status)
-    {
-        return $this->put("orders/{$id}", [
-            'status' => $status
-        ]);
-    }
-
-    public function getProduct($id): array
-    {
-        return $this->get('products/' . $id);
-    }
-
-    public function getMrbpData($productId): ?array
-    {
-        $product = $this->getProduct($productId);
-
-        if (!$product || empty($product['meta_data'])) {
-            return null;
-        }
-
-        foreach ($product['meta_data'] as $meta) {
-            if ($meta['key'] === 'mrbp_role') {
-                $mrbpData = [];
-                foreach ($meta['value'] as $roleData) {
-                    $role = array_key_first($roleData);
-                    if (!$role) continue;
-
-                    // Formato directo
-                    $mrbpData[$role] = [
-                        'regularPrice' => $roleData['mrbp_regular_price'] ?? '',
-                        'salePrice' => $roleData['mrbp_sale_price'] ?? ''
-                    ];
-                }
-                return $mrbpData;
-            }
-        }
-
-        return null;
-    }
-
-    public function updateMrbpData($productId, array $mrbpData): array
-    {
-        $formattedData = [];
-        foreach ($mrbpData as $role => $prices) {
-            $formattedData[] = [
-                $role => ucfirst($role),
-                'mrbp_regular_price' => $prices['regularPrice'] ?? '',
-                'mrbp_sale_price' => $prices['salePrice'] ?? '',
-                'mrbp_make_empty_price' => ''
-            ];
-        }
-
-        return $this->put("products/{$productId}", [
-            'meta_data' => [
-                [
-                    'key' => 'mrbp_role',
-                    'value' => $formattedData
-                ]
-            ]
-        ]);
-    }
-
-    public function syncVariations($productId, array $variations): array
-    {
-        try {
-            // Get the product first
-            $product = $this->getProduct($productId);
-
-            if (!$product) {
-                return [
-                    'success' => false,
-                    'message' => 'Product not found',
-                    'updated' => 0,
-                    'created' => 0,
-                    'deleted' => 0
-                ];
-            }
-
-            // Get existing variations to determine which ones to update/create/delete
-            $existingVariations = $this->getVariationsByProductId($productId);
-            $existingVariationsMap = [];
-
-            foreach ($existingVariations as $variation) {
-                if (isset($variation['id'])) {
-                    $existingVariationsMap[$variation['id']] = $variation;
-                }
-            }
-
-            // Prepare batch data
-            $batchData = [
-                'create' => [],
-                'update' => [],
-                'delete' => []
-            ];
-
-            $results = [
-                'updated' => 0,
-                'created' => 0,
-                'deleted' => 0
-            ];
-
-            // Process variations for update/create
-            foreach ($variations as $variation) {
-                try {
-                    // تجهيز بيانات المتغيّر
-                    $variationData = $this->sanitizeVariationData($variation);
-
-                    // تحديث أو إنشاء
-                    if (isset($variationData['id']) && !empty($variationData['id'])) {
-                        // Add to update batch
-                        $batchData['update'][] = $variationData;
-
-                        // Remove from existingVariationsMap to track which ones should be deleted
-                        if (isset($existingVariationsMap[$variationData['id']])) {
-                            unset($existingVariationsMap[$variationData['id']]);
-                        }
-                    } else {
-                        // Add to create batch
-                        $batchData['create'][] = $variationData;
-                    }
-                } catch (\Exception $e) {
-                    logger()->error('Failed to prepare variation for batch operation', [
-                        'variation' => $variation,
-                        'error' => $e->getMessage()
-                    ]);
-                }
-            }
-
-            // Add remaining variations to delete batch
-            foreach ($existingVariationsMap as $id => $variation) {
-                $batchData['delete'][] = $id;
-            }
-
-            logger()->info('Prepared batch operation for variations', [
-                'productId' => $productId,
-                'create_count' => count($batchData['create']),
-                'update_count' => count($batchData['update']),
-                'delete_count' => count($batchData['delete'])
-            ]);
-
-            // Execute batch operation if there's anything to do
-            if (!empty($batchData['create']) || !empty($batchData['update']) || !empty($batchData['delete'])) {
-                $batchResult = $this->batchUpdateVariations($productId, $batchData);
-
-                // Count results
-                $results['created'] = count($batchResult['create'] ?? []);
-                $results['updated'] = count($batchResult['update'] ?? []);
-                $results['deleted'] = count($batchResult['delete'] ?? []);
-
-                logger()->info('Batch operation completed', [
-                    'created' => $results['created'],
-                    'updated' => $results['updated'],
-                    'deleted' => $results['deleted']
-                ]);
-            } else {
-                logger()->info('No variations to process in batch operation');
-            }
-
-            return [
-                'success' => true,
-                'message' => sprintf(
-                    'Variations synced successfully via batch API: updated %d, created %d, deleted %d',
-                    $results['updated'],
-                    $results['created'],
-                    $results['deleted']
-                ),
-                'updated' => $results['updated'],
-                'created' => $results['created'],
-                'deleted' => $results['deleted']
-            ];
-        } catch (\Exception $e) {
-            logger()->error('Failed to sync variations', [
-                'productId' => $productId,
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
-
-            return [
-                'success' => false,
-                'message' => $e->getMessage(),
-                'updated' => 0,
-                'created' => 0,
-                'deleted' => 0
             ];
         }
     }
@@ -1889,7 +1545,7 @@ class WooCommerceService
                     $productId = $product['id'];
 
                     // 2. جلب المتغيرات الخاصة بهذا المنتج
-                    $variations = $this->getVariationsByProductId($productId);
+                    $variations = $this->getProductVariations($productId);
 
                     foreach ($variations as &$variation) {
                         $variation['product_id'] = $productId; // نضيف معرف المنتج لسهولة الاستخدام

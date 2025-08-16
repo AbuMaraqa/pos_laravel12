@@ -109,19 +109,23 @@ class Index extends Component
             $foundVariation = null;
 
             // ================================================
-            // ✅ التغيير الرئيسي: البحث المباشر عن المتغير أولاً
+            // ✅ تم تعديل هذا الجزء من الكود.
+            //    نقوم الآن بالبحث عن الـ variation مباشرةً قبل أي شيء آخر.
             // ================================================
-            $foundVariation = $this->wooService->findVariationByTerm($searchTerm);
-            if ($foundVariation) {
-                // إذا تم العثور على متغير، فإننا نعيد هذا المتغير مباشرة ليتم إضافته إلى السلة
-                logger()->info('Variation found by direct search', [
-                    'variation_id' => $foundVariation['id'],
-                    'parent_product_id' => $foundVariation['product_id'] ?? 'N/A'
-                ]);
-                $this->dispatch('product-found-from-api', [
-                    'product' => $this->wooService->normalizeProductForPOS($foundVariation)
-                ]);
-                return $foundVariation;
+            try {
+                // البحث مباشرة عن المتغير باستخدام getProduct()
+                $foundVariation = $this->wooService->getProduct($searchTerm);
+                if ($foundVariation && isset($foundVariation['type']) && $foundVariation['type'] === 'variation') {
+                    logger()->info('Variation found directly by ID/SKU', ['id' => $foundVariation['id']]);
+                    // إذا وجدنا variation مباشرة، نرسله للواجهة
+                    $this->dispatch('product-found-from-api', [
+                        'product' => $this->wooService->normalizeProductForPOS($foundVariation)
+                    ]);
+                    return $foundVariation;
+                }
+            } catch (\Exception $e) {
+                // تجاهل الخطأ ومتابعة البحث
+                $foundVariation = null;
             }
 
             // ================================================
@@ -692,8 +696,3 @@ class Index extends Component
         return view('livewire.pages.pos.index');
     }
 }
-
-// ================================================
-// FILENAME: WooCommerceService.php
-// الوصف: يتعامل مع اتصالات API ويوفر دوال للخدمات
-//
