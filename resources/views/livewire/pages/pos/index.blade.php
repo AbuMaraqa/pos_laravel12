@@ -2620,5 +2620,360 @@
         }
     }
 
+    function fixCustomersStorageHandler() {
+        console.log("🔧 إصلاح معالج تخزين العملاء...");
+
+        // إزالة المعالج القديم إذا كان موجوداً
+        if (window.Livewire) {
+            try {
+                Livewire.off('store-customers');
+                console.log("✅ تم إزالة المعالج القديم");
+            } catch (e) {
+                console.log("ℹ️ لا يوجد معالج قديم لإزالته");
+            }
+        }
+    }
+
+    function enhancedCustomersStorageHandler() {
+        if (!window.Livewire) {
+            console.warn("⚠️ Livewire غير متاح");
+            return;
+        }
+
+        Livewire.on('store-customers', (payload) => {
+            console.log("📥 بدء تخزين العملاء المحسن...");
+
+            if (!db) {
+                console.error("❌ قاعدة البيانات غير متاحة");
+                return;
+            }
+
+            // 🎯 حفظ حالة واجهة المستخدم الحالية
+            const currentState = {
+                searchTerm: currentSearchTerm || '',
+                categoryId: selectedCategoryId,
+                productsVisible: document.querySelectorAll('.product-card').length,
+                categoriesVisible: document.querySelectorAll('#categoriesContainer button').length
+            };
+
+            console.log("💾 حفظ حالة واجهة المستخدم:", currentState);
+
+            try {
+                const tx = db.transaction("customers", "readwrite");
+                const store = tx.objectStore("customers");
+
+                let processedCount = 0;
+                const totalCustomers = payload.customers?.length || 0;
+
+                if (totalCustomers === 0) {
+                    console.log("ℹ️ لا يوجد عملاء للتخزين");
+                    return;
+                }
+
+                payload.customers.forEach((customer, index) => {
+                    try {
+                        const customerData = {
+                            id: customer.id,
+                            name: `${customer.first_name || ''} ${customer.last_name || ''}`.trim() || 'عميل',
+                            email: customer.email || '',
+                            phone: customer.billing?.phone || ''
+                        };
+
+                        const putRequest = store.put(customerData);
+
+                        putRequest.onsuccess = () => {
+                            processedCount++;
+
+                            // عند الانتهاء من معالجة جميع العملاء
+                            if (processedCount === totalCustomers) {
+                                console.log(`✅ تم تخزين ${processedCount} عميل بنجاح`);
+
+                                // 🔄 استعادة حالة واجهة المستخدم
+                                setTimeout(() => {
+                                    restoreUIState(currentState);
+                                }, 100);
+
+                                // إشعار بدون تدخل في الواجهة
+                                showNotification(`تم تحميل ${processedCount} عميل`, 'success', 2000);
+                            }
+                        };
+
+                        putRequest.onerror = () => {
+                            console.error(`❌ فشل في تخزين العميل ${customer.id}`);
+                            processedCount++;
+
+                            if (processedCount === totalCustomers) {
+                                restoreUIState(currentState);
+                            }
+                        };
+
+                    } catch (customerError) {
+                        console.error(`❌ خطأ في معالجة العميل ${index}:`, customerError);
+                        processedCount++;
+
+                        if (processedCount === totalCustomers) {
+                            restoreUIState(currentState);
+                        }
+                    }
+                });
+
+            } catch (transactionError) {
+                console.error("❌ خطأ في معاملة قاعدة البيانات:", transactionError);
+
+                // استعادة الحالة حتى في حالة الخطأ
+                setTimeout(() => {
+                    restoreUIState(currentState);
+                }, 100);
+            }
+        });
+
+        console.log("✅ تم تسجيل معالج العملاء المحسن");
+    }
+
+    function restoreUIState(savedState) {
+        console.log("🔄 استعادة حالة واجهة المستخدم...", savedState);
+
+        try {
+            // التحقق من وجود المنتجات في الواجهة
+            const currentProducts = document.querySelectorAll('.product-card').length;
+            const currentCategories = document.querySelectorAll('#categoriesContainer button').length;
+
+            console.log(`📊 المنتجات الحالية: ${currentProducts}, الفئات الحالية: ${currentCategories}`);
+
+            // إذا اختفت المنتجات أو الفئات، أعد رسمها
+            if (currentProducts === 0 && savedState.productsVisible > 0) {
+                console.log("🔄 إعادة رسم المنتجات المفقودة...");
+                renderProductsFromIndexedDB(savedState.searchTerm, savedState.categoryId);
+            }
+
+            if (currentCategories <= 1 && savedState.categoriesVisible > 1) {
+                console.log("🔄 إعادة رسم الفئات المفقودة...");
+                renderCategoriesFromIndexedDB();
+            }
+
+            // استعادة حالة البحث والفئة المحددة
+            if (savedState.searchTerm && savedState.searchTerm !== currentSearchTerm) {
+                const searchInput = document.getElementById('searchInput');
+                if (searchInput) {
+                    searchInput.value = savedState.searchTerm;
+                    currentSearchTerm = savedState.searchTerm;
+                }
+            }
+
+            if (savedState.categoryId !== selectedCategoryId) {
+                selectedCategoryId = savedState.categoryId;
+                updateCategoryButtons();
+            }
+
+            console.log("✅ تم استعادة حالة واجهة المستخدم");
+
+        } catch (error) {
+            console.error("❌ خطأ في استعادة حالة واجهة المستخدم:", error);
+
+            // في حالة الخطأ، أعد رسم كل شيء
+            setTimeout(() => {
+                if (db) {
+                    renderProductsFromIndexedDB('', null);
+                    renderCategoriesFromIndexedDB();
+                }
+            }, 500);
+        }
+    }
+
+    function preventUnnecessaryCustomersFetch() {
+        console.log("🛡️ منع تحميل العملاء غير الضروري...");
+
+        // التحقق من وجود العملاء محلياً قبل التحميل
+        if (!db) return;
+
+        const tx = db.transaction("customers", "readonly");
+        const store = tx.objectStore("customers");
+        const countRequest = store.count();
+
+        countRequest.onsuccess = function() {
+            const count = countRequest.result;
+            console.log(`📊 عدد العملاء المحفوظين محلياً: ${count}`);
+
+            if (count > 0) {
+                console.log("✅ العملاء متوفرون محلياً - لا حاجة للتحميل");
+                // تحديث حالة التحميل لمنع التحميل التلقائي
+                if (typeof dataLoadingState !== 'undefined') {
+                    dataLoadingState.customers = true;
+                }
+            }
+        };
+    }
+
+    function fixInitialDataFetch() {
+        console.log("🔧 إصلاح تحميل البيانات الأولية...");
+
+        // إعادة تعريف دالة checkAndFetchInitialData مع استثناء العملاء
+        const originalCheckAndFetchInitialData = window.checkAndFetchInitialData;
+
+        window.checkAndFetchInitialData = function() {
+            console.log("🔍 فحص البيانات الأولية المحسن...");
+
+            const checks = [
+                {store: "products", action: 'fetch-products-from-api', key: 'products'},
+                {store: "categories", action: 'fetch-categories-from-api', key: 'categories'},
+                // ❌ إزالة العملاء من التحميل التلقائي
+                // {store: "customers", action: 'fetch-customers-from-api', key: 'customers'},
+                {store: "shippingMethods", action: 'fetch-shipping-methods-from-api', key: 'shipping'},
+                {store: "shippingZones", action: 'fetch-shipping-zones-and-methods', key: 'shipping'}
+            ];
+
+            checks.forEach(check => {
+                // تجاهل التحميل إذا كان محمل مسبقاً
+                if (dataLoadingState && dataLoadingState[check.key]) {
+                    console.log(`⏭️ تم تجاهل تحميل ${check.store} - محمل مسبقاً`);
+                    return;
+                }
+
+                const tx = db.transaction(check.store, "readonly");
+                const store = tx.objectStore(check.store);
+                const countRequest = store.count();
+
+                countRequest.onsuccess = function () {
+                    const count = countRequest.result;
+                    console.log(`📊 عدد عناصر ${check.store}: ${count}`);
+
+                    // تحميل فقط إذا كان فارغ ولم يتم تحميله مسبقاً
+                    if (count === 0 && (!dataLoadingState || !dataLoadingState[check.key])) {
+                        console.log(`📥 تحميل ${check.store} للمرة الأولى...`);
+                        if (dataLoadingState) {
+                            dataLoadingState[check.key] = true;
+                        }
+                        Livewire.dispatch(check.action);
+                    } else if (count > 0) {
+                        // تحديث الحالة إذا كانت البيانات موجودة
+                        if (dataLoadingState) {
+                            dataLoadingState[check.key] = true;
+                        }
+                        console.log(`✅ ${check.store} محمل مسبقاً (${count} عنصر)`);
+                    }
+                };
+
+                countRequest.onerror = function() {
+                    console.error(`❌ خطأ في فحص ${check.store}`);
+                };
+            });
+
+            // فحص العملاء بشكل منفصل دون تحميل تلقائي
+            preventUnnecessaryCustomersFetch();
+        };
+
+        console.log("✅ تم إصلاح دالة تحميل البيانات الأولية");
+    }
+
+    function loadCustomersManually() {
+        console.log("👥 تحميل العملاء يدوياً...");
+
+        if (!db) {
+            console.error("❌ قاعدة البيانات غير متاحة");
+            return;
+        }
+
+        // التحقق من وجود العملاء أولاً
+        const tx = db.transaction("customers", "readonly");
+        const store = tx.objectStore("customers");
+        const countRequest = store.count();
+
+        countRequest.onsuccess = function() {
+            const count = countRequest.result;
+
+            if (count > 0) {
+                console.log(`✅ يوجد ${count} عميل محفوظ محلياً - لا حاجة للتحميل`);
+                return;
+            }
+
+            console.log("📥 تحميل العملاء من API...");
+            showNotification("جاري تحميل العملاء...", 'info', 1000);
+            Livewire.dispatch('fetch-customers-from-api');
+        };
+
+        countRequest.onerror = function() {
+            console.error("❌ خطأ في فحص العملاء");
+        };
+    }
+
+    function applyCustomersFix() {
+        console.log("🚀 تطبيق إصلاحات العملاء...");
+
+        try {
+            // 1. إصلاح معالج العملاء
+            fixCustomersStorageHandler();
+
+            // 2. تسجيل المعالج المحسن
+            setTimeout(() => {
+                enhancedCustomersStorageHandler();
+            }, 100);
+
+            // 3. إصلاح تحميل البيانات الأولية
+            fixInitialDataFetch();
+
+            // 4. إضافة دالة التحميل اليدوي للنطاق العام
+            window.loadCustomersManually = loadCustomersManually;
+            window.preventUnnecessaryCustomersFetch = preventUnnecessaryCustomersFetch;
+
+            console.log("✅ تم تطبيق جميع إصلاحات العملاء");
+
+        } catch (error) {
+            console.error("❌ خطأ في تطبيق إصلاحات العملاء:", error);
+        }
+    }
+
+    function testCustomersFix() {
+        console.log("🧪 اختبار إصلاحات العملاء...");
+
+        // محاكاة تحميل العملاء
+        const fakeCustomers = [
+            { id: 999, first_name: "اختبار", last_name: "عميل", email: "test@example.com" }
+        ];
+
+        // حفظ حالة قبل الاختبار
+        const beforeProducts = document.querySelectorAll('.product-card').length;
+        const beforeCategories = document.querySelectorAll('#categoriesContainer button').length;
+
+        console.log(`📊 قبل الاختبار - منتجات: ${beforeProducts}, فئات: ${beforeCategories}`);
+
+        // محاكاة معالجة العملاء
+        if (window.Livewire) {
+            Livewire.dispatch('store-customers', { customers: fakeCustomers });
+
+            // فحص بعد ثانيتين
+            setTimeout(() => {
+                const afterProducts = document.querySelectorAll('.product-card').length;
+                const afterCategories = document.querySelectorAll('#categoriesContainer button').length;
+
+                console.log(`📊 بعد الاختبار - منتجات: ${afterProducts}, فئات: ${afterCategories}`);
+
+                if (afterProducts === beforeProducts && afterCategories === beforeCategories) {
+                    console.log("✅ نجح الاختبار - لم تختف المنتجات والفئات");
+                } else {
+                    console.warn("⚠️ فشل الاختبار - اختفت بعض العناصر");
+                }
+            }, 2000);
+        }
+    }
+
+    applyCustomersFix();
+
+    document.addEventListener('livewire:init', () => {
+        console.log("🔌 Livewire تم تهيئته - تطبيق إصلاحات العملاء...");
+        setTimeout(() => {
+            applyCustomersFix();
+        }, 500);
+    });
+
+    document.addEventListener("livewire:navigated", () => {
+        console.log("🚢 Livewire تم التنقل - تطبيق إصلاحات العملاء...");
+        setTimeout(() => {
+            applyCustomersFix();
+        }, 500);
+    });
+
+    window.applyCustomersFix = applyCustomersFix;
+    window.testCustomersFix = testCustomersFix;
+
     console.log("✅ تم تحميل جميع وظائف نظام POS المحسن");
 </script>
