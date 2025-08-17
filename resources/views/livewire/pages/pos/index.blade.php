@@ -793,14 +793,12 @@
         console.log("🔄 إعادة ضبط إلى الكود الأصلي...");
 
         // إعادة تعريف جميع الدوال في النطاق العام
-        window.addToCart = addToCartWithStockCheck;
-        window.renderCart = renderCartWithStockInfo;
-        window.removeFromCart = removeFromCart;
-        window.updateQuantity = updateQuantityWithStockCheck;
-        window.clearCart = clearCart;
-        window.addVariationToCart = addVariationToCartEnhanced;
-        window.checkProductStock = checkProductStock;
-        window.validateCartStock = validateCartStock;
+        window.addToCart = addToCartSimpleDebug;
+        window.renderCart = renderCartDebug;
+        window.updateQuantity = updateQuantityDebug;
+        window.removeFromCart = removeFromCartDebug;
+        window.clearCart = clearCartDebug;
+        window.diagnoseCartIssues = diagnoseCartIssues;
 
 
         // إعادة تهيئة قاعدة البيانات إذا لزم الأمر
@@ -3920,6 +3918,548 @@
     setTimeout(() => {
         setupOrderButtonWithStockCheck();
     }, 1000);
+
+    function diagnoseCartIssues() {
+        console.log("🔍 === بدء تشخيص السلة ===");
+
+        // 1. فحص قاعدة البيانات
+        if (!db) {
+            console.error("❌ قاعدة البيانات غير متاحة");
+            return;
+        }
+        console.log("✅ قاعدة البيانات متاحة");
+
+        // 2. فحص عناصر HTML
+        const cartContainer = document.getElementById("cartItemsContainer");
+        const cartTotal = document.getElementById("cartTotal");
+
+        console.log("📋 فحص عناصر HTML:");
+        console.log("- cartItemsContainer:", cartContainer ? "موجود" : "❌ مفقود");
+        console.log("- cartTotal:", cartTotal ? "موجود" : "❌ مفقود");
+
+        // 3. فحص محتوى السلة في قاعدة البيانات
+        const tx = db.transaction("cart", "readonly");
+        const store = tx.objectStore("cart");
+        const request = store.getAll();
+
+        request.onsuccess = function() {
+            const cartItems = request.result;
+            console.log("📦 تم جلب عناصر السلة:", cartItems.length, "عنصر");
+
+            if (cartItems.length === 0) {
+                console.log("📝 عرض السلة الفارغة...");
+                container.innerHTML = `
+                <div class="flex flex-col items-center justify-center text-center text-gray-500 py-8 space-y-2">
+                    <div class="text-4xl">🛒</div>
+                    <p class="text-lg font-semibold">السلة فارغة</p>
+                    <p class="text-sm text-gray-400">لم تقم بإضافة أي منتجات بعد</p>
+                </div>
+            `;
+                totalElement.textContent = "0.00 ₪";
+                console.log("✅ تم عرض السلة الفارغة");
+                return;
+            }
+
+            console.log("📝 عرض عناصر السلة...");
+            container.innerHTML = '';
+            let total = 0;
+            let highlightElement = null;
+
+            cartItems.forEach((item, index) => {
+                console.log(`🔍 معالجة العنصر ${index + 1}:`, item);
+
+                // إصلاح مشكلة الأسعار - التأكد من أنها أرقام
+                const itemPrice = parseFloat(item.price) || 0;
+                const itemQuantity = parseInt(item.quantity) || 1;
+                const itemTotal = itemPrice * itemQuantity;
+
+                total += itemTotal;
+
+                console.log(`💰 السعر: ${itemPrice}, الكمية: ${itemQuantity}, المجموع: ${itemTotal}`);
+
+                const div = document.createElement("div");
+                div.id = `cart-item-${item.id}`;
+                div.className = "flex justify-between items-center bg-gray-100 p-3 rounded transition duration-300 border cart-item";
+
+                // إنشاء HTML للعنصر
+                div.innerHTML = `
+                <div class="flex items-center gap-3 flex-1">
+                    <div class="flex-1">
+                        <p class="font-semibold text-sm">${item.name || 'منتج بدون اسم'}</p>
+                        <div class="flex items-center gap-2 mt-1">
+                            <button onclick="updateQuantityDebug(${item.id}, -1)"
+                                    class="bg-red-300 px-2 py-1 rounded hover:bg-red-400 cursor-pointer text-sm"
+                                    title="${itemQuantity <= 1 ? 'حذف من السلة' : 'تقليل الكمية'}">
+                                ${itemQuantity <= 1 ? '🗑️' : '−'}
+                            </button>
+                            <span class="mx-2 font-bold min-w-[30px] text-center">${itemQuantity}</span>
+                            <button onclick="updateQuantityDebug(${item.id}, 1)"
+                                    class="bg-green-300 px-2 py-1 rounded hover:bg-green-400 cursor-pointer text-sm"
+                                    title="زيادة الكمية">
+                                +
+                            </button>
+                        </div>
+                        ${item.sku ? `<div class="text-xs text-gray-500 mt-1">SKU: ${item.sku}</div>` : ''}
+                    </div>
+                </div>
+                <div class="text-right">
+                    <div class="font-bold text-gray-800">${itemTotal.toFixed(2)} ₪</div>
+                    <div class="text-xs text-gray-500">${itemPrice.toFixed(2)} ₪/قطعة</div>
+                    <button onclick="removeFromCartDebug(${item.id})"
+                            class="text-red-500 hover:text-red-700 mt-1 text-sm"
+                            title="حذف من السلة">
+                        🗑️
+                    </button>
+                </div>
+            `;
+
+                container.appendChild(div);
+                console.log(`✅ تم إضافة العنصر ${index + 1} للعرض`);
+
+                if (highlightId && item.id === highlightId) {
+                    highlightElement = div;
+                }
+            });
+
+            // تحديث المجموع
+            totalElement.textContent = total.toFixed(2) + " ₪";
+            console.log(`💰 المجموع النهائي: ${total.toFixed(2)} ₪`);
+
+            // تمييز العنصر الجديد
+            if (highlightElement) {
+                console.log("✨ تمييز العنصر الجديد...");
+                highlightElement.classList.add("bg-yellow-200", "border-yellow-400");
+                setTimeout(() => {
+                    highlightElement.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                    setTimeout(() => {
+                        highlightElement.classList.remove("bg-yellow-200", "border-yellow-400");
+                    }, 1000);
+                }, 100);
+            }
+
+            console.log("✅ تم عرض السلة بنجاح");
+        };
+
+        request.onerror = function(event) {
+            console.error("❌ خطأ في قراءة السلة:", event);
+            container.innerHTML = '<div class="text-center text-red-500 py-4">خطأ في تحميل السلة</div>';
+        };
+    }
+
+    function updateQuantityDebug(productId, change) {
+        console.log(`🔄 تحديث كمية المنتج ${productId} بمقدار ${change}`);
+
+        if (!db) {
+            console.error("❌ قاعدة البيانات غير متاحة");
+            return;
+        }
+
+        const tx = db.transaction("cart", "readwrite");
+        const store = tx.objectStore("cart");
+        const getRequest = store.get(productId);
+
+        getRequest.onsuccess = function() {
+            const item = getRequest.result;
+            if (!item) {
+                console.error("❌ المنتج غير موجود في السلة");
+                return;
+            }
+
+            const newQuantity = (parseInt(item.quantity) || 1) + change;
+            console.log(`📊 الكمية الجديدة: ${newQuantity}`);
+
+            if (newQuantity <= 0) {
+                console.log("🗑️ حذف المنتج من السلة");
+                store.delete(productId);
+                showNotification("تم حذف المنتج من السلة", 'info');
+            } else {
+                item.quantity = newQuantity;
+                item.updated_at = new Date().toISOString();
+                store.put(item);
+                console.log("✅ تم تحديث الكمية");
+
+                if (change > 0) {
+                    showNotification(`تم زيادة الكمية إلى ${newQuantity}`, 'success');
+                } else {
+                    showNotification(`تم تقليل الكمية إلى ${newQuantity}`, 'success');
+                }
+            }
+
+            // إعادة عرض السلة
+            setTimeout(() => renderCartDebug(productId), 100);
+        };
+
+        getRequest.onerror = function() {
+            console.error("❌ خطأ في تحديث الكمية");
+            showNotification("فشل في تحديث الكمية", 'error');
+        };
+    }
+
+    function removeFromCartDebug(productId) {
+        console.log(`🗑️ حذف المنتج ${productId} من السلة`);
+
+        if (!db) {
+            console.error("❌ قاعدة البيانات غير متاحة");
+            return;
+        }
+
+        const tx = db.transaction("cart", "readwrite");
+        const store = tx.objectStore("cart");
+        const request = store.delete(productId);
+
+        request.onsuccess = function() {
+            console.log("✅ تم حذف المنتج من السلة");
+            showNotification("تم حذف المنتج من السلة", 'success');
+            renderCartDebug();
+        };
+
+        request.onerror = function() {
+            console.error("❌ فشل في حذف المنتج");
+            showNotification("فشل في حذف المنتج", 'error');
+        };
+    }
+
+    function clearCartDebug() {
+        console.log("🧹 مسح جميع المنتجات من السلة");
+
+        if (!db) {
+            console.error("❌ قاعدة البيانات غير متاحة");
+            return;
+        }
+
+        const tx = db.transaction("cart", "readwrite");
+        const store = tx.objectStore("cart");
+        const clearRequest = store.clear();
+
+        clearRequest.onsuccess = function() {
+            console.log("✅ تم مسح السلة");
+            showNotification("تم مسح جميع المنتجات من السلة", 'success');
+            renderCartDebug();
+        };
+
+        clearRequest.onerror = function() {
+            console.error("❌ فشل في مسح السلة");
+            showNotification("فشل في مسح السلة", 'error');
+        };
+    }
+
+    function createCartContainer() {
+        console.log("🔧 إنشاء حاوية السلة...");
+
+        // البحث عن الحاوية الأب
+        const parentContainer = document.querySelector('.col-span-2 .bg-white');
+
+        if (parentContainer) {
+            // إنشاء حاوية السلة
+            let cartContainer = document.getElementById("cartItemsContainer");
+
+            if (!cartContainer) {
+                cartContainer = document.createElement('div');
+                cartContainer.id = 'cartItemsContainer';
+                cartContainer.className = 'space-y-2 overflow-y-auto max-h-[500px] flex-1';
+
+                // البحث عن مكان مناسب لإدراج الحاوية
+                const titleElement = parentContainer.querySelector('h2');
+                if (titleElement && titleElement.nextSibling) {
+                    titleElement.parentNode.insertBefore(cartContainer, titleElement.nextSibling.nextSibling);
+                } else {
+                    parentContainer.appendChild(cartContainer);
+                }
+
+                console.log("✅ تم إنشاء حاوية السلة");
+            }
+
+            // التأكد من وجود عنصر المجموع
+            let totalElement = document.getElementById("cartTotal");
+            if (!totalElement) {
+                const totalDiv = document.createElement('div');
+                totalDiv.className = 'mt-4 border-t pt-4 text-right';
+                totalDiv.innerHTML = '<p class="font-bold text-xl">المجموع: <span id="cartTotal">0.00 ₪</span></p>';
+                parentContainer.appendChild(totalDiv);
+                console.log("✅ تم إنشاء عنصر المجموع");
+            }
+
+            // إعادة محاولة عرض السلة
+            setTimeout(() => renderCartDebug(), 500);
+        } else {
+            console.error("❌ لم يتم العثور على الحاوية الأب للسلة");
+        }
+    }
+
+    setTimeout(() => {
+        console.log("🚀 بدء النظام المحسن للسلة");
+        diagnoseCartIssues();
+    }, 2000);
+
+    function fixCorruptedCartData() {
+        console.log("🔧 بدء إصلاح البيانات التالفة في السلة...");
+
+        if (!db) {
+            console.error("❌ قاعدة البيانات غير متاحة");
+            return;
+        }
+
+        const tx = db.transaction("cart", "readwrite");
+        const store = tx.objectStore("cart");
+        const request = store.getAll();
+
+        request.onsuccess = function() {
+            const cartItems = request.result;
+            console.log("📦 فحص", cartItems.length, "عنصر في السلة");
+
+            let fixedItems = [];
+            let corruptedCount = 0;
+
+            cartItems.forEach(item => {
+                // فحص صحة البيانات
+                if (item.id && item.name && typeof item.quantity !== 'undefined') {
+                    // إصلاح البيانات
+                    const fixedItem = {
+                        id: parseInt(item.id) || item.id,
+                        name: String(item.name),
+                        price: parseFloat(item.price) || 0,
+                        quantity: parseInt(item.quantity) || 1,
+                        image: item.image || '',
+                        type: item.type || 'simple',
+                        sku: item.sku || '',
+                        added_at: item.added_at || new Date().toISOString()
+                    };
+
+                    fixedItems.push(fixedItem);
+                    console.log("✅ تم إصلاح العنصر:", fixedItem.name);
+                } else {
+                    console.warn("⚠️ عنصر تالف:", item);
+                    corruptedCount++;
+                    // حذف العنصر التالف
+                    store.delete(item.id);
+                }
+            });
+
+            if (corruptedCount > 0) {
+                console.log(`🗑️ تم حذف ${corruptedCount} عنصر تالف`);
+
+                // إعادة حفظ العناصر السليمة
+                fixedItems.forEach(item => {
+                    store.put(item);
+                });
+            }
+
+            console.log("✅ تم إصلاح بيانات السلة");
+            renderCartDebug();
+        };
+
+        request.onerror = function() {
+            console.error("❌ خطأ في إصلاح بيانات السلة");
+        };
+    }
+
+    function testCartFunctionality() {
+        console.log("🧪 بدء اختبار وظائف السلة...");
+
+        // منتج تجريبي
+        const testProduct = {
+            id: 999999,
+            name: "منتج تجريبي",
+            price: "25.50", // سعر كنص لاختبار التحويل
+            images: [],
+            type: 'simple'
+        };
+
+        console.log("➕ اختبار إضافة منتج...");
+        addToCartSimpleDebug(testProduct);
+
+        setTimeout(() => {
+            console.log("📊 اختبار تحديث الكمية...");
+            updateQuantityDebug(999999, 1);
+
+            setTimeout(() => {
+                console.log("🗑️ اختبار حذف المنتج...");
+                removeFromCartDebug(999999);
+            }, 1000);
+        }, 1000);
+    }
+
+    // دالة عرض إحصائيات السلة
+    function showCartStats() {
+        if (!db) {
+            console.error("❌ قاعدة البيانات غير متاحة");
+            return;
+        }
+
+        const tx = db.transaction("cart", "readonly");
+        const store = tx.objectStore("cart");
+        const request = store.getAll();
+
+        request.onsuccess = function() {
+            const cartItems = request.result;
+
+            const stats = {
+                totalItems: cartItems.length,
+                totalQuantity: cartItems.reduce((sum, item) => sum + (parseInt(item.quantity) || 0), 0),
+                totalValue: cartItems.reduce((sum, item) => {
+                    const price = parseFloat(item.price) || 0;
+                    const quantity = parseInt(item.quantity) || 0;
+                    return sum + (price * quantity);
+                }, 0),
+                uniqueProducts: new Set(cartItems.map(item => item.id)).size
+            };
+
+            console.log("📊 إحصائيات السلة:");
+            console.log(`- عدد الأنواع: ${stats.totalItems}`);
+            console.log(`- إجمالي القطع: ${stats.totalQuantity}`);
+            console.log(`- القيمة الإجمالية: ${stats.totalValue.toFixed(2)} ₪`);
+            console.log(`- منتجات فريدة: ${stats.uniqueProducts}`);
+
+            showNotification(`إحصائيات السلة:\n${stats.totalItems} نوع، ${stats.totalQuantity} قطعة\nالمجموع: ${stats.totalValue.toFixed(2)} ₪`, 'info', 5000);
+        };
+    }
+
+    window.fixCorruptedCartData = fixCorruptedCartData;
+    window.testCartFunctionality = testCartFunctionality;
+    window.showCartStats = showCartStats;
+
+    setTimeout(() => {
+        fixCorruptedCartData();
+    }, 3000);
+
+    function renderCartDebug(highlightId = null) {
+        console.log("🖼️ === بدء عرض السلة ===");
+
+        if (!db) {
+            console.error("❌ قاعدة البيانات غير متاحة لعرض السلة");
+            return;
+        }
+
+        const container = document.getElementById("cartItemsContainer");
+        const totalElement = document.getElementById("cartTotal");
+
+        if (!container) {
+            console.error("❌ عنصر السلة غير موجود في HTML");
+            console.log("🔧 محاولة إنشاء عنصر السلة...");
+            createCartContainer();
+            return;
+        }
+
+        if (!totalElement) {
+            console.error("❌ عنصر المجموع غير موجود في HTML");
+            return;
+        }
+
+        console.log("✅ عناصر HTML موجودة");
+
+        const tx = db.transaction("cart", "readonly");
+        const store = tx.objectStore("cart");
+        const request = store.getAll();
+
+        request.onsuccess = function() {
+            const cartItems = request.result;
+            console.log("📦 تم جلب عناصر السلة:", cartItems.length, "عنصر");
+
+            if (cartItems.length === 0) {
+                console.log("📝 عرض السلة الفارغة...");
+                container.innerHTML = `
+                <div class="flex flex-col items-center justify-center text-center text-gray-500 py-8 space-y-2">
+                    <div class="text-4xl">🛒</div>
+                    <p class="text-lg font-semibold">السلة فارغة</p>
+                    <p class="text-sm text-gray-400">لم تقم بإضافة أي منتجات بعد</p>
+                </div>
+            `;
+                totalElement.textContent = "0.00 ₪";
+                console.log("✅ تم عرض السلة الفارغة");
+                return;
+            }
+
+            console.log("📝 عرض عناصر السلة...");
+            container.innerHTML = '';
+            let total = 0;
+            let highlightElement = null;
+
+            cartItems.forEach((item, index) => {
+                console.log(`🔍 معالجة العنصر ${index + 1}:`, item);
+
+                // إصلاح مشكلة الأسعار - التأكد من أنها أرقام
+                const itemPrice = parseFloat(item.price) || 0;
+                const itemQuantity = parseInt(item.quantity) || 1;
+                const itemTotal = itemPrice * itemQuantity;
+
+                total += itemTotal;
+
+                console.log(`💰 السعر: ${itemPrice}, الكمية: ${itemQuantity}, المجموع: ${itemTotal}`);
+
+                const div = document.createElement("div");
+                div.id = `cart-item-${item.id}`;
+                div.className = "flex justify-between items-center bg-gray-100 p-3 rounded transition duration-300 border cart-item";
+
+                // إنشاء HTML للعنصر
+                div.innerHTML = `
+                <div class="flex items-center gap-3 flex-1">
+                    <div class="flex-1">
+                        <p class="font-semibold text-sm">${item.name || 'منتج بدون اسم'}</p>
+                        <div class="flex items-center gap-2 mt-1">
+                            <button onclick="updateQuantityDebug(${item.id}, -1)"
+                                    class="bg-red-300 px-2 py-1 rounded hover:bg-red-400 cursor-pointer text-sm"
+                                    title="${itemQuantity <= 1 ? 'حذف من السلة' : 'تقليل الكمية'}">
+                                ${itemQuantity <= 1 ? '🗑️' : '−'}
+                            </button>
+                            <span class="mx-2 font-bold min-w-[30px] text-center">${itemQuantity}</span>
+                            <button onclick="updateQuantityDebug(${item.id}, 1)"
+                                    class="bg-green-300 px-2 py-1 rounded hover:bg-green-400 cursor-pointer text-sm"
+                                    title="زيادة الكمية">
+                                +
+                            </button>
+                        </div>
+                        ${item.sku ? `<div class="text-xs text-gray-500 mt-1">SKU: ${item.sku}</div>` : ''}
+                    </div>
+                </div>
+                <div class="text-right">
+                    <div class="font-bold text-gray-800">${itemTotal.toFixed(2)} ₪</div>
+                    <div class="text-xs text-gray-500">${itemPrice.toFixed(2)} ₪/قطعة</div>
+                    <button onclick="removeFromCartDebug(${item.id})"
+                            class="text-red-500 hover:text-red-700 mt-1 text-sm"
+                            title="حذف من السلة">
+                        🗑️
+                    </button>
+                </div>
+            `;
+
+                container.appendChild(div);
+                console.log(`✅ تم إضافة العنصر ${index + 1} للعرض`);
+
+                if (highlightId && item.id === highlightId) {
+                    highlightElement = div;
+                }
+            });
+
+            // تحديث المجموع
+            totalElement.textContent = total.toFixed(2) + " ₪";
+            console.log(`💰 المجموع النهائي: ${total.toFixed(2)} ₪`);
+
+            // تمييز العنصر الجديد
+            if (highlightElement) {
+                console.log("✨ تمييز العنصر الجديد...");
+                highlightElement.classList.add("bg-yellow-200", "border-yellow-400");
+                setTimeout(() => {
+                    highlightElement.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                    setTimeout(() => {
+                        highlightElement.classList.remove("bg-yellow-200", "border-yellow-400");
+                    }, 1000);
+                }, 100);
+            }
+
+            console.log("✅ تم عرض السلة بنجاح");
+        };
+
+        request.onerror = function(event) {
+            console.error("❌ خطأ في قراءة السلة:", event);
+            container.innerHTML = '<div class="text-center text-red-500 py-4">خطأ في تحميل السلة</div>';
+        };
+    }
 
     console.log("✅ تم تحميل جميع وظائف نظام POS المحسن");
 </script>
