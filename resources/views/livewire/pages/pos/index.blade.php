@@ -793,12 +793,19 @@
         console.log("🔄 إعادة ضبط إلى الكود الأصلي...");
 
         // إعادة تعريف جميع الدوال في النطاق العام
-        window.addToCart = addToCartSimpleDebug;
-        window.renderCart = renderCartDebug;
-        window.updateQuantity = updateQuantityDebug;
+        window.addToCart = addToCartWithStockCheck;
+        window.renderCart = renderCartWithStockInfo;
+        window.updateQuantity = updateQuantityWithStockCheck;
         window.removeFromCart = removeFromCartDebug;
         window.clearCart = clearCartDebug;
+
+        window.checkProductStock = checkProductStock;
+        window.validateCartStock = validateCartStock;
         window.diagnoseCartIssues = diagnoseCartIssues;
+        window.fixCorruptedCartData = fixCorruptedCartData;
+        window.testCartFunctionality = testCartFunctionality;
+        window.showCartStats = showCartStats;
+        window.createCartContainer = createCartContainer;
 
 
         // إعادة تهيئة قاعدة البيانات إذا لزم الأمر
@@ -3540,11 +3547,19 @@
 
                 const available = stockStatus === 'instock' && requestedQuantity <= maxQuantity;
 
+                console.log(`📦 فحص مخزون المنتج ${productId}:`);
+                console.log(`- الكمية المطلوبة: ${requestedQuantity}`);
+                console.log(`- الكمية المتاحة: ${maxQuantity}`);
+                console.log(`- حالة المخزون: ${stockStatus}`);
+                console.log(`- يدير المخزون: ${product.manage_stock}`);
+                console.log(`- متوفر: ${available}`);
+
                 resolve({
                     available: available,
                     maxQuantity: maxQuantity,
                     stockStatus: stockStatus,
-                    manageStock: product.manage_stock || false
+                    manageStock: product.manage_stock || false,
+                    productName: product.name || 'منتج غير معروف'
                 });
             };
 
@@ -3555,6 +3570,21 @@
     }
 
     async function addToCartWithStockCheck(product) {
+        console.log("🛒 === بدء إضافة منتج للسلة مع فحص المخزون ===");
+        console.log("المنتج:", product);
+
+        if (!db) {
+            console.error("❌ قاعدة البيانات غير متاحة");
+            showNotification("قاعدة البيانات غير متاحة", 'error');
+            return;
+        }
+
+        if (!product || !product.id) {
+            console.error("❌ بيانات المنتج غير صالحة:", product);
+            showNotification("بيانات المنتج غير صالحة", 'error');
+            return;
+        }
+
         try {
             // فحص توفر المخزون أولاً
             const stockCheck = await checkProductStock(product.id, 1);
@@ -3562,6 +3592,8 @@
             if (!stockCheck.available) {
                 if (stockCheck.stockStatus === 'outofstock') {
                     showNotification("هذا المنتج غير متوفر حالياً", 'warning');
+                } else if (stockCheck.maxQuantity === 0) {
+                    showNotification("نفدت كمية هذا المنتج", 'warning');
                 } else {
                     showNotification("لا توجد كمية كافية من هذا المنتج", 'warning');
                 }
@@ -3572,32 +3604,37 @@
             const store = tx.objectStore("cart");
             const getRequest = store.get(product.id);
 
-            getRequest.onsuccess = function() {
+            getRequest.onsuccess = async function() {
                 const existing = getRequest.result;
+                console.log("🔍 فحص المنتج الموجود:", existing);
+
+                let cartItem;
+                let newQuantity = 1;
 
                 if (existing) {
                     // فحص الكمية الجديدة
-                    const newQuantity = existing.quantity + 1;
+                    newQuantity = existing.quantity + 1;
+                    const newStockCheck = await checkProductStock(product.id, newQuantity);
 
-                    checkProductStock(product.id, newQuantity).then(stockCheck => {
-                        if (stockCheck.available) {
-                            existing.quantity = newQuantity;
-                            existing.updated_at = new Date().toISOString();
-                            store.put(existing);
-                            renderCart(product.id);
-                            showNotification(`تم تحديث الكمية إلى ${newQuantity}`, 'success');
-                        } else {
-                            showNotification(`الحد الأقصى المتاح: ${stockCheck.maxQuantity} قطعة`, 'warning');
-                        }
-                    });
+                    if (!newStockCheck.available) {
+                        showNotification(`الحد الأقصى المتاح: ${newStockCheck.maxQuantity} قطعة (الكمية الحالية في السلة: ${existing.quantity})`, 'warning');
+                        return;
+                    }
+
+                    console.log("📈 تحديث منتج موجود...");
+                    existing.quantity = newQuantity;
+                    existing.updated_at = new Date().toISOString();
+                    cartItem = existing;
                 } else {
-                    // إضافة جديدة
-                    const cartItem = {
+                    console.log("➕ إضافة منتج جديد...");
+                    cartItem = {
                         id: product.id,
-                        name: product.name,
-                        price: product.price,
-                        image: product.images?.[0]?.src ?? '',
+                        name: product.name || 'منتج بدون اسم',
+                        price: parseFloat(product.price) || 0,
+                        image: (product.images && product.images[0]) ? product.images[0].src : '',
                         quantity: 1,
+                        type: product.type || 'simple',
+                        sku: product.sku || '',
                         added_at: new Date().toISOString(),
                         stock_info: {
                             max_quantity: stockCheck.maxQuantity,
@@ -3605,16 +3642,42 @@
                             manage_stock: stockCheck.manageStock
                         }
                     };
-
-                    store.put(cartItem);
-                    renderCart(product.id);
-                    showNotification(`تم إضافة "${product.name}" للسلة`, 'success');
                 }
+
+                console.log("💾 حفظ العنصر:", cartItem);
+
+                const putRequest = store.put(cartItem);
+
+                putRequest.onsuccess = function() {
+                    console.log("✅ تم حفظ المنتج بنجاح في قاعدة البيانات");
+
+                    // عرض السلة فوراً
+                    setTimeout(() => {
+                        console.log("🖼️ بدء عرض السلة...");
+                        renderCartWithStockInfo(product.id);
+                    }, 100);
+
+                    if (existing) {
+                        showNotification(`تم تحديث الكمية إلى ${newQuantity} (متوفر: ${stockCheck.maxQuantity})`, 'success');
+                    } else {
+                        showNotification(`تم إضافة "${cartItem.name}" للسلة (متوفر: ${stockCheck.maxQuantity})`, 'success');
+                    }
+                };
+
+                putRequest.onerror = function(event) {
+                    console.error("❌ خطأ في حفظ المنتج:", event);
+                    showNotification("فشل في حفظ المنتج", 'error');
+                };
+            };
+
+            getRequest.onerror = function(event) {
+                console.error("❌ خطأ في قراءة المنتج:", event);
+                showNotification("فشل في قراءة بيانات المنتج", 'error');
             };
 
         } catch (error) {
-            console.error("خطأ في إضافة المنتج:", error);
-            showNotification("حدث خطأ أثناء إضافة المنتج", 'error');
+            console.error("❌ خطأ عام في إضافة المنتج:", error);
+            showNotification("حدث خطأ غير متوقع", 'error');
         }
     }
 
@@ -3667,17 +3730,40 @@
     }
 
     function renderCartWithStockInfo(highlightId = null) {
+        console.log("🖼️ === بدء عرض السلة مع معلومات المخزون ===");
+
+        if (!db) {
+            console.error("❌ قاعدة البيانات غير متاحة لعرض السلة");
+            return;
+        }
+
+        const container = document.getElementById("cartItemsContainer");
+        const totalElement = document.getElementById("cartTotal");
+
+        if (!container) {
+            console.error("❌ عنصر السلة غير موجود في HTML");
+            console.log("🔧 محاولة إنشاء عنصر السلة...");
+            createCartContainer();
+            return;
+        }
+
+        if (!totalElement) {
+            console.error("❌ عنصر المجموع غير موجود في HTML");
+            return;
+        }
+
+        console.log("✅ عناصر HTML موجودة");
+
         const tx = db.transaction("cart", "readonly");
         const store = tx.objectStore("cart");
         const request = store.getAll();
 
         request.onsuccess = function() {
             const cartItems = request.result;
-            const container = document.getElementById("cartItemsContainer");
-            const totalElement = document.getElementById("cartTotal");
-            if (!container || !totalElement) return;
+            console.log("📦 تم جلب عناصر السلة:", cartItems.length, "عنصر");
 
             if (cartItems.length === 0) {
+                console.log("📝 عرض السلة الفارغة...");
                 container.innerHTML = `
                 <div class="flex flex-col items-center justify-center text-center text-gray-500 py-8 space-y-2">
                     <div class="text-4xl">🛒</div>
@@ -3686,46 +3772,58 @@
                 </div>
             `;
                 totalElement.textContent = "0.00 ₪";
+                console.log("✅ تم عرض السلة الفارغة");
                 return;
             }
 
+            console.log("📝 عرض عناصر السلة...");
             container.innerHTML = '';
             let total = 0;
             let highlightElement = null;
 
-            cartItems.forEach(item => {
-                total += item.price * item.quantity;
+            cartItems.forEach((item, index) => {
+                console.log(`🔍 معالجة العنصر ${index + 1}:`, item);
+
+                // إصلاح مشكلة الأسعار - التأكد من أنها أرقام
+                const itemPrice = parseFloat(item.price) || 0;
+                const itemQuantity = parseInt(item.quantity) || 1;
+                const itemTotal = itemPrice * itemQuantity;
+
+                total += itemTotal;
+
+                // الحصول على معلومات المخزون
+                const stockInfo = item.stock_info || {};
+                const maxQuantity = stockInfo.max_quantity || 999;
+                const isAtLimit = itemQuantity >= maxQuantity;
+                const stockWarning = maxQuantity <= 5 && maxQuantity > 0;
+
+                console.log(`💰 السعر: ${itemPrice}, الكمية: ${itemQuantity}, المجموع: ${itemTotal}, الحد الأقصى: ${maxQuantity}`);
 
                 const div = document.createElement("div");
                 div.id = `cart-item-${item.id}`;
-                div.className = "flex justify-between items-center bg-gray-100 p-3 rounded transition duration-300 border";
-
-                // التحقق من معلومات المخزون
-                const stockInfo = item.stock_info || {};
-                const maxQuantity = stockInfo.max_quantity || 999;
-                const isAtLimit = item.quantity >= maxQuantity;
-                const stockWarning = maxQuantity <= 5 && maxQuantity > 0;
+                div.className = "flex justify-between items-center bg-gray-100 p-3 rounded transition duration-300 border cart-item";
 
                 // تحديد ألوان الأزرار بناءً على توفر المخزون
-                const decreaseButtonClass = item.quantity <= 1 ?
-                    "bg-red-300 px-2 rounded hover:bg-red-400 cursor-pointer" :
-                    "bg-gray-300 px-2 rounded hover:bg-gray-400 cursor-pointer";
+                const decreaseButtonClass = itemQuantity <= 1 ?
+                    "bg-red-300 px-2 py-1 rounded hover:bg-red-400 cursor-pointer text-sm" :
+                    "bg-gray-300 px-2 py-1 rounded hover:bg-gray-400 cursor-pointer text-sm";
 
                 const increaseButtonClass = isAtLimit ?
-                    "bg-gray-200 px-2 rounded cursor-not-allowed opacity-50" :
-                    "bg-green-300 px-2 rounded hover:bg-green-400 cursor-pointer";
+                    "bg-gray-200 px-2 py-1 rounded cursor-not-allowed opacity-50 text-sm" :
+                    "bg-green-300 px-2 py-1 rounded hover:bg-green-400 cursor-pointer text-sm";
 
+                // إنشاء HTML للعنصر
                 div.innerHTML = `
                 <div class="flex items-center gap-3 flex-1">
                     <div class="flex-1">
-                        <p class="font-semibold text-sm">${item.name}</p>
+                        <p class="font-semibold text-sm">${item.name || 'منتج بدون اسم'}</p>
                         <div class="flex items-center gap-2 mt-1">
                             <button onclick="updateQuantityWithStockCheck(${item.id}, -1)"
                                     class="${decreaseButtonClass}"
-                                    ${item.quantity <= 1 ? 'title="حذف من السلة"' : 'title="تقليل الكمية"'}>
-                                ${item.quantity <= 1 ? '🗑️' : '−'}
+                                    title="${itemQuantity <= 1 ? 'حذف من السلة' : 'تقليل الكمية'}">
+                                ${itemQuantity <= 1 ? '🗑️' : '−'}
                             </button>
-                            <span class="mx-2 font-bold min-w-[30px] text-center">${item.quantity}</span>
+                            <span class="mx-2 font-bold min-w-[30px] text-center">${itemQuantity}</span>
                             <button onclick="updateQuantityWithStockCheck(${item.id}, 1)"
                                     class="${increaseButtonClass}"
                                     ${isAtLimit ? `title="الحد الأقصى: ${maxQuantity}"` : 'title="زيادة الكمية"'}
@@ -3733,6 +3831,7 @@
                                 +
                             </button>
                         </div>
+                        ${item.sku ? `<div class="text-xs text-gray-500 mt-1">SKU: ${item.sku}</div>` : ''}
                         ${stockWarning ? `
                             <div class="text-xs text-orange-600 mt-1 flex items-center gap-1">
                                 <span>⚠️</span>
@@ -3742,33 +3841,37 @@
                         ${isAtLimit && maxQuantity < 999 ? `
                             <div class="text-xs text-red-600 mt-1 flex items-center gap-1">
                                 <span>🚫</span>
-                                <span>وصلت للحد الأقصى</span>
+                                <span>وصلت للحد الأقصى المتاح</span>
                             </div>
                         ` : ''}
                     </div>
                 </div>
                 <div class="text-right">
-                    <div class="font-bold text-gray-800">${(item.price * item.quantity).toFixed(2)} ₪</div>
-                    <div class="text-xs text-gray-500">${item.price.toFixed(2)} ₪/قطعة</div>
-                    <button onclick="removeFromCart(${item.id})"
+                    <div class="font-bold text-gray-800">${itemTotal.toFixed(2)} ₪</div>
+                    <div class="text-xs text-gray-500">${itemPrice.toFixed(2)} ₪/قطعة</div>
+                    <button onclick="removeFromCartDebug(${item.id})"
                             class="text-red-500 hover:text-red-700 mt-1 text-sm"
                             title="حذف من السلة">
-                        🗑️ حذف
+                        🗑️
                     </button>
                 </div>
             `;
 
                 container.appendChild(div);
+                console.log(`✅ تم إضافة العنصر ${index + 1} للعرض`);
 
                 if (highlightId && item.id === highlightId) {
                     highlightElement = div;
                 }
             });
 
+            // تحديث المجموع
             totalElement.textContent = total.toFixed(2) + " ₪";
+            console.log(`💰 المجموع النهائي: ${total.toFixed(2)} ₪`);
 
-            // تمييز العنصر الجديد أو المحدث
+            // تمييز العنصر الجديد
             if (highlightElement) {
+                console.log("✨ تمييز العنصر الجديد...");
                 highlightElement.classList.add("bg-yellow-200", "border-yellow-400");
                 setTimeout(() => {
                     highlightElement.scrollIntoView({
@@ -3780,10 +3883,13 @@
                     }, 1000);
                 }, 100);
             }
+
+            console.log("✅ تم عرض السلة بنجاح");
         };
 
-        request.onerror = function() {
-            console.error("فشل في تحميل محتوى السلة.");
+        request.onerror = function(event) {
+            console.error("❌ خطأ في قراءة السلة:", event);
+            container.innerHTML = '<div class="text-center text-red-500 py-4">خطأ في تحميل السلة</div>';
         };
     }
 
@@ -3944,108 +4050,21 @@
 
         request.onsuccess = function() {
             const cartItems = request.result;
-            console.log("📦 تم جلب عناصر السلة:", cartItems.length, "عنصر");
+            console.log("🛒 محتوى السلة في قاعدة البيانات:");
+            console.log("- عدد العناصر:", cartItems.length);
 
-            if (cartItems.length === 0) {
-                console.log("📝 عرض السلة الفارغة...");
-                container.innerHTML = `
-                <div class="flex flex-col items-center justify-center text-center text-gray-500 py-8 space-y-2">
-                    <div class="text-4xl">🛒</div>
-                    <p class="text-lg font-semibold">السلة فارغة</p>
-                    <p class="text-sm text-gray-400">لم تقم بإضافة أي منتجات بعد</p>
-                </div>
-            `;
-                totalElement.textContent = "0.00 ₪";
-                console.log("✅ تم عرض السلة الفارغة");
-                return;
+            if (cartItems.length > 0) {
+                console.log("- العناصر:", cartItems);
+                cartItems.forEach((item, index) => {
+                    console.log(`  ${index + 1}. ${item.name} - الكمية: ${item.quantity} - السعر: ${item.price}`);
+                });
+            } else {
+                console.log("- السلة فارغة في قاعدة البيانات");
             }
-
-            console.log("📝 عرض عناصر السلة...");
-            container.innerHTML = '';
-            let total = 0;
-            let highlightElement = null;
-
-            cartItems.forEach((item, index) => {
-                console.log(`🔍 معالجة العنصر ${index + 1}:`, item);
-
-                // إصلاح مشكلة الأسعار - التأكد من أنها أرقام
-                const itemPrice = parseFloat(item.price) || 0;
-                const itemQuantity = parseInt(item.quantity) || 1;
-                const itemTotal = itemPrice * itemQuantity;
-
-                total += itemTotal;
-
-                console.log(`💰 السعر: ${itemPrice}, الكمية: ${itemQuantity}, المجموع: ${itemTotal}`);
-
-                const div = document.createElement("div");
-                div.id = `cart-item-${item.id}`;
-                div.className = "flex justify-between items-center bg-gray-100 p-3 rounded transition duration-300 border cart-item";
-
-                // إنشاء HTML للعنصر
-                div.innerHTML = `
-                <div class="flex items-center gap-3 flex-1">
-                    <div class="flex-1">
-                        <p class="font-semibold text-sm">${item.name || 'منتج بدون اسم'}</p>
-                        <div class="flex items-center gap-2 mt-1">
-                            <button onclick="updateQuantityDebug(${item.id}, -1)"
-                                    class="bg-red-300 px-2 py-1 rounded hover:bg-red-400 cursor-pointer text-sm"
-                                    title="${itemQuantity <= 1 ? 'حذف من السلة' : 'تقليل الكمية'}">
-                                ${itemQuantity <= 1 ? '🗑️' : '−'}
-                            </button>
-                            <span class="mx-2 font-bold min-w-[30px] text-center">${itemQuantity}</span>
-                            <button onclick="updateQuantityDebug(${item.id}, 1)"
-                                    class="bg-green-300 px-2 py-1 rounded hover:bg-green-400 cursor-pointer text-sm"
-                                    title="زيادة الكمية">
-                                +
-                            </button>
-                        </div>
-                        ${item.sku ? `<div class="text-xs text-gray-500 mt-1">SKU: ${item.sku}</div>` : ''}
-                    </div>
-                </div>
-                <div class="text-right">
-                    <div class="font-bold text-gray-800">${itemTotal.toFixed(2)} ₪</div>
-                    <div class="text-xs text-gray-500">${itemPrice.toFixed(2)} ₪/قطعة</div>
-                    <button onclick="removeFromCartDebug(${item.id})"
-                            class="text-red-500 hover:text-red-700 mt-1 text-sm"
-                            title="حذف من السلة">
-                        🗑️
-                    </button>
-                </div>
-            `;
-
-                container.appendChild(div);
-                console.log(`✅ تم إضافة العنصر ${index + 1} للعرض`);
-
-                if (highlightId && item.id === highlightId) {
-                    highlightElement = div;
-                }
-            });
-
-            // تحديث المجموع
-            totalElement.textContent = total.toFixed(2) + " ₪";
-            console.log(`💰 المجموع النهائي: ${total.toFixed(2)} ₪`);
-
-            // تمييز العنصر الجديد
-            if (highlightElement) {
-                console.log("✨ تمييز العنصر الجديد...");
-                highlightElement.classList.add("bg-yellow-200", "border-yellow-400");
-                setTimeout(() => {
-                    highlightElement.scrollIntoView({
-                        behavior: 'smooth',
-                        block: 'start'
-                    });
-                    setTimeout(() => {
-                        highlightElement.classList.remove("bg-yellow-200", "border-yellow-400");
-                    }, 1000);
-                }, 100);
-            }
-
-            console.log("✅ تم عرض السلة بنجاح");
         };
 
-        request.onerror = function(event) {
-            console.error("❌ خطأ في قراءة السلة:", event);
-            container.innerHTML = '<div class="text-center text-red-500 py-4">خطأ في تحميل السلة</div>';
+        request.onerror = function() {
+            console.error("❌ خطأ في قراءة السلة من قاعدة البيانات");
         };
     }
 
@@ -4225,7 +4244,8 @@
                         image: item.image || '',
                         type: item.type || 'simple',
                         sku: item.sku || '',
-                        added_at: item.added_at || new Date().toISOString()
+                        added_at: item.added_at || new Date().toISOString(),
+                        stock_info: item.stock_info || {}
                     };
 
                     fixedItems.push(fixedItem);
@@ -4248,7 +4268,7 @@
             }
 
             console.log("✅ تم إصلاح بيانات السلة");
-            renderCartDebug();
+            renderCartWithStockInfo();
         };
 
         request.onerror = function() {
@@ -4256,8 +4276,8 @@
         };
     }
 
-    function testCartFunctionality() {
-        console.log("🧪 بدء اختبار وظائف السلة...");
+    async function testCartFunctionality() {
+        console.log("🧪 بدء اختبار وظائف السلة مع فحص المخزون...");
 
         // منتج تجريبي
         const testProduct = {
@@ -4265,20 +4285,40 @@
             name: "منتج تجريبي",
             price: "25.50", // سعر كنص لاختبار التحويل
             images: [],
-            type: 'simple'
+            type: 'simple',
+            manage_stock: true,
+            stock_quantity: 3, // كمية محدودة للاختبار
+            stock_status: 'instock'
         };
 
-        console.log("➕ اختبار إضافة منتج...");
-        addToCartSimpleDebug(testProduct);
+        // إضافة المنتج لقاعدة البيانات أولاً
+        const tx = db.transaction("products", "readwrite");
+        const store = tx.objectStore("products");
+        store.put(testProduct);
 
-        setTimeout(() => {
-            console.log("📊 اختبار تحديث الكمية...");
-            updateQuantityDebug(999999, 1);
+        setTimeout(async () => {
+            console.log("➕ اختبار إضافة منتج...");
+            await addToCartWithStockCheck(testProduct);
 
-            setTimeout(() => {
-                console.log("🗑️ اختبار حذف المنتج...");
-                removeFromCartDebug(999999);
-            }, 1000);
+            setTimeout(async () => {
+                console.log("📊 اختبار تحديث الكمية...");
+                await updateQuantityWithStockCheck(999999, 1);
+
+                setTimeout(async () => {
+                    console.log("📊 اختبار تجاوز الحد الأقصى...");
+                    await updateQuantityWithStockCheck(999999, 2); // هذا يجب أن يفشل
+
+                    setTimeout(() => {
+                        console.log("🗑️ اختبار حذف المنتج...");
+                        removeFromCartDebug(999999);
+
+                        // حذف المنتج التجريبي من قاعدة البيانات
+                        const cleanupTx = db.transaction("products", "readwrite");
+                        const cleanupStore = cleanupTx.objectStore("products");
+                        cleanupStore.delete(999999);
+                    }, 2000);
+                }, 2000);
+            }, 2000);
         }, 1000);
     }
 
@@ -4323,7 +4363,8 @@
 
     setTimeout(() => {
         fixCorruptedCartData();
-    }, 3000);
+        diagnoseCartIssues();
+    }, 2000);
 
     function renderCartDebug(highlightId = null) {
         console.log("🖼️ === بدء عرض السلة ===");
