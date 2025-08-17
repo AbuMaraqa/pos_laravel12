@@ -3705,51 +3705,89 @@
         });
     }
 
-    async function updateQuantityWithStockCheck(productId, change) {
+    function updateQuantityWithStockCheck(productId, change) {
+        console.log(`🔄 تحديث كمية المنتج ${productId} بمقدار ${change}`);
+
+        if (!db) {
+            console.error("❌ قاعدة البيانات غير متاحة");
+            showNotification("قاعدة البيانات غير متاحة", 'error');
+            return;
+        }
+
+        // إنشاء معاملة جديدة لكل عملية تحديث
         const tx = db.transaction("cart", "readwrite");
         const store = tx.objectStore("cart");
+
+        // الحصول على العنصر
         const getRequest = store.get(productId);
 
-        getRequest.onsuccess = async function() {
+        getRequest.onsuccess = function() {
             const item = getRequest.result;
-            if (!item) return;
 
-            const newQuantity = item.quantity + change;
-
-            // إذا كانت الكمية الجديدة صفر أو أقل، احذف المنتج
-            if (newQuantity <= 0) {
-                store.delete(productId);
-                renderCart();
-                showNotification("تم حذف المنتج من السلة", 'info');
+            if (!item) {
+                console.error("❌ المنتج غير موجود في السلة");
                 return;
             }
 
-            // فحص توفر المخزون للكمية الجديدة
-            const stockCheck = await checkProductStock(productId, newQuantity);
+            const newQuantity = (parseInt(item.quantity) || 1) + change;
+            console.log(`📊 الكمية الجديدة: ${newQuantity}`);
 
-            if (stockCheck.available) {
+            if (newQuantity <= 0) {
+                // حذف المنتج إذا كانت الكمية صفر أو أقل
+                console.log("🗑️ حذف المنتج من السلة");
+
+                // إنشاء معاملة جديدة للحذف
+                const deleteTx = db.transaction("cart", "readwrite");
+                const deleteStore = deleteTx.objectStore("cart");
+
+                const deleteRequest = deleteStore.delete(productId);
+
+                deleteRequest.onsuccess = function() {
+                    console.log("✅ تم حذف المنتج من السلة");
+                    showNotification("تم حذف المنتج من السلة", 'info');
+                    renderCartWithStockInfo();
+                };
+
+                deleteRequest.onerror = function() {
+                    console.error("❌ خطأ في حذف المنتج");
+                    showNotification("فشل في حذف المنتج", 'error');
+                };
+
+            } else {
+                // تحديث الكمية
+                // إنشاء معاملة جديدة للتحديث
+                const updateTx = db.transaction("cart", "readwrite");
+                const updateStore = updateTx.objectStore("cart");
+
+                // تحديث البيانات
                 item.quantity = newQuantity;
                 item.updated_at = new Date().toISOString();
-                store.put(item);
-                renderCart(productId);
 
-                if (change > 0) {
-                    showNotification(`تم زيادة الكمية إلى ${newQuantity}`, 'success');
-                } else {
-                    showNotification(`تم تقليل الكمية إلى ${newQuantity}`, 'success');
-                }
-            } else {
-                if (stockCheck.maxQuantity === 0) {
-                    showNotification("هذا المنتج غير متوفر حالياً", 'warning');
-                } else {
-                    showNotification(`الحد الأقصى المتاح: ${stockCheck.maxQuantity} قطعة (الكمية الحالية: ${item.quantity})`, 'warning');
-                }
+                const updateRequest = updateStore.put(item);
+
+                updateRequest.onsuccess = function() {
+                    console.log("✅ تم تحديث الكمية بنجاح");
+
+                    if (change > 0) {
+                        showNotification(`تم زيادة الكمية إلى ${newQuantity}`, 'success');
+                    } else {
+                        showNotification(`تم تقليل الكمية إلى ${newQuantity}`, 'success');
+                    }
+
+                    // إعادة عرض السلة
+                    renderCartWithStockInfo(productId);
+                };
+
+                updateRequest.onerror = function() {
+                    console.error("❌ خطأ في تحديث الكمية");
+                    showNotification("فشل في تحديث الكمية", 'error');
+                };
             }
         };
 
         getRequest.onerror = function() {
-            console.error("فشل في تحديث كمية المنتج");
-            showNotification("حدث خطأ أثناء تحديث الكمية", 'error');
+            console.error("❌ خطأ في قراءة بيانات المنتج");
+            showNotification("فشل في قراءة بيانات المنتج", 'error');
         };
     }
 
@@ -4148,8 +4186,10 @@
             return;
         }
 
+        // إنشاء معاملة جديدة للحذف
         const tx = db.transaction("cart", "readwrite");
         const store = tx.objectStore("cart");
+
         const request = store.delete(productId);
 
         request.onsuccess = function() {
@@ -4163,6 +4203,9 @@
             showNotification("فشل في حذف المنتج", 'error');
         };
     }
+
+    window.updateQuantityWithStockCheck = updateQuantityWithStockCheck;
+    window.removeFromCartDebug = removeFromCartDebug;
 
     function clearCartDebug() {
         console.log("🧹 مسح جميع المنتجات من السلة");
