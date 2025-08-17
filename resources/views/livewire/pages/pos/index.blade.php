@@ -192,9 +192,27 @@
     }
 
     function initializeUI() {
-        setTimeout(() => renderProductsFromIndexedDB(currentSearchTerm, selectedCategoryId), 300);
-        renderCategoriesFromIndexedDB();
-        renderCart();
+        console.log("🎨 تهيئة واجهة المستخدم...");
+
+        // عرض البيانات المحفوظة فوراً إذا كانت متوفرة
+        if (db) {
+            checkStoreData("products").then(count => {
+                if (count > 0) {
+                    console.log(`📦 عرض ${count} منتج محفوظ`);
+                    renderProductsFromIndexedDB(currentSearchTerm, selectedCategoryId);
+                }
+            });
+
+            checkStoreData("categories").then(count => {
+                if (count > 0) {
+                    console.log(`📁 عرض ${count} فئة محفوظة`);
+                    renderCategoriesFromIndexedDB();
+                }
+            });
+
+            // عرض السلة
+            renderCartWithStockInfo();
+        }
     }
 
     // ============================================
@@ -1522,26 +1540,155 @@
     }
 
     function checkAndFetchInitialData() {
-        const checks = [
-            {store: "products", action: 'fetch-products-from-api'},
-            {store: "categories", action: 'fetch-categories-from-api'},
-            {store: "customers", action: 'fetch-customers-from-api'},
-            {store: "shippingMethods", action: 'fetch-shipping-methods-from-api'},
-            {store: "shippingZones", action: 'fetch-shipping-zones-and-methods'}
-        ];
+        console.log("🔍 فحص البيانات الأولية المحسن...");
 
-        checks.forEach(check => {
-            const tx = db.transaction(check.store, "readonly");
-            const store = tx.objectStore(check.store);
-            const countRequest = store.count();
+        if (!db) {
+            console.warn("⚠️ قاعدة البيانات غير متاحة بعد");
+            setTimeout(checkAndFetchInitialData, 1000);
+            return;
+        }
 
-            countRequest.onsuccess = function () {
-                if (countRequest.result === 0) {
-                    console.log(`📥 تحميل ${check.store} للمرة الأولى...`);
-                    Livewire.dispatch(check.action);
-                }
-            };
+        // فحص المنتجات والفئات معاً
+        Promise.all([
+            checkStoreData("products"),
+            checkStoreData("categories"),
+            checkStoreData("customers"),
+            checkStoreData("shippingMethods"),
+            checkStoreData("shippingZones")
+        ]).then(results => {
+            const [productsCount, categoriesCount, customersCount, shippingMethodsCount, shippingZonesCount] = results;
+
+            console.log("📊 إحصائيات البيانات المحفوظة:");
+            console.log(`- المنتجات: ${productsCount}`);
+            console.log(`- الفئات: ${categoriesCount}`);
+            console.log(`- العملاء: ${customersCount}`);
+            console.log(`- طرق الشحن: ${shippingMethodsCount}`);
+            console.log(`- مناطق الشحن: ${shippingZonesCount}`);
+
+            // إذا لم توجد منتجات أو فئات، قم بتحميلها
+            if (productsCount === 0) {
+                console.log("🔥 تحميل المنتجات للمرة الأولى...");
+                showNotification("جاري تحميل المنتجات...", 'info', 2000);
+                Livewire.dispatch('fetch-products-from-api');
+            } else {
+                console.log("✅ المنتجات متوفرة محلياً - عرض فوري");
+                // عرض المنتجات المحفوظة فوراً
+                setTimeout(() => {
+                    renderProductsFromIndexedDB(currentSearchTerm, selectedCategoryId);
+                }, 100);
+            }
+
+            if (categoriesCount === 0) {
+                console.log("🔥 تحميل الفئات للمرة الأولى...");
+                showNotification("جاري تحميل الفئات...", 'info', 2000);
+                Livewire.dispatch('fetch-categories-from-api');
+            } else {
+                console.log("✅ الفئات متوفرة محلياً - عرض فوري");
+                // عرض الفئات المحفوظة فوراً
+                setTimeout(() => {
+                    renderCategoriesFromIndexedDB();
+                }, 100);
+            }
+
+            // تحميل باقي البيانات إذا لم تكن موجودة
+            if (customersCount === 0) {
+                console.log("🔥 تحميل العملاء...");
+                Livewire.dispatch('fetch-customers-from-api');
+            }
+
+            if (shippingMethodsCount === 0 || shippingZonesCount === 0) {
+                console.log("🔥 تحميل بيانات الشحن...");
+                Livewire.dispatch('fetch-shipping-zones-and-methods');
+            }
+
+        }).catch(error => {
+            console.error("❌ خطأ في فحص البيانات:", error);
         });
+    }
+
+    function checkStoreData(storeName) {
+        return new Promise((resolve) => {
+            try {
+                const tx = db.transaction(storeName, "readonly");
+                const store = tx.objectStore(storeName);
+                const countRequest = store.count();
+
+                countRequest.onsuccess = function() {
+                    resolve(countRequest.result);
+                };
+
+                countRequest.onerror = function() {
+                    console.error(`❌ خطأ في فحص ${storeName}`);
+                    resolve(0);
+                };
+            } catch (error) {
+                console.error(`❌ خطأ في الوصول إلى ${storeName}:`, error);
+                resolve(0);
+            }
+        });
+    }
+
+    function initializePOSData() {
+        console.log("🚀 بدء تهيئة بيانات POS...");
+
+        // انتظار تحميل قاعدة البيانات
+        function waitForDatabase() {
+            if (db) {
+                console.log("✅ قاعدة البيانات جاهزة");
+
+                // فحص وتحميل البيانات
+                checkAndFetchInitialData();
+
+                // عرض السلة المحفوظة
+                renderCartWithStockInfo();
+
+            } else {
+                console.log("⏳ انتظار قاعدة البيانات...");
+                setTimeout(waitForDatabase, 500);
+            }
+        }
+
+        waitForDatabase();
+    }
+
+    function forceRefreshAllData() {
+        console.log("🔄 بدء تحديث شامل للبيانات...");
+
+        if (!confirm("هل أنت متأكد من تحديث جميع البيانات؟ سيتم حذف البيانات المحلية وتحميل بيانات جديدة.")) {
+            return;
+        }
+
+        showNotification("جاري التحديث الشامل...", 'info', 2000);
+
+        const storesToClear = ["products", "categories", "customers", "shippingMethods", "shippingZones", "shippingZoneMethods"];
+
+        const tx = db.transaction(storesToClear, "readwrite");
+
+        storesToClear.forEach(storeName => {
+            if (storeName !== "cart") { // لا نمسح السلة
+                const store = tx.objectStore(storeName);
+                store.clear();
+            }
+        });
+
+        tx.oncomplete = function() {
+            console.log("✅ تم مسح البيانات القديمة");
+
+            // تحميل البيانات الجديدة
+            setTimeout(() => {
+                Livewire.dispatch('fetch-products-from-api');
+                Livewire.dispatch('fetch-categories-from-api');
+                Livewire.dispatch('fetch-customers-from-api');
+                Livewire.dispatch('fetch-shipping-zones-and-methods');
+
+                showNotification("✅ تم التحديث الشامل بنجاح!", 'success');
+            }, 500);
+        };
+
+        tx.onerror = function() {
+            console.error("❌ فشل في التحديث الشامل");
+            showNotification("حدث خطأ أثناء التحديث", 'error');
+        };
     }
 
     // ============================================
@@ -4708,6 +4855,27 @@
             container.innerHTML = '<div class="text-center text-red-500 py-4">خطأ في تحميل السلة</div>';
         };
     }
+
+    document.addEventListener("livewire:navigated", () => {
+        console.log("🚢 Livewire تم التنقل - تطبيق التحسينات...");
+
+        setTimeout(() => {
+            initializePOSData();
+        }, 300);
+    });
+
+    document.addEventListener('DOMContentLoaded', () => {
+        console.log("📄 تم تحميل الصفحة - بدء التهيئة...");
+
+        setTimeout(() => {
+            initializePOSData();
+        }, 500);
+    });
+
+    window.checkAndFetchInitialData = checkAndFetchInitialData;
+    window.initializePOSData = initializePOSData;
+    window.forceRefreshAllData = forceRefreshAllData;
+    window.checkStoreData = checkStoreData;
 
     console.log("✅ تم تحميل جميع وظائف نظام POS المحسن");
 </script>
