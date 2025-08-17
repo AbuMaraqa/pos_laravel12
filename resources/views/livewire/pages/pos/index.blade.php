@@ -2263,17 +2263,9 @@
         } else if (product.type === 'variable') {
 
             if (product.target_variation) {
-                // 🎯 تم العثور على متغير محدد
-                console.log("🎯 تم العثور على متغير مستهدف:", product.target_variation);
-
-                // خيار للمستخدم: إضافة مباشرة أم عرض المودال
-                const userPreference = getUserVariationPreference();
-
-                if (userPreference === 'direct') {
-                    addTargetVariationDirectly(product.target_variation, false);
-                } else {
-                    addTargetVariationDirectly(product.target_variation, true);
-                }
+                // 🎯 تم العثور على متغير محدد - إضافة مباشرة للسلة
+                console.log("🎯 إضافة المتغير المستهدف مباشرة للسلة:", product.target_variation);
+                addTargetVariationDirectly(product.target_variation, false);
 
             } else if (product.variations_full && product.variations_full.length > 0) {
                 // عرض جميع المتغيرات
