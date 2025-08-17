@@ -793,11 +793,15 @@
         console.log("🔄 إعادة ضبط إلى الكود الأصلي...");
 
         // إعادة تعريف جميع الدوال في النطاق العام
-        window.addToCart = addToCart;
-        window.renderCart = renderCart;
+        window.addToCart = addToCartWithStockCheck;
+        window.renderCart = renderCartWithStockInfo;
         window.removeFromCart = removeFromCart;
-        window.updateQuantity = updateQuantity;
+        window.updateQuantity = updateQuantityWithStockCheck;
         window.clearCart = clearCart;
+        window.addVariationToCart = addVariationToCartEnhanced;
+        window.checkProductStock = checkProductStock;
+        window.validateCartStock = validateCartStock;
+
 
         // إعادة تهيئة قاعدة البيانات إذا لزم الأمر
         if (!db) {
@@ -1910,22 +1914,29 @@
         });
     });
 
-    function addVariationToCartEnhanced(variationId, productName = null, directAdd = false) {
+    async function addVariationToCartEnhanced(variationId, productName = null, directAdd = false) {
         const tx = db.transaction("products", "readonly");
         const store = tx.objectStore("products");
         const request = store.get(variationId);
 
-        request.onsuccess = function () {
+        request.onsuccess = async function() {
             const variation = request.result;
 
             if (!variation || !variation.id) {
-                console.error("❌ Variation not found:", variationId);
+                console.error("المتغير غير موجود:", variationId);
                 showNotification("لم يتم العثور على هذا المتغير", 'error');
                 return;
             }
 
-            if (variation.stock_status === 'outofstock') {
-                showNotification("هذا المتغير غير متوفر حالياً", 'warning');
+            // فحص المخزون أولاً
+            const stockCheck = await checkProductStock(variation.id, 1);
+
+            if (!stockCheck.available) {
+                if (stockCheck.stockStatus === 'outofstock') {
+                    showNotification("هذا المتغير غير متوفر حالياً", 'warning');
+                } else {
+                    showNotification("لا توجد كمية كافية من هذا المتغير", 'warning');
+                }
                 return;
             }
 
@@ -1933,13 +1944,11 @@
             const cartStore = cartTx.objectStore("cart");
             const getCartItem = cartStore.get(variation.id);
 
-            getCartItem.onsuccess = function () {
+            getCartItem.onsuccess = async function() {
                 const existing = getCartItem.result;
-
-                // تحضير اسم المنتج
                 let displayName = variation.name || productName || 'منتج متغير';
 
-                // إضافة معلومات الخصائص للاسم إذا كانت متوفرة
+                // إضافة معلومات الخصائص للاسم
                 if (variation.attributes && variation.attributes.length > 0) {
                     const attributesParts = variation.attributes
                         .map(attr => attr.option || attr.value)
@@ -1951,11 +1960,21 @@
                 }
 
                 if (existing) {
-                    existing.quantity += 1;
-                    existing.updated_at = new Date().toISOString();
-                    cartStore.put(existing);
-                    console.log("✅ تم تحديث كمية المتغير في السلة:", displayName);
+                    // فحص الكمية الجديدة
+                    const newQuantity = existing.quantity + 1;
+                    const newStockCheck = await checkProductStock(variation.id, newQuantity);
+
+                    if (newStockCheck.available) {
+                        existing.quantity = newQuantity;
+                        existing.updated_at = new Date().toISOString();
+                        cartStore.put(existing);
+                        console.log("تم تحديث كمية المتغير في السلة:", displayName);
+                    } else {
+                        showNotification(`الحد الأقصى المتاح: ${newStockCheck.maxQuantity} قطعة`, 'warning');
+                        return;
+                    }
                 } else {
+                    // إضافة جديدة
                     const cartItem = {
                         id: variation.id,
                         name: displayName,
@@ -1966,15 +1985,20 @@
                         type: 'variation',
                         product_id: variation.product_id || null,
                         attributes: variation.attributes || [],
-                        added_at: new Date().toISOString()
+                        added_at: new Date().toISOString(),
+                        stock_info: {
+                            max_quantity: stockCheck.maxQuantity,
+                            stock_status: stockCheck.stockStatus,
+                            manage_stock: stockCheck.manageStock
+                        }
                     };
 
                     cartStore.put(cartItem);
-                    console.log("✅ تم إضافة المتغير للسلة:", displayName);
+                    console.log("تم إضافة المتغير للسلة:", displayName);
                 }
 
                 // تحديث عرض السلة
-                renderCart(variation.id);
+                renderCartWithStockInfo(variation.id);
 
                 // إغلاق المودال إذا كانت الإضافة مباشرة
                 if (directAdd) {
@@ -1989,16 +2013,51 @@
                 showNotification(`تم إضافة "${displayName}" للسلة`, 'success');
             };
 
-            getCartItem.onerror = function () {
-                console.error("❌ فشل في إضافة المتغير للسلة");
+            getCartItem.onerror = function() {
+                console.error("فشل في إضافة المتغير للسلة");
                 showNotification("حدث خطأ أثناء إضافة المنتج", 'error');
             };
         };
 
-        request.onerror = function () {
-            console.error("❌ Failed to fetch variation:", variationId);
+        request.onerror = function() {
+            console.error("فشل في جلب بيانات المتغير:", variationId);
             showNotification("حدث خطأ أثناء إضافة المتغير", 'error');
         };
+    }
+
+    async function validateCartStock() {
+        return new Promise((resolve) => {
+            const tx = db.transaction("cart", "readonly");
+            const store = tx.objectStore("cart");
+            const request = store.getAll();
+
+            request.onsuccess = async function() {
+                const cartItems = request.result;
+                const validationResults = [];
+
+                for (const item of cartItems) {
+                    const stockCheck = await checkProductStock(item.id, item.quantity);
+
+                    validationResults.push({
+                        item: item,
+                        stockCheck: stockCheck,
+                        isValid: stockCheck.available
+                    });
+                }
+
+                const invalidItems = validationResults.filter(result => !result.isValid);
+
+                resolve({
+                    isValid: invalidItems.length === 0,
+                    invalidItems: invalidItems,
+                    allResults: validationResults
+                });
+            };
+
+            request.onerror = function() {
+                resolve({ isValid: false, error: "فشل في التحقق من المخزون" });
+            };
+        });
     }
 
     function addTargetVariationDirectly(targetVariation, showModal = false) {
@@ -2272,7 +2331,7 @@
             setTimeout(() => {
                 const targetCard = grid.querySelector('.border-green-500');
                 if (targetCard) {
-                    targetCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    targetCard.scrollIntoView({behavior: 'smooth', block: 'center'});
 
                     // إضافة تأثير وميض للفت الانتباه
                     targetCard.classList.add('animate-pulse');
@@ -2429,13 +2488,13 @@
                 btn.id = 'completeOrderBtn';
                 btn.className = 'mt-4 w-full bg-blue-500 text-white py-2 px-4 rounded hover:bg-blue-600 transition-colors';
                 btn.textContent = 'إتمام الطلب';
-                btn.onclick = function() {
+                btn.onclick = function () {
                     // إعادة ربط وظيفة إتمام الطلب
                     setupOrderButton();
                     // محاولة فتح المودال
                     try {
                         Flux.modal('confirm-order-modal').show();
-                    } catch(e) {
+                    } catch (e) {
                         alert('يرجى إعادة تحميل الصفحة لاستكمال الطلب');
                     }
                 };
@@ -2457,7 +2516,7 @@
 
         // إعادة ربط listeners الجديدة
         document.querySelectorAll('.product-card').forEach(card => {
-            card.addEventListener('click', function() {
+            card.addEventListener('click', function () {
                 const productId = this.getAttribute('data-product-id');
                 if (productId) {
                     // البحث عن المنتج في IndexedDB
@@ -2465,7 +2524,7 @@
                     const store = tx.objectStore("products");
                     const request = store.get(parseInt(productId));
 
-                    request.onsuccess = function() {
+                    request.onsuccess = function () {
                         const product = request.result;
                         if (product) {
                             addToCartWithDebug(product);
@@ -2490,7 +2549,7 @@
         const store = tx.objectStore("cart");
         const request = store.getAll();
 
-        request.onsuccess = function() {
+        request.onsuccess = function () {
             const cartItems = request.result;
             console.log("📦 فحص", cartItems.length, "عنصر في السلة");
 
@@ -2790,7 +2849,7 @@
         const store = tx.objectStore("customers");
         const countRequest = store.count();
 
-        countRequest.onsuccess = function() {
+        countRequest.onsuccess = function () {
             const count = countRequest.result;
             console.log(`📊 عدد العملاء المحفوظين محلياً: ${count}`);
 
@@ -2810,7 +2869,7 @@
         // إعادة تعريف دالة checkAndFetchInitialData مع استثناء العملاء
         const originalCheckAndFetchInitialData = window.checkAndFetchInitialData;
 
-        window.checkAndFetchInitialData = function() {
+        window.checkAndFetchInitialData = function () {
             console.log("🔍 فحص البيانات الأولية المحسن...");
 
             const checks = [
@@ -2853,7 +2912,7 @@
                     }
                 };
 
-                countRequest.onerror = function() {
+                countRequest.onerror = function () {
                     console.error(`❌ خطأ في فحص ${check.store}`);
                 };
             });
@@ -2878,7 +2937,7 @@
         const store = tx.objectStore("customers");
         const countRequest = store.count();
 
-        countRequest.onsuccess = function() {
+        countRequest.onsuccess = function () {
             const count = countRequest.result;
 
             if (count > 0) {
@@ -2891,7 +2950,7 @@
             Livewire.dispatch('fetch-customers-from-api');
         };
 
-        countRequest.onerror = function() {
+        countRequest.onerror = function () {
             console.error("❌ خطأ في فحص العملاء");
         };
     }
@@ -2927,7 +2986,7 @@
 
         // محاكاة تحميل العملاء
         const fakeCustomers = [
-            { id: 999, first_name: "اختبار", last_name: "عميل", email: "test@example.com" }
+            {id: 999, first_name: "اختبار", last_name: "عميل", email: "test@example.com"}
         ];
 
         // حفظ حالة قبل الاختبار
@@ -2938,7 +2997,7 @@
 
         // محاكاة معالجة العملاء
         if (window.Livewire) {
-            Livewire.dispatch('store-customers', { customers: fakeCustomers });
+            Livewire.dispatch('store-customers', {customers: fakeCustomers});
 
             // فحص بعد ثانيتين
             setTimeout(() => {
@@ -2974,6 +3033,893 @@
 
     window.applyCustomersFix = applyCustomersFix;
     window.testCustomersFix = testCustomersFix;
+
+    function renderProductsFromIndexedDBWithStock(searchTerm = '', categoryId = null) {
+        const tx = db.transaction("products", "readonly");
+        const store = tx.objectStore("products");
+        const request = store.getAll();
+
+        request.onsuccess = function () {
+            const products = request.result;
+            const container = document.getElementById("productsContainer");
+            if (!container) return;
+
+            // إخفاء مؤشر التحميل
+            showSearchLoadingIndicator(false);
+
+            container.innerHTML = '';
+
+            const filtered = products.filter(item => {
+                const term = searchTerm.trim().toLowerCase();
+                const isAllowedType = item.type === 'simple' || item.type === 'variable';
+                const matchesSearch = !term || (
+                    (item.name && item.name.toLowerCase().includes(term)) ||
+                    (item.id && item.id.toString().includes(term)) ||
+                    (item.sku && item.sku.toLowerCase().includes(term))
+                );
+                const matchesCategory = !categoryId || (
+                    item.categories &&
+                    item.categories.some(cat => cat.id === categoryId)
+                );
+
+                return isAllowedType && matchesSearch && matchesCategory;
+            });
+
+            if (filtered.length === 0) {
+                container.innerHTML = '<p class="text-center text-gray-500 col-span-4">لا يوجد منتجات مطابقة</p>';
+                return;
+            }
+
+            filtered.forEach(item => {
+                const div = document.createElement("div");
+                div.classList.add("bg-white", "rounded-lg", "shadow-md", "relative", "product-card", "hover:shadow-lg", "transition-shadow");
+                div.style.cursor = "pointer";
+                div.setAttribute('data-product-id', item.id);
+
+                // تحديد حالة المخزون
+                let stockInfo = getStockDisplayInfo(item);
+
+                div.onclick = function () {
+                    // تحقق من توفر المخزون قبل السماح بالنقر
+                    if (stockInfo.isOutOfStock) {
+                        showNotification("هذا المنتج غير متوفر حالياً", 'warning');
+                        return;
+                    }
+
+                    if (item.type === 'variable' && Array.isArray(item.variations)) {
+                        fetchVariationsAndShowModal(item);
+                    } else if (item.type === 'simple') {
+                        addToCartWithStockCheck(item);
+                    }
+                };
+
+                div.innerHTML = `
+                <div class="relative h-32 bg-gray-100 rounded-t-lg flex items-center justify-center image-placeholder" data-product-id="${item.id}">
+                    <div class="text-gray-400 text-4xl">📦</div>
+                    <div class="absolute top-2 left-2 bg-black text-white text-xs px-2 py-1 rounded opacity-75">
+                        #${item.id}
+                    </div>
+                    <div class="absolute bottom-2 left-2 bg-blue-600 text-white px-2 py-1 rounded font-bold text-sm">
+                        ${item.price || 0} ₪
+                    </div>
+                    ${stockInfo.overlayHtml}
+                </div>
+                <div class="p-3">
+                    <p class="font-bold text-sm text-center truncate" title="${item.name || ''}">${item.name || ''}</p>
+                    ${item.sku ? `<p class="text-xs text-gray-500 text-center mt-1">SKU: ${item.sku}</p>` : ''}
+                    ${item.type === 'variable' ? '<p class="text-xs text-blue-500 text-center mt-1">منتج متغير</p>' : ''}
+                    ${stockInfo.badgeHtml}
+                </div>
+            `;
+
+                // إضافة كلاس للمنتجات غير المتوفرة
+                if (stockInfo.isOutOfStock) {
+                    div.classList.add('opacity-60', 'cursor-not-allowed');
+                } else if (stockInfo.isLowStock) {
+                    div.classList.add('border-2', 'border-orange-300');
+                }
+
+                container.appendChild(div);
+            });
+
+            // تطبيق Lazy Loading للصور
+            setupLazyImageLoading();
+        };
+
+        request.onerror = function () {
+            console.error("❌ Failed to fetch products from IndexedDB");
+            showSearchLoadingIndicator(false);
+        };
+    }
+
+    function getStockDisplayInfo(product) {
+        let stockQuantity = 0;
+        let stockStatus = product.stock_status || 'instock';
+        let manageStock = product.manage_stock || false;
+
+        if (manageStock && typeof product.stock_quantity !== 'undefined') {
+            stockQuantity = parseInt(product.stock_quantity) || 0;
+        }
+
+        let isOutOfStock = stockStatus === 'outofstock' || (manageStock && stockQuantity <= 0);
+        let isLowStock = !isOutOfStock && manageStock && stockQuantity > 0 && stockQuantity <= 5;
+
+        let overlayHtml = '';
+        let badgeHtml = '';
+
+        if (isOutOfStock) {
+            overlayHtml = '<div class="absolute inset-0 bg-red-500 bg-opacity-70 flex items-center justify-center rounded-t-lg"><span class="text-white font-bold text-sm">نفدت الكمية</span></div>';
+        } else if (manageStock && stockQuantity <= 10) {
+            if (isLowStock) {
+                badgeHtml = `<div class="text-xs text-orange-600 text-center mt-1 flex items-center justify-center gap-1">
+                <span>⚠️</span>
+                <span>كمية قليلة: ${stockQuantity}</span>
+            </div>`;
+            } else {
+                badgeHtml = `<div class="text-xs text-green-600 text-center mt-1">متوفر: ${stockQuantity}</div>`;
+            }
+        } else if (!manageStock && stockStatus === 'instock') {
+            badgeHtml = '<div class="text-xs text-green-600 text-center mt-1">متوفر</div>';
+        }
+
+        return {
+            isOutOfStock,
+            isLowStock,
+            stockQuantity,
+            overlayHtml,
+            badgeHtml
+        };
+    }
+
+    function showVariationsModalWithStock(variations, targetVariation = null) {
+        const modal = Flux.modal('variations-modal');
+        const container = document.getElementById("variationsTableBody");
+        if (!container) return;
+
+        container.innerHTML = '';
+
+        if (!variations || variations.length === 0) {
+            const message = document.createElement("div");
+            message.className = "text-center text-gray-500 py-8";
+            message.innerHTML = `
+            <div class="text-4xl mb-4">📦</div>
+            <p class="text-lg font-semibold">لا يوجد متغيرات متاحة</p>
+        `;
+            container.appendChild(message);
+            modal.show();
+            return;
+        }
+
+        // عنوان المودال
+        const header = document.createElement("div");
+        header.className = "text-center mb-4 p-4 bg-blue-50 rounded-lg";
+        header.innerHTML = `
+        <h3 class="text-lg font-bold text-blue-800">اختر من المتغيرات المتاحة</h3>
+        <p class="text-sm text-blue-600">عدد المتغيرات: ${variations.length}</p>
+        ${targetVariation ? `<p class="text-sm text-green-600 font-semibold">🎯 تم العثور على: ${targetVariation.name}</p>` : ''}
+    `;
+        container.appendChild(header);
+
+        const grid = document.createElement("div");
+        grid.className = "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 p-4";
+
+        // ترتيب المتغيرات بحيث يكون المستهدف أولاً
+        const sortedVariations = [...variations];
+        if (targetVariation) {
+            const targetIndex = sortedVariations.findIndex(v => v.id === targetVariation.id);
+            if (targetIndex > -1) {
+                const target = sortedVariations.splice(targetIndex, 1)[0];
+                sortedVariations.unshift(target);
+            }
+        }
+
+        sortedVariations.forEach((variation) => {
+            const card = document.createElement("div");
+            const isTarget = targetVariation && variation.id === targetVariation.id;
+
+            // الحصول على معلومات المخزون
+            const stockInfo = getStockDisplayInfo(variation);
+
+            const baseCardClass = "relative bg-white rounded-lg shadow-md overflow-hidden cursor-pointer hover:shadow-xl transition-all border";
+            let targetHighlight = "";
+
+            if (isTarget) {
+                targetHighlight = "border-4 border-green-500 bg-green-50 ring-2 ring-green-200";
+            } else if (stockInfo.isOutOfStock) {
+                targetHighlight = "border-2 border-red-300 opacity-60";
+            } else if (stockInfo.isLowStock) {
+                targetHighlight = "border-2 border-orange-300";
+            } else {
+                targetHighlight = "border-gray-200 hover:border-blue-300";
+            }
+
+            card.className = `${baseCardClass} ${targetHighlight}`;
+
+            // إضافة شارة للمتغير المستهدف
+            const targetBadge = isTarget ? `
+            <div class="absolute top-0 right-0 bg-green-500 text-white text-xs px-2 py-1 rounded-bl-lg z-20">
+                🎯 الهدف
+            </div>
+        ` : '';
+
+            card.onmouseenter = () => {
+                if (!stockInfo.isOutOfStock) {
+                    card.classList.add('transform', 'scale-105');
+                }
+            };
+            card.onmouseleave = () => card.classList.remove('transform', 'scale-105');
+
+            card.onclick = () => {
+                if (stockInfo.isOutOfStock) {
+                    showNotification('هذا المتغير غير متوفر حالياً', 'warning');
+                    return;
+                }
+                addVariationToCartEnhanced(variation.id);
+            };
+
+            // تحضير معلومات الخصائص
+            let attributesText = '';
+            if (variation.attributes && variation.attributes.length > 0) {
+                const attrs = variation.attributes.map(attr => attr.option || attr.value).filter(Boolean);
+                attributesText = attrs.length > 0 ? attrs.join(' • ') : '';
+            }
+
+            // تحضير معلومات المخزون للعرض
+            let stockBadgeClass = 'bg-green-500';
+            let stockText = 'متوفر';
+
+            if (stockInfo.isOutOfStock) {
+                stockBadgeClass = 'bg-red-500';
+                stockText = 'نفدت الكمية';
+            } else if (stockInfo.isLowStock) {
+                stockBadgeClass = 'bg-orange-500';
+                stockText = `قليل: ${stockInfo.stockQuantity}`;
+            } else if (variation.manage_stock && variation.stock_quantity !== undefined) {
+                stockBadgeClass = 'bg-green-500';
+                stockText = `متوفر: ${variation.stock_quantity}`;
+            }
+
+            card.innerHTML = `
+            ${targetBadge}
+            <div class="absolute top-2 left-2 bg-black text-white text-xs px-2 py-1 rounded z-10 opacity-75">
+                #${variation.id}
+            </div>
+            <div class="absolute top-2 right-2 ${stockBadgeClass} text-white text-xs px-2 py-1 rounded z-10">
+                ${stockText}
+            </div>
+            <div class="relative h-48 bg-gray-100 flex items-center justify-center">
+                <div class="text-gray-400 text-4xl">📦</div>
+                <div class="absolute bottom-2 left-2 bg-blue-600 text-white px-3 py-1 rounded-full font-bold text-sm">
+                    ${variation.price || 0} ₪
+                </div>
+                ${stockInfo.overlayHtml}
+            </div>
+            <div class="p-3 space-y-2">
+                <h4 class="font-semibold text-sm text-gray-800 line-clamp-2" title="${variation.name || 'متغير'}">
+                    ${variation.name || 'متغير'}
+                </h4>
+                ${attributesText ? `
+                    <div class="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded">
+                        ${attributesText}
+                    </div>
+                ` : ''}
+                ${variation.sku ? `
+                    <div class="text-xs text-gray-500">
+                        SKU: ${variation.sku}
+                    </div>
+                ` : ''}
+                <button class="w-full mt-2 ${stockInfo.isOutOfStock ? 'bg-gray-400 cursor-not-allowed' : isTarget ? 'bg-green-600 hover:bg-green-700' : 'bg-green-500 hover:bg-green-600'} text-white py-2 px-3 rounded-md text-sm font-semibold transition-colors"
+                        ${stockInfo.isOutOfStock ? 'disabled' : ''}>
+                    ${stockInfo.isOutOfStock ? 'غير متوفر' : isTarget ? '🎯 إضافة المستهدف' : 'إضافة للسلة'}
+                </button>
+            </div>
+        `;
+
+            grid.appendChild(card);
+        });
+
+        container.appendChild(grid);
+
+        // footer للمودال
+        const footer = document.createElement("div");
+        footer.className = "text-center mt-4 p-3 bg-gray-50 rounded-lg text-xs text-gray-600";
+        footer.innerHTML = `
+        ${targetVariation ?
+            `🎯 تم العثور على المتغير المطلوب وتمييزه باللون الأخضر` :
+            'اضغط على أي متغير متوفر لإضافته إلى السلة'
+        }
+    `;
+        container.appendChild(footer);
+
+        modal.show();
+
+        // إذا كان هناك متغير مستهدف، قم بالتمرير إليه
+        if (targetVariation) {
+            setTimeout(() => {
+                const targetCard = grid.querySelector('.border-green-500');
+                if (targetCard) {
+                    targetCard.scrollIntoView({behavior: 'smooth', block: 'center'});
+                    targetCard.classList.add('animate-pulse');
+                    setTimeout(() => {
+                        targetCard.classList.remove('animate-pulse');
+                    }, 2000);
+                }
+            }, 300);
+        }
+    }
+
+    window.renderProductsFromIndexedDB = renderProductsFromIndexedDBWithStock;
+    window.showVariationsModal = showVariationsModalWithStock;
+    window.showVariationsModalWithTarget = showVariationsModalWithStock;
+
+    function updateLocalStockAfterOrder(cartItems) {
+        if (!db || !cartItems || cartItems.length === 0) return;
+
+        const tx = db.transaction("products", "readwrite");
+        const store = tx.objectStore("products");
+
+        cartItems.forEach(item => {
+            const getRequest = store.get(item.id);
+
+            getRequest.onsuccess = function () {
+                const product = getRequest.result;
+
+                if (product && product.manage_stock && typeof product.stock_quantity !== 'undefined') {
+                    const currentStock = parseInt(product.stock_quantity) || 0;
+                    const newStock = Math.max(0, currentStock - item.quantity);
+
+                    product.stock_quantity = newStock;
+
+                    // تحديث حالة المخزون
+                    if (newStock <= 0) {
+                        product.stock_status = 'outofstock';
+                    } else {
+                        product.stock_status = 'instock';
+                    }
+
+                    // حفظ التحديث
+                    store.put(product);
+
+                    console.log(`تم تحديث مخزون المنتج ${product.name}: ${currentStock} → ${newStock}`);
+                }
+            };
+        });
+
+        tx.oncomplete = function () {
+            console.log("✅ تم تحديث المخزون المحلي بعد الطلب");
+
+            // إعادة عرض المنتجات لإظهار التحديثات
+            setTimeout(() => {
+                if (typeof renderProductsFromIndexedDBWithStock === 'function') {
+                    renderProductsFromIndexedDBWithStock(currentSearchTerm, selectedCategoryId);
+                }
+            }, 1000);
+        };
+
+        tx.onerror = function () {
+            console.error("خطأ في تحديث المخزون المحلي");
+        };
+    }
+
+    document.addEventListener('livewire:init', () => {
+        // الاستماع لحدث نجاح الطلب
+        Livewire.on('order-success', (data) => {
+            console.log("🎉 تم إتمام الطلب بنجاح، جاري تحديث المخزون...");
+
+            // الحصول على عناصر السلة قبل مسحها
+            const cartTx = db.transaction("cart", "readonly");
+            const cartStore = cartTx.objectStore("cart");
+            const cartRequest = cartStore.getAll();
+
+            cartRequest.onsuccess = function () {
+                const cartItems = cartRequest.result;
+
+                if (cartItems.length > 0) {
+                    // تحديث المخزون قبل مسح السلة
+                    updateLocalStockAfterOrder(cartItems);
+                }
+            };
+        });
+    });
+
+    async function syncStockWithServer() {
+        try {
+            showNotification("جاري مزامنة المخزون مع الخادم...", 'info');
+
+            // إعادة تحميل المنتجات من API
+            Livewire.dispatch('fetch-products-from-api');
+
+            setTimeout(() => {
+                showNotification("تم تحديث المخزون بنجاح", 'success');
+            }, 3000);
+
+        } catch (error) {
+            console.error("خطأ في مزامنة المخزون:", error);
+            showNotification("فشل في مزامنة المخزون", 'error');
+        }
+    }
+
+    function addStockSyncButton() {
+        const syncButton = document.getElementById('syncButton');
+        if (syncButton) {
+            // إضافة وظيفة مزامنة المخزون للزر الموجود
+            syncButton.addEventListener('click', function () {
+                syncStockWithServer();
+            });
+        }
+    }
+
+    // دالة لإظهار تقرير المخزون
+    function showStockReport() {
+        if (!db) {
+            showNotification("قاعدة البيانات غير متاحة", 'error');
+            return;
+        }
+
+        const tx = db.transaction("products", "readonly");
+        const store = tx.objectStore("products");
+        const request = store.getAll();
+
+        request.onsuccess = function () {
+            const products = request.result;
+
+            let inStock = 0;
+            let outOfStock = 0;
+            let lowStock = 0;
+            let totalProducts = 0;
+
+            products.forEach(product => {
+                if (product.type === 'simple' || product.type === 'variable') {
+                    totalProducts++;
+
+                    if (product.stock_status === 'outofstock' ||
+                        (product.manage_stock && (product.stock_quantity || 0) <= 0)) {
+                        outOfStock++;
+                    } else if (product.manage_stock && (product.stock_quantity || 0) <= 5) {
+                        lowStock++;
+                    } else {
+                        inStock++;
+                    }
+                }
+            });
+
+            const reportMessage = `
+📊 تقرير المخزون:
+
+🟢 متوفر: ${inStock} منتج
+🟡 كمية قليلة: ${lowStock} منتج
+🔴 نفدت الكمية: ${outOfStock} منتج
+
+📦 إجمالي المنتجات: ${totalProducts}
+        `;
+
+            showNotification(reportMessage, 'info', 8000);
+        };
+
+        request.onerror = function () {
+            showNotification("فشل في جمع تقرير المخزون", 'error');
+        };
+    }
+
+    window.updateLocalStockAfterOrder = updateLocalStockAfterOrder;
+    window.syncStockWithServer = syncStockWithServer;
+    window.showStockReport = showStockReport;
+
+    setTimeout(() => {
+        addStockSyncButton();
+    }, 2000);
+
+    function checkProductStock(productId, requestedQuantity) {
+        return new Promise((resolve) => {
+            if (!db) {
+                resolve({ available: false, maxQuantity: 0 });
+                return;
+            }
+
+            const tx = db.transaction("products", "readonly");
+            const store = tx.objectStore("products");
+            const request = store.get(productId);
+
+            request.onsuccess = function() {
+                const product = request.result;
+
+                if (!product) {
+                    resolve({ available: false, maxQuantity: 0 });
+                    return;
+                }
+
+                // تحديد الكمية المتاحة
+                let maxQuantity = 0;
+                let stockStatus = product.stock_status || 'instock';
+
+                // إذا كان المنتج يدير المخزون
+                if (product.manage_stock) {
+                    maxQuantity = parseInt(product.stock_quantity) || 0;
+                } else {
+                    // إذا لم يكن يدير المخزون، تحقق من حالة المخزون
+                    maxQuantity = stockStatus === 'instock' ? 999 : 0;
+                }
+
+                const available = stockStatus === 'instock' && requestedQuantity <= maxQuantity;
+
+                resolve({
+                    available: available,
+                    maxQuantity: maxQuantity,
+                    stockStatus: stockStatus,
+                    manageStock: product.manage_stock || false
+                });
+            };
+
+            request.onerror = function() {
+                resolve({ available: false, maxQuantity: 0 });
+            };
+        });
+    }
+
+    async function addToCartWithStockCheck(product) {
+        try {
+            // فحص توفر المخزون أولاً
+            const stockCheck = await checkProductStock(product.id, 1);
+
+            if (!stockCheck.available) {
+                if (stockCheck.stockStatus === 'outofstock') {
+                    showNotification("هذا المنتج غير متوفر حالياً", 'warning');
+                } else {
+                    showNotification("لا توجد كمية كافية من هذا المنتج", 'warning');
+                }
+                return;
+            }
+
+            const tx = db.transaction("cart", "readwrite");
+            const store = tx.objectStore("cart");
+            const getRequest = store.get(product.id);
+
+            getRequest.onsuccess = function() {
+                const existing = getRequest.result;
+
+                if (existing) {
+                    // فحص الكمية الجديدة
+                    const newQuantity = existing.quantity + 1;
+
+                    checkProductStock(product.id, newQuantity).then(stockCheck => {
+                        if (stockCheck.available) {
+                            existing.quantity = newQuantity;
+                            existing.updated_at = new Date().toISOString();
+                            store.put(existing);
+                            renderCart(product.id);
+                            showNotification(`تم تحديث الكمية إلى ${newQuantity}`, 'success');
+                        } else {
+                            showNotification(`الحد الأقصى المتاح: ${stockCheck.maxQuantity} قطعة`, 'warning');
+                        }
+                    });
+                } else {
+                    // إضافة جديدة
+                    const cartItem = {
+                        id: product.id,
+                        name: product.name,
+                        price: product.price,
+                        image: product.images?.[0]?.src ?? '',
+                        quantity: 1,
+                        added_at: new Date().toISOString(),
+                        stock_info: {
+                            max_quantity: stockCheck.maxQuantity,
+                            stock_status: stockCheck.stockStatus,
+                            manage_stock: stockCheck.manageStock
+                        }
+                    };
+
+                    store.put(cartItem);
+                    renderCart(product.id);
+                    showNotification(`تم إضافة "${product.name}" للسلة`, 'success');
+                }
+            };
+
+        } catch (error) {
+            console.error("خطأ في إضافة المنتج:", error);
+            showNotification("حدث خطأ أثناء إضافة المنتج", 'error');
+        }
+    }
+
+    async function updateQuantityWithStockCheck(productId, change) {
+        const tx = db.transaction("cart", "readwrite");
+        const store = tx.objectStore("cart");
+        const getRequest = store.get(productId);
+
+        getRequest.onsuccess = async function() {
+            const item = getRequest.result;
+            if (!item) return;
+
+            const newQuantity = item.quantity + change;
+
+            // إذا كانت الكمية الجديدة صفر أو أقل، احذف المنتج
+            if (newQuantity <= 0) {
+                store.delete(productId);
+                renderCart();
+                showNotification("تم حذف المنتج من السلة", 'info');
+                return;
+            }
+
+            // فحص توفر المخزون للكمية الجديدة
+            const stockCheck = await checkProductStock(productId, newQuantity);
+
+            if (stockCheck.available) {
+                item.quantity = newQuantity;
+                item.updated_at = new Date().toISOString();
+                store.put(item);
+                renderCart(productId);
+
+                if (change > 0) {
+                    showNotification(`تم زيادة الكمية إلى ${newQuantity}`, 'success');
+                } else {
+                    showNotification(`تم تقليل الكمية إلى ${newQuantity}`, 'success');
+                }
+            } else {
+                if (stockCheck.maxQuantity === 0) {
+                    showNotification("هذا المنتج غير متوفر حالياً", 'warning');
+                } else {
+                    showNotification(`الحد الأقصى المتاح: ${stockCheck.maxQuantity} قطعة (الكمية الحالية: ${item.quantity})`, 'warning');
+                }
+            }
+        };
+
+        getRequest.onerror = function() {
+            console.error("فشل في تحديث كمية المنتج");
+            showNotification("حدث خطأ أثناء تحديث الكمية", 'error');
+        };
+    }
+
+    function renderCartWithStockInfo(highlightId = null) {
+        const tx = db.transaction("cart", "readonly");
+        const store = tx.objectStore("cart");
+        const request = store.getAll();
+
+        request.onsuccess = function() {
+            const cartItems = request.result;
+            const container = document.getElementById("cartItemsContainer");
+            const totalElement = document.getElementById("cartTotal");
+            if (!container || !totalElement) return;
+
+            if (cartItems.length === 0) {
+                container.innerHTML = `
+                <div class="flex flex-col items-center justify-center text-center text-gray-500 py-8 space-y-2">
+                    <div class="text-4xl">🛒</div>
+                    <p class="text-lg font-semibold">السلة فارغة</p>
+                    <p class="text-sm text-gray-400">لم تقم بإضافة أي منتجات بعد</p>
+                </div>
+            `;
+                totalElement.textContent = "0.00 ₪";
+                return;
+            }
+
+            container.innerHTML = '';
+            let total = 0;
+            let highlightElement = null;
+
+            cartItems.forEach(item => {
+                total += item.price * item.quantity;
+
+                const div = document.createElement("div");
+                div.id = `cart-item-${item.id}`;
+                div.className = "flex justify-between items-center bg-gray-100 p-3 rounded transition duration-300 border";
+
+                // التحقق من معلومات المخزون
+                const stockInfo = item.stock_info || {};
+                const maxQuantity = stockInfo.max_quantity || 999;
+                const isAtLimit = item.quantity >= maxQuantity;
+                const stockWarning = maxQuantity <= 5 && maxQuantity > 0;
+
+                // تحديد ألوان الأزرار بناءً على توفر المخزون
+                const decreaseButtonClass = item.quantity <= 1 ?
+                    "bg-red-300 px-2 rounded hover:bg-red-400 cursor-pointer" :
+                    "bg-gray-300 px-2 rounded hover:bg-gray-400 cursor-pointer";
+
+                const increaseButtonClass = isAtLimit ?
+                    "bg-gray-200 px-2 rounded cursor-not-allowed opacity-50" :
+                    "bg-green-300 px-2 rounded hover:bg-green-400 cursor-pointer";
+
+                div.innerHTML = `
+                <div class="flex items-center gap-3 flex-1">
+                    <div class="flex-1">
+                        <p class="font-semibold text-sm">${item.name}</p>
+                        <div class="flex items-center gap-2 mt-1">
+                            <button onclick="updateQuantityWithStockCheck(${item.id}, -1)"
+                                    class="${decreaseButtonClass}"
+                                    ${item.quantity <= 1 ? 'title="حذف من السلة"' : 'title="تقليل الكمية"'}>
+                                ${item.quantity <= 1 ? '🗑️' : '−'}
+                            </button>
+                            <span class="mx-2 font-bold min-w-[30px] text-center">${item.quantity}</span>
+                            <button onclick="updateQuantityWithStockCheck(${item.id}, 1)"
+                                    class="${increaseButtonClass}"
+                                    ${isAtLimit ? `title="الحد الأقصى: ${maxQuantity}"` : 'title="زيادة الكمية"'}
+                                    ${isAtLimit ? 'disabled' : ''}>
+                                +
+                            </button>
+                        </div>
+                        ${stockWarning ? `
+                            <div class="text-xs text-orange-600 mt-1 flex items-center gap-1">
+                                <span>⚠️</span>
+                                <span>كمية محدودة: ${maxQuantity} قطعة متاحة</span>
+                            </div>
+                        ` : ''}
+                        ${isAtLimit && maxQuantity < 999 ? `
+                            <div class="text-xs text-red-600 mt-1 flex items-center gap-1">
+                                <span>🚫</span>
+                                <span>وصلت للحد الأقصى</span>
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+                <div class="text-right">
+                    <div class="font-bold text-gray-800">${(item.price * item.quantity).toFixed(2)} ₪</div>
+                    <div class="text-xs text-gray-500">${item.price.toFixed(2)} ₪/قطعة</div>
+                    <button onclick="removeFromCart(${item.id})"
+                            class="text-red-500 hover:text-red-700 mt-1 text-sm"
+                            title="حذف من السلة">
+                        🗑️ حذف
+                    </button>
+                </div>
+            `;
+
+                container.appendChild(div);
+
+                if (highlightId && item.id === highlightId) {
+                    highlightElement = div;
+                }
+            });
+
+            totalElement.textContent = total.toFixed(2) + " ₪";
+
+            // تمييز العنصر الجديد أو المحدث
+            if (highlightElement) {
+                highlightElement.classList.add("bg-yellow-200", "border-yellow-400");
+                setTimeout(() => {
+                    highlightElement.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                    setTimeout(() => {
+                        highlightElement.classList.remove("bg-yellow-200", "border-yellow-400");
+                    }, 1000);
+                }, 100);
+            }
+        };
+
+        request.onerror = function() {
+            console.error("فشل في تحميل محتوى السلة.");
+        };
+    }
+
+    function setupOrderButtonWithStockCheck() {
+        document.getElementById('completeOrderBtn').addEventListener('click', async function() {
+            // التحقق من وجود منتجات في السلة
+            const cartTx = db.transaction("cart", "readonly");
+            const cartStore = cartTx.objectStore("cart");
+            const cartRequest = cartStore.getAll();
+
+            cartRequest.onsuccess = async function() {
+                const cartItems = cartRequest.result;
+
+                if (cartItems.length === 0) {
+                    showNotification("السلة فارغة! يرجى إضافة منتجات أولاً", 'warning');
+                    return;
+                }
+
+                // فحص المخزون لجميع المنتجات
+                showNotification("جاري التحقق من توفر المنتجات...", 'info', 2000);
+
+                const validationResult = await validateCartStock();
+
+                if (!validationResult.isValid) {
+                    let errorMessage = "بعض المنتجات غير متوفرة بالكمية المطلوبة:\n\n";
+
+                    validationResult.invalidItems.forEach(result => {
+                        const item = result.item;
+                        const stock = result.stockCheck;
+
+                        if (stock.maxQuantity === 0) {
+                            errorMessage += `• ${item.name}: غير متوفر\n`;
+                        } else {
+                            errorMessage += `• ${item.name}: متوفر ${stock.maxQuantity} فقط (مطلوب ${item.quantity})\n`;
+                        }
+                    });
+
+                    errorMessage += "\nيرجى تعديل الكميات أو حذف المنتجات غير المتوفرة.";
+
+                    showNotification(errorMessage, 'error', 10000);
+                    return;
+                }
+
+                // إذا كان كل شيء صحيح، أكمل عملية الطلب
+                showNotification("✅ جميع المنتجات متوفرة، جاري فتح نموذج الطلب...", 'success');
+
+                // تجهيز نموذج الطلب
+                const dropdown = document.getElementById("customerSelect");
+                if (dropdown) {
+                    dropdown.innerHTML = '<option value="">جاري التحميل...</option>';
+                }
+
+                renderCustomersDropdown();
+                renderShippingZonesWithMethods();
+                setTimeout(() => {
+                    updateOrderTotalInModal();
+                }, 300);
+
+                Flux.modal('confirm-order-modal').show();
+            };
+        });
+    }
+
+    async function handleOrderSubmitWithStockCheck(e) {
+        e.preventDefault();
+
+        console.log("🔄 بدء عملية إرسال الطلب مع فحص المخزون...");
+
+        const confirmBtn = document.getElementById('confirmOrderSubmitBtn');
+        const customerId = document.getElementById("customerSelect")?.value;
+        const notes = document.getElementById("orderNotes")?.value || '';
+        const selectedMethod = document.querySelector('input[name="shippingMethod"]:checked');
+
+        // التحقق من البيانات المطلوبة
+        if (!customerId) {
+            showNotification("يرجى اختيار العميل", 'warning');
+            return;
+        }
+
+        if (!selectedMethod) {
+            showNotification("يرجى اختيار طريقة الشحن", 'warning');
+            return;
+        }
+
+        // تعطيل الزر وإظهار التحميل
+        if (confirmBtn) {
+            confirmBtn.disabled = true;
+            confirmBtn.textContent = "جاري التحقق من المخزون...";
+        }
+
+        try {
+            // فحص نهائي للمخزون قبل الإرسال
+            const finalStockCheck = await validateCartStock();
+
+            if (!finalStockCheck.isValid) {
+                let errorMessage = "تغيرت حالة المخزون! المنتجات التالية لم تعد متوفرة:\n\n";
+
+                finalStockCheck.invalidItems.forEach(result => {
+                    const item = result.item;
+                    const stock = result.stockCheck;
+
+                    if (stock.maxQuantity === 0) {
+                        errorMessage += `• ${item.name}: نفدت الكمية\n`;
+                    } else {
+                        errorMessage += `• ${item.name}: متوفر ${stock.maxQuantity} فقط\n`;
+                    }
+                });
+
+                showNotification(errorMessage, 'error', 10000);
+                resetOrderButton(confirmBtn);
+                return;
+            }
+
+            // إذا كان المخزون متوفر، أكمل الطلب
+            if (confirmBtn) {
+                confirmBtn.textContent = "جاري الإرسال...";
+            }
+
+            showLoadingIndicator(true);
+            processOrder(customerId, notes, selectedMethod, confirmBtn);
+
+        } catch (error) {
+            console.error("خطأ في فحص المخزون:", error);
+            showNotification("حدث خطأ أثناء التحقق من المخزون", 'error');
+            resetOrderButton(confirmBtn);
+        }
+    }
+
+    window.setupOrderButton = setupOrderButtonWithStockCheck;
+    window.handleOrderSubmit = handleOrderSubmitWithStockCheck;
+
+    setTimeout(() => {
+        setupOrderButtonWithStockCheck();
+    }, 1000);
 
     console.log("✅ تم تحميل جميع وظائف نظام POS المحسن");
 </script>
