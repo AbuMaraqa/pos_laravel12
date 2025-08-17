@@ -121,7 +121,6 @@
     let selectedCategoryId = null;
     let currentSearchTerm = '';
     let cart = [];
-    let eventListenersSetup = false;
 
     // متغيرات تحسين البحث
     let lastSearchTerm = '';
@@ -134,13 +133,6 @@
     let totalPages = 1;
     let isLoadingMore = false;
     let allProductsLoaded = false;
-
-    let dataLoadingState = {
-        products: false,
-        categories: false,
-        customers: false,
-        shipping: false
-    };
 
     // ============================================
     // تهيئة قاعدة البيانات
@@ -209,30 +201,17 @@
     // إعداد Event Listeners
     // ============================================
     function setupEventListeners() {
-        // منع الإعداد المتكرر
-        if (eventListenersSetup) {
-            console.log("⚠️ Event listeners مُعدة مسبقاً");
-            return;
-        }
-
         const searchInput = document.getElementById('searchInput');
         if (searchInput) {
-            // إزالة جميع listeners القديمة بطريقة آمنة
-            const newSearchInput = searchInput.cloneNode(true);
-            searchInput.parentNode.replaceChild(newSearchInput, searchInput);
-
-            // إضافة listeners للعنصر الجديد
-            newSearchInput.addEventListener('input', handleSearchInput);
-            newSearchInput.addEventListener('keydown', handleEnterKeySearch);
-            console.log("✅ تم إعداد listeners البحث");
+            searchInput.removeEventListener('input', handleSearchInput);
+            searchInput.removeEventListener('keydown', handleEnterKeySearch);
+            searchInput.addEventListener('input', handleSearchInput);
+            searchInput.addEventListener('keydown', handleEnterKeySearch);
         }
 
         setupSyncButton();
         setupOrderButton();
         setupConfirmOrderButton();
-
-        eventListenersSetup = true;
-        console.log("✅ تم إعداد جميع Event Listeners");
     }
 
     // ============================================
@@ -356,8 +335,7 @@
                 const searchState = {
                     searchTerm: currentSearchTerm,
                     categoryId: selectedCategoryId,
-                    timestamp: Date.now(),
-                    dataLoaded: { ...dataLoadingState }
+                    timestamp: Date.now()
                 };
                 localStorage.setItem('posSearchState', JSON.stringify(searchState));
             } catch (e) {
@@ -371,24 +349,17 @@
                 if (saved) {
                     const state = JSON.parse(saved);
 
-                    // زيادة المدة الزمنية لمنع إعادة التحميل المتكرر
-                    if (Date.now() - state.timestamp < 1800000) { // 30 دقيقة بدلاً من 5
+                    if (Date.now() - state.timestamp < 300000) { // 5 دقائق
                         currentSearchTerm = state.searchTerm || '';
                         selectedCategoryId = state.categoryId;
                         lastSearchTerm = currentSearchTerm;
                         lastCategoryId = selectedCategoryId;
-
-                        // استرداد حالة تحميل البيانات
-                        if (state.dataLoaded) {
-                            dataLoadingState = { ...state.dataLoaded };
-                        }
 
                         const searchInput = document.getElementById('searchInput');
                         if (searchInput && currentSearchTerm) {
                             searchInput.value = currentSearchTerm;
                         }
 
-                        console.log("📁 تم استرداد حالة البحث والبيانات");
                         return true;
                     }
                 }
@@ -405,11 +376,8 @@
             }
         });
 
-        // حفظ الحالة عند التغيير والإغلاق
+        // حفظ الحالة عند التغيير
         window.addEventListener('beforeunload', saveSearchState);
-
-        // حفظ دوري كل 30 ثانية
-        setInterval(saveSearchState, 30000);
     }
 
     // ============================================
@@ -1544,314 +1512,26 @@
 
     function checkAndFetchInitialData() {
         const checks = [
-            {store: "products", action: 'fetch-products-from-api', key: 'products'},
-            {store: "categories", action: 'fetch-categories-from-api', key: 'categories'},
-            {store: "customers", action: 'fetch-customers-from-api', key: 'customers'},
-            {store: "shippingMethods", action: 'fetch-shipping-methods-from-api', key: 'shipping'},
-            {store: "shippingZones", action: 'fetch-shipping-zones-and-methods', key: 'shipping'}
+            {store: "products", action: 'fetch-products-from-api'},
+            {store: "categories", action: 'fetch-categories-from-api'},
+            {store: "customers", action: 'fetch-customers-from-api'},
+            {store: "shippingMethods", action: 'fetch-shipping-methods-from-api'},
+            {store: "shippingZones", action: 'fetch-shipping-zones-and-methods'}
         ];
 
         checks.forEach(check => {
-            // تجاهل التحميل إذا كان محمل مسبقاً
-            if (dataLoadingState[check.key]) {
-                console.log(`⏭️ تم تجاهل تحميل ${check.store} - محمل مسبقاً`);
-                return;
-            }
-
             const tx = db.transaction(check.store, "readonly");
             const store = tx.objectStore(check.store);
             const countRequest = store.count();
 
             countRequest.onsuccess = function () {
-                const count = countRequest.result;
-                console.log(`📊 عدد عناصر ${check.store}: ${count}`);
-
-                // تحميل فقط إذا كان فارغ ولم يتم تحميله مسبقاً
-                if (count === 0 && !dataLoadingState[check.key]) {
+                if (countRequest.result === 0) {
                     console.log(`📥 تحميل ${check.store} للمرة الأولى...`);
-                    dataLoadingState[check.key] = true;
                     Livewire.dispatch(check.action);
-                } else if (count > 0) {
-                    // تحديث الحالة إذا كانت البيانات موجودة
-                    dataLoadingState[check.key] = true;
-                    console.log(`✅ ${check.store} محمل مسبقاً (${count} عنصر)`);
-                }
-            };
-
-            countRequest.onerror = function() {
-                console.error(`❌ خطأ في فحص ${check.store}`);
-            };
-        });
-    }
-
-    let renderingInProgress = false;
-    let lastRenderParams = null;
-
-    function renderProductsFromIndexedDBSafe(searchTerm = '', categoryId = null, forceRender = false) {
-        // تحضير معاملات الاستدعاء الحالي
-        const currentParams = `${searchTerm}-${categoryId}`;
-
-        // منع إعادة الرسم إذا كانت المعاملات نفسها والرسم ليس إجبارياً
-        if (!forceRender && renderingInProgress) {
-            console.log("⏸️ إلغاء الرسم - عملية رسم جارية");
-            return;
-        }
-
-        if (!forceRender && lastRenderParams === currentParams) {
-            console.log("⏸️ إلغاء الرسم - نفس المعاملات السابقة");
-            return;
-        }
-
-        renderingInProgress = true;
-        lastRenderParams = currentParams;
-
-        console.log(`🎨 رسم المنتجات: "${searchTerm}" | فئة: ${categoryId || 'الكل'}`);
-
-        const tx = db.transaction("products", "readonly");
-        const store = tx.objectStore("products");
-        const request = store.getAll();
-
-        request.onsuccess = function () {
-            try {
-                const products = request.result;
-                const container = document.getElementById("productsContainer");
-                if (!container) {
-                    renderingInProgress = false;
-                    return;
-                }
-
-                // إخفاء مؤشر التحميل
-                showSearchLoadingIndicator(false);
-
-                // تصفية المنتجات
-                const filtered = products.filter(item => {
-                    const term = searchTerm.trim().toLowerCase();
-                    const isAllowedType = item.type === 'simple' || item.type === 'variable';
-                    const matchesSearch = !term || (
-                        (item.name && item.name.toLowerCase().includes(term)) ||
-                        (item.id && item.id.toString().includes(term)) ||
-                        (item.sku && item.sku.toLowerCase().includes(term))
-                    );
-                    const matchesCategory = !categoryId || (
-                        item.categories &&
-                        item.categories.some(cat => cat.id === categoryId)
-                    );
-
-                    return isAllowedType && matchesSearch && matchesCategory;
-                });
-
-                // مسح المحتوى السابق
-                container.innerHTML = '';
-
-                if (filtered.length === 0) {
-                    container.innerHTML = `
-                    <div class="col-span-4 text-center py-8">
-                        <div class="text-4xl mb-4">🔍</div>
-                        <p class="text-gray-500 text-lg">لا يوجد منتجات مطابقة</p>
-                        <p class="text-gray-400 text-sm mt-2">جرب البحث بكلمات مختلفة أو تغيير الفئة</p>
-                    </div>
-                `;
-                    renderingInProgress = false;
-                    return;
-                }
-
-                // رسم المنتجات
-                let rendered = 0;
-                filtered.forEach(item => {
-                    try {
-                        const div = document.createElement("div");
-                        div.classList.add("bg-white", "rounded-lg", "shadow-md", "relative", "product-card", "hover:shadow-lg", "transition-shadow");
-                        div.style.cursor = "pointer";
-                        div.setAttribute('data-product-id', item.id);
-
-                        div.onclick = function () {
-                            if (item.type === 'variable' && Array.isArray(item.variations)) {
-                                fetchVariationsAndShowModal(item);
-                            } else if (item.type === 'simple') {
-                                addToCart(item);
-                            }
-                        };
-
-                        div.innerHTML = `
-                        <div class="relative h-32 bg-gray-100 rounded-t-lg flex items-center justify-center image-placeholder" data-product-id="${item.id}">
-                            <div class="text-gray-400 text-4xl">📦</div>
-                            <div class="absolute top-2 left-2 bg-black text-white text-xs px-2 py-1 rounded opacity-75">
-                                #${item.id}
-                            </div>
-                            <div class="absolute bottom-2 left-2 bg-blue-600 text-white px-2 py-1 rounded font-bold text-sm">
-                                ${item.price || 0} ₪
-                            </div>
-                            ${item.stock_status === 'outofstock' ? '<div class="absolute inset-0 bg-red-500 bg-opacity-50 flex items-center justify-center"><span class="text-white font-bold">نفدت الكمية</span></div>' : ''}
-                        </div>
-                        <div class="p-3">
-                            <p class="font-bold text-sm text-center truncate" title="${item.name || ''}">${item.name || ''}</p>
-                            ${item.sku ? `<p class="text-xs text-gray-500 text-center mt-1">SKU: ${item.sku}</p>` : ''}
-                            ${item.type === 'variable' ? '<p class="text-xs text-blue-500 text-center mt-1">منتج متغير</p>' : ''}
-                        </div>
-                    `;
-
-                        container.appendChild(div);
-                        rendered++;
-                    } catch (error) {
-                        console.error("❌ خطأ في رسم المنتج:", item.id, error);
-                    }
-                });
-
-                console.log(`✅ تم رسم ${rendered} منتج من أصل ${filtered.length}`);
-
-                // تطبيق Lazy Loading للصور
-                setupLazyImageLoading();
-
-            } catch (error) {
-                console.error("❌ خطأ في رسم المنتجات:", error);
-            } finally {
-                renderingInProgress = false;
-            }
-        };
-
-        request.onerror = function () {
-            console.error("❌ Failed to fetch products from IndexedDB");
-            showSearchLoadingIndicator(false);
-            renderingInProgress = false;
-        };
-    }
-
-    let categoriesRendered = false;
-
-    function renderCategoriesFromIndexedDBSafe() {
-        // منع إعادة الرسم إذا تم رسمها مسبقاً
-        if (categoriesRendered) {
-            console.log("⏸️ تجاهل رسم الفئات - مرسومة مسبقاً");
-            updateCategoryButtons(); // فقط تحديث الأزرار
-            return;
-        }
-
-        const tx = db.transaction("categories", "readonly");
-        const store = tx.objectStore("categories");
-        const request = store.getAll();
-
-        request.onsuccess = function () {
-            const categories = request.result;
-            const container = document.getElementById("categoriesContainer");
-            if (!container) {
-                console.error("❌ #categoriesContainer not found!");
-                return;
-            }
-
-            container.innerHTML = '';
-
-            // زر "الكل"
-            const allBtn = document.createElement("button");
-            allBtn.innerText = "الكل";
-            allBtn.classList.add("px-3", "py-1", "text-sm", "rounded", "transition-colors");
-
-            if (selectedCategoryId === null) {
-                allBtn.classList.add("bg-blue-500", "text-white");
-            } else {
-                allBtn.classList.add("bg-white", "border", "text-gray-700", "hover:bg-gray-100");
-            }
-
-            allBtn.onclick = () => selectCategory(null);
-            container.appendChild(allBtn);
-
-            // أزرار الفئات
-            categories.forEach(item => {
-                const btn = document.createElement("button");
-                btn.innerText = item.name;
-                btn.classList.add("px-3", "py-1", "text-sm", "rounded", "transition-colors");
-                btn.setAttribute('data-category-id', item.id);
-
-                if (selectedCategoryId === item.id) {
-                    btn.classList.add("bg-blue-500", "text-white");
-                } else {
-                    btn.classList.add("bg-white", "border", "text-gray-700", "hover:bg-gray-100");
-                }
-
-                btn.onclick = () => selectCategory(item.id);
-                container.appendChild(btn);
-            });
-
-            categoriesRendered = true;
-            console.log(`✅ تم رسم ${categories.length} فئة`);
-        };
-
-        request.onerror = () => {
-            console.error("❌ Failed to load categories");
-        };
-    }
-
-    let uiInitialized = false;
-
-    function initializeUISafe() {
-        if (uiInitialized) {
-            console.log("⏸️ UI مُهيئة مسبقاً");
-            return;
-        }
-
-        console.log("🎨 تهيئة واجهة المستخدم...");
-
-        setTimeout(() => {
-            renderProductsFromIndexedDBSafe(currentSearchTerm, selectedCategoryId, true);
-            renderCategoriesFromIndexedDBSafe();
-            renderCart();
-            uiInitialized = true;
-            console.log("✅ تم تهيئة الواجهة");
-        }, 300);
-    }
-
-    function applyFixes() {
-        console.log("🔧 تطبيق الإصلاحات...");
-
-        // استبدال الدوال
-        window.renderProductsFromIndexedDB = renderProductsFromIndexedDBSafe;
-        window.renderCategoriesFromIndexedDB = renderCategoriesFromIndexedDBSafe;
-        window.initializeUI = initializeUISafe;
-
-        // إعادة تعيين العلامات
-        eventListenersSetup = false;
-        categoriesRendered = false;
-        uiInitialized = false;
-        renderingInProgress = false;
-        lastRenderParams = null;
-
-        console.log("✅ تم تطبيق جميع الإصلاحات");
-    }
-
-    function diagnosticCheck() {
-        console.log("🔍 === تشخيص حالة البيانات ===");
-
-        if (!db) {
-            console.error("❌ قاعدة البيانات غير متاحة");
-            return;
-        }
-
-        const stores = ["products", "categories", "customers", "cart"];
-
-        stores.forEach(storeName => {
-            const tx = db.transaction(storeName, "readonly");
-            const store = tx.objectStore(storeName);
-            const countRequest = store.count();
-
-            countRequest.onsuccess = function() {
-                console.log(`📊 ${storeName}: ${countRequest.result} عنصر`);
-
-                if (countRequest.result > 0 && (storeName === 'products' || storeName === 'categories')) {
-                    console.log(`✅ ${storeName} متوفرة - لن يتم إعادة التحميل`);
-                    dataLoadingState[storeName === 'products' ? 'products' : 'categories'] = true;
                 }
             };
         });
-
-        console.log("📊 حالة التحميل:", dataLoadingState);
-        console.log("📊 UI مُهيئة:", uiInitialized);
-        console.log("📊 فئات مرسومة:", categoriesRendered);
-        console.log("📊 Event listeners مُعدة:", eventListenersSetup);
     }
-
-    applyFixes();
-
-    // تشغيل التشخيص بعد 3 ثواني
-    setTimeout(diagnosticCheck, 3000);
 
     // ============================================
     // مؤشرات التحميل والإشعارات
@@ -2098,22 +1778,17 @@
             const searchTerm = data[0]?.search_term;
             const hasTargetVariation = data[0]?.has_target_variation;
 
-            console.log("✅ تم العثور على المنتج من API - إضافة مباشرة:", {
+            console.log("✅ تم العثور على المنتج من API:", {
                 product_id: product?.id,
                 product_type: product?.type,
                 has_target_variation: hasTargetVariation,
-                search_term: searchTerm
+                target_variation: product?.target_variation
             });
 
-            if (!product) {
-                showNotification("لم يتم العثور على المنتج", 'error');
-                return;
-            }
-
-            // تنظيف وتحسين المنتج
-            const optimizedProduct = {
+            // تنظيف المنتج من الصور قبل التخزين
+            const cleanedProduct = {
                 ...product,
-                images: product.images ? [product.images[0]].filter(Boolean) : [],
+                images: [], // إزالة الصور لتسريع التخزين
                 description: '',
                 meta_data: []
             };
@@ -2121,44 +1796,44 @@
             // تخزين المنتج في IndexedDB
             const tx = db.transaction("products", "readwrite");
             const store = tx.objectStore("products");
-            store.put(optimizedProduct);
+            store.put(cleanedProduct);
 
-            // تخزين المتغيرات إذا كانت موجودة
+            // إذا كان المنتج متغير وله متغيرات
             if (product.type === 'variable' && product.variations_full) {
                 product.variations_full.forEach(variation => {
-                    const optimizedVariation = {
+                    const cleanedVariation = {
                         ...variation,
-                        images: variation.images && variation.images.length > 0 ?
-                            [variation.images[0]] :
-                            (product.images ? [product.images[0]].filter(Boolean) : []),
-                        description: '',
-                        product_id: product.id
+                        images: [],
+                        description: ''
                     };
-                    store.put(optimizedVariation);
+                    store.put(cleanedVariation);
                 });
             }
 
-            // تخزين المتغير المستهدف إذا كان موجوداً
-            if (product.target_variation) {
-                const optimizedTargetVariation = {
-                    ...product.target_variation,
-                    images: product.target_variation.images && product.target_variation.images.length > 0 ?
-                        [product.target_variation.images[0]] :
-                        (product.images ? [product.images[0]].filter(Boolean) : []),
-                    description: '',
-                    product_id: product.id
-                };
-                store.put(optimizedTargetVariation);
-            }
-
             tx.oncomplete = () => {
-                console.log("✅ تم تخزين المنتج في IndexedDB");
+                console.log("✅ تم تخزين المنتج والمتغيرات في IndexedDB");
+                renderProductsFromIndexedDB(currentSearchTerm, selectedCategoryId);
 
-                // تحديث عرض المنتجات
-                renderProductsFromIndexedDBWithImages(currentSearchTerm, selectedCategoryId, true);
+                // 🔥 معالجة المنتج حسب نوعه مع التركيز على المتغير المحدد
+                if (product.type === 'simple') {
+                    addToCart(cleanedProduct);
+                    showNotification(`تم العثور على "${product.name}" وإضافته للسلة`, 'success');
+                } else if (product.type === 'variable') {
+                    // 🔥 إذا كان هناك متغير محدد من البحث
+                    if (hasTargetVariation && product.target_variation) {
+                        console.log("🎯 تم العثور على متغير محدد:", product.target_variation);
 
-                // 🚀 الإضافة المباشرة حسب نوع المنتج
-                handleDirectAddToCart(product, hasTargetVariation, searchTerm);
+                        // عرض المودال مع تمييز المتغير المستهدف
+                        showVariationsModalWithTarget(product.variations_full, product.target_variation);
+                        showNotification(`تم العثور على "${product.target_variation.name}"`, 'success');
+                    } else if (product.variations_full && product.variations_full.length > 0) {
+                        // عرض المودال العادي
+                        showVariationsModal(product.variations_full);
+                        showNotification(`تم العثور على "${product.name}" مع ${product.variations_full.length} متغير`, 'success');
+                    } else {
+                        showNotification(`تم العثور على "${product.name}" لكن لا توجد متغيرات متاحة`, 'warning');
+                    }
+                }
 
                 clearSearchInput();
             };
@@ -2234,481 +1909,6 @@
             showNotification(errorMessage, 'error', 5000);
         });
     });
-
-    function handleDirectAddToCart(product, hasTargetVariation, searchTerm) {
-        if (product.type === 'simple') {
-            // 🔹 منتج بسيط - إضافة مباشرة
-            addToCartWithImage(product);
-            showNotification(`✅ تم إضافة "${product.name}" للسلة مباشرة`, 'success');
-
-        } else if (product.type === 'variable') {
-
-            if (hasTargetVariation && product.target_variation) {
-                // 🎯 متغير محدد - إضافة مباشرة
-                console.log("🎯 إضافة المتغير المستهدف مباشرة:", product.target_variation);
-
-                addVariationToCartDirectly(product.target_variation);
-                showNotification(`✅ تم إضافة "${product.target_variation.name}" للسلة مباشرة`, 'success');
-
-            } else if (product.variations_full && product.variations_full.length > 0) {
-                // 🔄 منتج متغير بدون هدف محدد - إضافة أول متغير متاح
-                const firstAvailableVariation = product.variations_full.find(v => v.stock_status !== 'outofstock');
-
-                if (firstAvailableVariation) {
-                    console.log("📦 إضافة أول متغير متاح:", firstAvailableVariation);
-                    addVariationToCartDirectly(firstAvailableVariation);
-                    showNotification(`✅ تم إضافة "${firstAvailableVariation.name}" للسلة مباشرة`, 'success');
-                } else {
-                    // جميع المتغيرات نفدت
-                    showNotification(`⚠️ جميع متغيرات "${product.name}" غير متوفرة`, 'warning');
-                }
-
-            } else {
-                showNotification(`⚠️ "${product.name}" لا يحتوي على متغيرات متاحة`, 'warning');
-            }
-
-        } else if (product.type === 'variation') {
-            // 🔹 متغير مباشر
-            addVariationToCartDirectly(product);
-            showNotification(`✅ تم إضافة "${product.name}" للسلة مباشرة`, 'success');
-        }
-    }
-
-    function addVariationToCartDirectly(variation) {
-        if (!variation || !variation.id) {
-            console.error("❌ بيانات المتغير غير صالحة:", variation);
-            showNotification("بيانات المتغير غير صالحة", 'error');
-            return;
-        }
-
-        if (variation.stock_status === 'outofstock') {
-            showNotification(`❌ "${variation.name}" غير متوفر حالياً`, 'warning');
-            return;
-        }
-
-        // التحقق من وجود المتغير في قاعدة البيانات أولاً
-        const tx = db.transaction("products", "readwrite");
-        const store = tx.objectStore("products");
-
-        // تخزين المتغير إذا لم يكن موجوداً
-        const cleanVariation = {
-            ...variation,
-            images: variation.images || [],
-            description: ''
-        };
-
-        store.put(cleanVariation);
-
-        tx.oncomplete = () => {
-            // الآن إضافة للسلة
-            addVariationToCartWithImage(variation.id, variation.name, true);
-        };
-
-        tx.onerror = () => {
-            console.error("❌ فشل في تخزين المتغير");
-            // محاولة الإضافة بدون تخزين
-            addVariationToCartWithImage(variation.id, variation.name, true);
-        };
-    }
-
-    let directAddEnabled = true;
-
-    function toggleDirectAdd() {
-        directAddEnabled = !directAddEnabled;
-
-        try {
-            localStorage.setItem('pos_direct_add_enabled', directAddEnabled.toString());
-        } catch (e) {
-            console.warn('Cannot save direct add preference');
-        }
-
-        const status = directAddEnabled ? 'مفعلة' : 'معطلة';
-        showNotification(`الإضافة المباشرة ${status}`, 'info');
-        updateDirectAddButtonUI();
-    }
-
-    function getDirectAddPreference() {
-        try {
-            const saved = localStorage.getItem('pos_direct_add_enabled');
-            return saved !== null ? saved === 'true' : true; // افتراضي: مفعل
-        } catch (e) {
-            return true;
-        }
-    }
-
-    directAddEnabled = getDirectAddPreference();
-
-    function addDirectAddControl() {
-        const container = document.querySelector('.bg-white.p-4.rounded-lg.shadow-md');
-        if (!container) return;
-
-        const existingControl = container.querySelector('.direct-add-control');
-        if (existingControl) return;
-
-        const controlDiv = document.createElement('div');
-        controlDiv.className = 'direct-add-control bg-gray-50 p-2 rounded mb-2 border flex items-center justify-between';
-
-        controlDiv.innerHTML = `
-        <label class="text-xs text-gray-600 font-medium flex items-center gap-2">
-            <span>🚀</span>
-            <span>إضافة مباشرة من البحث:</span>
-        </label>
-        <button
-            onclick="toggleDirectAdd()"
-            class="direct-add-toggle text-xs px-3 py-1 rounded transition-all duration-200 font-medium"
-            title="تفعيل/تعطيل الإضافة المباشرة للمنتجات من البحث"
-        >
-            ${directAddEnabled ? '✅ مفعل' : '❌ معطل'}
-        </button>
-    `;
-
-        // إدراج بعد شريط البحث
-        const searchContainer = container.querySelector('.flex.items-center.gap-2');
-        if (searchContainer) {
-            searchContainer.parentNode.insertBefore(controlDiv, searchContainer.nextSibling);
-        }
-
-        updateDirectAddButtonUI();
-    }
-
-    function updateDirectAddButtonUI() {
-        const button = document.querySelector('.direct-add-toggle');
-        if (!button) return;
-
-        if (directAddEnabled) {
-            button.textContent = '✅ مفعل';
-            button.className = 'direct-add-toggle text-xs px-3 py-1 rounded transition-all duration-200 font-medium bg-green-500 text-white hover:bg-green-600';
-        } else {
-            button.textContent = '❌ معطل';
-            button.className = 'direct-add-toggle text-xs px-3 py-1 rounded transition-all duration-200 font-medium bg-red-500 text-white hover:bg-red-600';
-        }
-    }
-
-    function searchProductInIndexedDBWithDirectAdd(searchTerm) {
-        if (!db) {
-            console.error('Database not initialized');
-            return;
-        }
-
-        const tx = db.transaction("products", "readonly");
-        const store = tx.objectStore("products");
-        const request = store.getAll();
-
-        request.onsuccess = function () {
-            const products = request.result;
-
-            const matched = products.find(item => {
-                const nameMatch = item.name?.toLowerCase().includes(searchTerm);
-                const barcodeMatch = item.id?.toString() === searchTerm;
-                const skuMatch = item.sku?.toLowerCase() === searchTerm;
-                return nameMatch || barcodeMatch || skuMatch;
-            });
-
-            if (matched) {
-                console.log("✅ تم العثور على المنتج في IndexedDB:", matched);
-
-                if (directAddEnabled) {
-                    // 🚀 إضافة مباشرة من IndexedDB
-                    if (matched.type === 'simple') {
-                        addToCartWithImage(matched);
-                        showNotification(`✅ تم إضافة "${matched.name}" للسلة مباشرة`, 'success');
-                    } else if (matched.type === 'variable') {
-                        // البحث عن أول متغير متاح
-                        findAndAddFirstAvailableVariation(matched.id, matched.name);
-                    } else if (matched.type === 'variation') {
-                        addVariationToCartWithImage(matched.id, matched.name, true);
-                    }
-                } else {
-                    // الطريقة العادية (فتح modal للمتغيرات)
-                    handleFoundProduct(matched);
-                }
-
-                clearSearchInput();
-            } else {
-                console.log('🔍 لم يتم العثور على المنتج في IndexedDB، البحث في API...');
-                searchProductFromAPI(searchTerm);
-            }
-        };
-
-        request.onerror = function () {
-            console.error('Error searching in IndexedDB');
-            showNotification("حدث خطأ في البحث", 'error');
-        };
-    }
-
-    // ============================================
-    // 🔍 دالة للبحث عن أول متغير متاح
-    // ============================================
-    function findAndAddFirstAvailableVariation(productId, productName) {
-        const tx = db.transaction("products", "readonly");
-        const store = tx.objectStore("products");
-        const request = store.getAll();
-
-        request.onsuccess = function () {
-            const products = request.result;
-
-            // البحث عن متغيرات هذا المنتج
-            const variations = products.filter(item =>
-                item.type === 'variation' &&
-                item.product_id === productId &&
-                item.stock_status !== 'outofstock'
-            );
-
-            if (variations.length > 0) {
-                const firstVariation = variations[0];
-                addVariationToCartWithImage(firstVariation.id, firstVariation.name, true);
-                showNotification(`✅ تم إضافة "${firstVariation.name}" للسلة مباشرة`, 'success');
-            } else {
-                showNotification(`⚠️ جميع متغيرات "${productName}" غير متوفرة`, 'warning');
-            }
-        };
-    }
-
-    // ============================================
-    // 🔄 تحديث دالة البحث الأصلية
-    // ============================================
-    const originalSearchProduct = searchProductInIndexedDB;
-    searchProductInIndexedDB = searchProductInIndexedDBWithDirectAdd;
-
-    // ============================================
-    // 🎬 تهيئة التحكم عند التحميل
-    // ============================================
-    document.addEventListener('DOMContentLoaded', function() {
-        setTimeout(() => {
-            addDirectAddControl();
-            console.log("🚀 نظام الإضافة المباشرة جاهز:", directAddEnabled ? 'مفعل' : 'معطل');
-        }, 1500);
-    });
-
-    // تحديث عند التنقل في Livewire
-    document.addEventListener("livewire:navigated", () => {
-        setTimeout(() => {
-            if (!document.querySelector('.direct-add-control')) {
-                addDirectAddControl();
-            }
-        }, 1000);
-    });
-
-    function handleEnterKeySearchWithDirectAdd(e) {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            const searchTerm = e.target.value.trim().toLowerCase();
-
-            if (!searchTerm) {
-                showNotification("يرجى إدخال اسم المنتج أو الباركود", 'warning');
-                return;
-            }
-
-            console.log("🔍 بحث بـ Enter مع الإضافة المباشرة:", searchTerm);
-
-            // استخدام الدالة المحدثة التي تدعم الإضافة المباشرة
-            searchProductInIndexedDBWithDirectAdd(searchTerm);
-        }
-    }
-
-    function handleSearchInputWithDirectAdd(event) {
-        const newSearchTerm = event.target.value.trim();
-
-        // إلغاء البحث السابق
-        if (searchTimeout) {
-            clearTimeout(searchTimeout);
-        }
-
-        // منع البحث المتكرر لنفس المصطلح
-        if (newSearchTerm === lastSearchTerm && selectedCategoryId === lastCategoryId) {
-            return;
-        }
-
-        // تأخير البحث لتجنب الاستدعاءات المتكررة (Debouncing)
-        searchTimeout = setTimeout(() => {
-            if (isSearching) return;
-
-            isSearching = true;
-            currentSearchTerm = newSearchTerm;
-            lastSearchTerm = newSearchTerm;
-            lastCategoryId = selectedCategoryId;
-
-            console.log(`🔍 البحث التلقائي: "${currentSearchTerm}"`);
-
-            // إظهار مؤشر التحميل للبحث الجديد فقط
-            if (newSearchTerm !== lastSearchTerm) {
-                showSearchLoadingIndicator(true);
-            }
-
-            // 🎯 فقط عرض النتائج، بدون إضافة تلقائية في البحث التلقائي
-            renderProductsFromIndexedDBWithImages(currentSearchTerm, selectedCategoryId);
-
-            setTimeout(() => {
-                isSearching = false;
-                showSearchLoadingIndicator(false);
-            }, 300);
-
-        }, 300);
-    }
-
-    let directAddSettings = {
-        enabled: true,
-        addFirstVariation: true, // إضافة أول متغير متاح للمنتجات المتغيرة
-        showNotifications: true, // إظهار إشعارات الإضافة
-        autoClose: true // إغلاق التلقائي للمودالات
-    };
-
-    function loadDirectAddSettings() {
-        try {
-            const saved = localStorage.getItem('pos_direct_add_settings');
-            if (saved) {
-                directAddSettings = { ...directAddSettings, ...JSON.parse(saved) };
-            }
-            directAddEnabled = directAddSettings.enabled;
-        } catch (e) {
-            console.warn('Cannot load direct add settings');
-        }
-    }
-
-    function saveDirectAddSettings() {
-        try {
-            directAddSettings.enabled = directAddEnabled;
-            localStorage.setItem('pos_direct_add_settings', JSON.stringify(directAddSettings));
-        } catch (e) {
-            console.warn('Cannot save direct add settings');
-        }
-    }
-
-    function addAdvancedDirectAddControls() {
-        const container = document.querySelector('.direct-add-control');
-        if (!container) return;
-
-        // إضافة زر الإعدادات المتقدمة
-        const advancedButton = document.createElement('button');
-        advancedButton.className = 'text-xs px-2 py-1 bg-gray-200 text-gray-600 rounded hover:bg-gray-300 transition-colors';
-        advancedButton.innerHTML = '⚙️';
-        advancedButton.title = 'إعدادات متقدمة للإضافة المباشرة';
-        advancedButton.onclick = showAdvancedSettings;
-
-        container.appendChild(advancedButton);
-    }
-
-    function showAdvancedSettings() {
-        const modal = document.createElement('div');
-        modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
-        modal.onclick = (e) => {
-            if (e.target === modal) {
-                document.body.removeChild(modal);
-            }
-        };
-
-        modal.innerHTML = `
-        <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-            <h3 class="text-lg font-bold mb-4 text-gray-800">⚙️ إعدادات الإضافة المباشرة</h3>
-
-            <div class="space-y-4">
-                <label class="flex items-center justify-between">
-                    <span class="text-sm text-gray-700">تفعيل الإضافة المباشرة</span>
-                    <input type="checkbox" ${directAddSettings.enabled ? 'checked' : ''}
-                           onchange="directAddSettings.enabled = this.checked; directAddEnabled = this.checked;">
-                </label>
-
-                <label class="flex items-center justify-between">
-                    <span class="text-sm text-gray-700">إضافة أول متغير متاح تلقائياً</span>
-                    <input type="checkbox" ${directAddSettings.addFirstVariation ? 'checked' : ''}
-                           onchange="directAddSettings.addFirstVariation = this.checked;">
-                </label>
-
-                <label class="flex items-center justify-between">
-                    <span class="text-sm text-gray-700">إظهار إشعارات الإضافة</span>
-                    <input type="checkbox" ${directAddSettings.showNotifications ? 'checked' : ''}
-                           onchange="directAddSettings.showNotifications = this.checked;">
-                </label>
-
-                <label class="flex items-center justify-between">
-                    <span class="text-sm text-gray-700">إغلاق المودالات تلقائياً</span>
-                    <input type="checkbox" ${directAddSettings.autoClose ? 'checked' : ''}
-                           onchange="directAddSettings.autoClose = this.checked;">
-                </label>
-            </div>
-
-            <div class="flex gap-2 mt-6">
-                <button onclick="saveDirectAddSettings(); updateDirectAddButtonUI(); document.body.removeChild(this.closest('.fixed')); showNotification('تم حفظ الإعدادات', 'success');"
-                        class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 flex-1">
-                    💾 حفظ
-                </button>
-                <button onclick="document.body.removeChild(this.closest('.fixed'));"
-                        class="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600">
-                    ❌ إلغاء
-                </button>
-            </div>
-        </div>
-    `;
-
-        document.body.appendChild(modal);
-    }
-
-    function handleDirectAddToCartWithSettings(product, hasTargetVariation, searchTerm) {
-        if (!directAddSettings.enabled) {
-            // إذا كانت الإضافة المباشرة معطلة، استخدم الطريقة العادية
-            handleFoundProductWithTarget(product, hasTargetVariation, searchTerm);
-            return;
-        }
-
-        if (product.type === 'simple') {
-            addToCartWithImage(product);
-            if (directAddSettings.showNotifications) {
-                showNotification(`✅ تم إضافة "${product.name}" للسلة مباشرة`, 'success');
-            }
-
-        } else if (product.type === 'variable') {
-
-            if (hasTargetVariation && product.target_variation) {
-                addVariationToCartDirectly(product.target_variation);
-                if (directAddSettings.showNotifications) {
-                    showNotification(`✅ تم إضافة "${product.target_variation.name}" للسلة مباشرة`, 'success');
-                }
-
-            } else if (directAddSettings.addFirstVariation && product.variations_full && product.variations_full.length > 0) {
-                const firstAvailableVariation = product.variations_full.find(v => v.stock_status !== 'outofstock');
-
-                if (firstAvailableVariation) {
-                    addVariationToCartDirectly(firstAvailableVariation);
-                    if (directAddSettings.showNotifications) {
-                        showNotification(`✅ تم إضافة "${firstAvailableVariation.name}" للسلة مباشرة`, 'success');
-                    }
-                } else {
-                    if (directAddSettings.showNotifications) {
-                        showNotification(`⚠️ جميع متغيرات "${product.name}" غير متوفرة`, 'warning');
-                    }
-                }
-            } else {
-                // إذا كان إعداد إضافة أول متغير معطل، اعرض المودال
-                handleFoundProductWithTarget(product, hasTargetVariation, searchTerm);
-            }
-
-        } else if (product.type === 'variation') {
-            addVariationToCartDirectly(product);
-            if (directAddSettings.showNotifications) {
-                showNotification(`✅ تم إضافة "${product.name}" للسلة مباشرة`, 'success');
-            }
-        }
-    }
-
-    handleDirectAddToCart = handleDirectAddToCartWithSettings;
-
-    // تحديث دالة البحث بـ Enter
-    handleEnterKeySearch = handleEnterKeySearchWithDirectAdd;
-
-    // تحديث دالة البحث التلقائي
-    handleSearchInput = handleSearchInputWithDirectAdd;
-
-    document.addEventListener('DOMContentLoaded', function() {
-        loadDirectAddSettings();
-
-        setTimeout(() => {
-            addDirectAddControl();
-            setTimeout(addAdvancedDirectAddControls, 500);
-        }, 1500);
-    });
-
-    // حفظ الإعدادات عند إغلاق الصفحة
-    window.addEventListener('beforeunload', saveDirectAddSettings);
 
     function addVariationToCartEnhanced(variationId, productName = null, directAdd = false) {
         const tx = db.transaction("products", "readonly");
