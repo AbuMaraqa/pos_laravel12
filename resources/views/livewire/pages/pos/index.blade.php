@@ -138,29 +138,18 @@
     // تهيئة قاعدة البيانات
     // ============================================
     document.addEventListener("livewire:navigated", () => {
+        console.log("🚢 Livewire navigated - تطبيق التحسينات...");
+
         if (db) {
             initializeUI();
-            return;
-        }
-
-        const openRequest = indexedDB.open(dbName, 5);
-
-        openRequest.onupgradeneeded = function (event) {
-            db = event.target.result;
-            createObjectStores(db);
-        };
-
-        openRequest.onsuccess = function (event) {
-            db = event.target.result;
-            initializeUI();
             setupEventListeners();
-            checkAndFetchInitialData();
-            preventUnnecessaryReloads();
-        };
-
-        openRequest.onerror = function () {
-            console.error("❌ Error opening IndexedDB");
-        };
+            loadInitialDataIfEmpty(); // إضافة هذا السطر
+        } else {
+            // انتظار قاعدة البيانات ثم التحميل
+            setTimeout(() => {
+                loadInitialDataIfEmpty();
+            }, 1000);
+        }
     });
 
     function createObjectStores(db) {
@@ -194,25 +183,13 @@
     function initializeUI() {
         console.log("🎨 تهيئة واجهة المستخدم...");
 
-        // عرض البيانات المحفوظة فوراً إذا كانت متوفرة
-        if (db) {
-            checkStoreData("products").then(count => {
-                if (count > 0) {
-                    console.log(`📦 عرض ${count} منتج محفوظ`);
-                    renderProductsFromIndexedDB(currentSearchTerm, selectedCategoryId);
-                }
-            });
+        // عرض السلة
+        renderCart();
 
-            checkStoreData("categories").then(count => {
-                if (count > 0) {
-                    console.log(`📁 عرض ${count} فئة محفوظة`);
-                    renderCategoriesFromIndexedDB();
-                }
-            });
-
-            // عرض السلة
-            renderCartWithStockInfo();
-        }
+        // تحميل البيانات إذا لم تكن موجودة
+        setTimeout(() => {
+            loadInitialDataIfEmpty();
+        }, 500);
     }
 
     // ============================================
@@ -4876,6 +4853,123 @@
     window.initializePOSData = initializePOSData;
     window.forceRefreshAllData = forceRefreshAllData;
     window.checkStoreData = checkStoreData;
+
+    function loadInitialDataIfEmpty() {
+        console.log("🔍 فحص البيانات عند دخول POS...");
+
+        if (!db) {
+            console.log("⏳ انتظار قاعدة البيانات...");
+            setTimeout(loadInitialDataIfEmpty, 1000);
+            return;
+        }
+
+        // فحص المنتجات
+        const productsTx = db.transaction("products", "readonly");
+        const productsStore = productsTx.objectStore("products");
+        const productsCount = productsStore.count();
+
+        productsCount.onsuccess = function() {
+            const count = productsCount.result;
+            console.log(`📦 عدد المنتجات المحفوظة: ${count}`);
+
+            if (count === 0) {
+                console.log("🔥 لا توجد منتجات - بدء التحميل من API...");
+                showNotification("جاري تحميل المنتجات للمرة الأولى...", 'info', 3000);
+
+                // تحميل المنتجات
+                Livewire.dispatch('fetch-products-from-api');
+
+                // تحميل الفئات أيضاً
+                setTimeout(() => {
+                    Livewire.dispatch('fetch-categories-from-api');
+                }, 1000);
+
+                // تحميل العملاء
+                setTimeout(() => {
+                    Livewire.dispatch('fetch-customers-from-api');
+                }, 2000);
+
+            } else {
+                console.log(`✅ ${count} منتج محفوظ - عرض فوري`);
+                // عرض المنتجات الموجودة
+                renderProductsFromIndexedDB(currentSearchTerm, selectedCategoryId);
+
+                // فحص الفئات أيضاً
+                checkAndLoadCategories();
+            }
+        };
+    }
+
+    function checkAndLoadCategories() {
+        const categoriesTx = db.transaction("categories", "readonly");
+        const categoriesStore = categoriesTx.objectStore("categories");
+        const categoriesCount = categoriesStore.count();
+
+        categoriesCount.onsuccess = function() {
+            const count = categoriesCount.result;
+            console.log(`📁 عدد الفئات المحفوظة: ${count}`);
+
+            if (count === 0) {
+                console.log("🔥 لا توجد فئات - بدء التحميل...");
+                Livewire.dispatch('fetch-categories-from-api');
+            } else {
+                console.log(`✅ ${count} فئة محفوظة - عرض فوري`);
+                renderCategoriesFromIndexedDB();
+            }
+        };
+    }
+
+    window.addEventListener('load', function() {
+        console.log("📄 تم تحميل الصفحة كاملة");
+
+        setTimeout(() => {
+            loadInitialDataIfEmpty();
+        }, 1500);
+    });
+
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log("📋 DOM جاهز");
+
+        setTimeout(() => {
+            loadInitialDataIfEmpty();
+        }, 2000);
+    });
+
+    // إضافة استماع لحدث Livewire init
+    document.addEventListener('livewire:init', () => {
+        console.log("🔌 Livewire تم تهيئته");
+
+        setTimeout(() => {
+            loadInitialDataIfEmpty();
+        }, 1000);
+    });
+
+    // دالة للتحديث اليدوي (اختيارية)
+    function manualRefresh() {
+        console.log("🔄 تحديث يدوي...");
+
+        // مسح المنتجات والفئات
+        if (db) {
+            const tx = db.transaction(["products", "categories"], "readwrite");
+
+            tx.objectStore("products").clear();
+            tx.objectStore("categories").clear();
+
+            tx.oncomplete = function() {
+                console.log("✅ تم مسح البيانات القديمة");
+
+                // تحميل جديد
+                setTimeout(() => {
+                    loadInitialDataIfEmpty();
+                }, 500);
+            };
+        }
+    }
+
+    // إضافة الدوال للنطاق العام
+    window.loadInitialDataIfEmpty = loadInitialDataIfEmpty;
+    window.checkAndLoadCategories = checkAndLoadCategories;
+    window.manualRefresh = manualRefresh;
 
     console.log("✅ تم تحميل جميع وظائف نظام POS المحسن");
 </script>
