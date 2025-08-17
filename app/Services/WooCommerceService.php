@@ -1931,7 +1931,6 @@ class WooCommerceService
             // إضافة معاملات افتراضية
             $defaultQuery = [
                 'per_page' => 100,
-                'orderby' => 'date',
                 'order' => 'desc'
             ];
 
