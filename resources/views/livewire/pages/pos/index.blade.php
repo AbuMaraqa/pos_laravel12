@@ -1123,7 +1123,6 @@
         e.preventDefault();
 
         console.log("🔄 بدء عملية إرسال الطلب...");
-
         const confirmBtn = document.getElementById('confirmOrderSubmitBtn');
         const customerId = document.getElementById("customerSelect")?.value;
         const notes = document.getElementById("orderNotes")?.value || '';

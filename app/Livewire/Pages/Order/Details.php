@@ -70,7 +70,8 @@ class Details extends Component
             $query['search'] = $this->search;
         }
 
-        $this->products = $this->wooService->getProducts($query);
+        $this->products = $this->wooService->getProducts($query)['data'];
+//        dd($this->products = $this->wooService->getProducts($query));
     }
 
     public function changeQty($productId)
@@ -112,7 +113,6 @@ class Details extends Component
 
         return $response;
     }
-
 
     public function loadOrderDetails($orderId): void
     {
