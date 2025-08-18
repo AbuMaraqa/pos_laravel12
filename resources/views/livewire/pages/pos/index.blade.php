@@ -191,35 +191,38 @@
         });
     }
 
-    // 🔥🔥 تم تعديل هذه الدالة لاستدعاء دوال العرض بعد التحقق 🔥🔥
+    // 🔥🔥 تم تعديل هذه الدالة للتحقق من البيانات وعرضها بشكل صحيح 🔥🔥
     function initializeUI() {
-        // نتحقق أولاً من وجود المنتجات والفئات في IndexedDB
-        const checkProductsTx = db.transaction("products", "readonly");
-        const checkProductsStore = checkProductsTx.objectStore("products");
-        const countProductsRequest = checkProductsStore.count();
+        console.log("🛠️ تهيئة الواجهة...");
 
-        countProductsRequest.onsuccess = function() {
-            if (countProductsRequest.result > 0) {
-                console.log(`✅ تم العثور على ${countProductsRequest.result} منتج في IndexedDB. جاري العرض...`);
+        // عرض مؤشر تحميل عام في البداية
+        showSearchLoadingIndicator(true);
+
+        const txProducts = db.transaction("products", "readonly");
+        const storeProducts = txProducts.objectStore("products");
+        const productsCountRequest = storeProducts.count();
+
+        productsCountRequest.onsuccess = function() {
+            if (productsCountRequest.result > 0) {
+                console.log("✅ تم العثور على منتجات في IndexedDB. جاري العرض...");
                 renderProductsFromIndexedDB(currentSearchTerm, selectedCategoryId);
             } else {
-                console.log("⚠️ IndexedDB فارغ من المنتجات. لن يتم العرض حتى يتم التحميل.");
-                // يمكن هنا إضافة مؤشر "جاري التحميل" إذا لم يتم عرضه
-                showSearchLoadingIndicator(true);
+                console.log("⚠️ IndexedDB فارغ من المنتجات. سيتم جلبها من API.");
+                // لا يوجد منتجات، لذا نترك مؤشر التحميل حتى يتم جلبها
             }
         };
 
-        const checkCategoriesTx = db.transaction("categories", "readonly");
-        const checkCategoriesStore = checkCategoriesTx.objectStore("categories");
-        const countCategoriesRequest = checkCategoriesStore.count();
-        countCategoriesRequest.onsuccess = function() {
-            if (countCategoriesRequest.result > 0) {
-                console.log(`✅ تم العثور على ${countCategoriesRequest.result} فئة في IndexedDB. جاري العرض...`);
+        const txCategories = db.transaction("categories", "readonly");
+        const storeCategories = txCategories.objectStore("categories");
+        const categoriesCountRequest = storeCategories.count();
+        categoriesCountRequest.onsuccess = function() {
+            if (categoriesCountRequest.result > 0) {
+                console.log("✅ تم العثور على فئات في IndexedDB. جاري العرض...");
                 renderCategoriesFromIndexedDB();
             }
         };
 
-        // عرض السلة بغض النظر عن وجود المنتجات، لأنها قد تكون موجودة من جلسة سابقة
+        // عرض السلة دائمًا عند التهيئة
         renderCart();
     }
     // 🔥🔥 نهاية الجزء المعدل 🔥🔥
@@ -428,7 +431,7 @@
 
             const filtered = products.filter(item => {
                 const term = searchTerm.trim().toLowerCase();
-                const isAllowedType = item.type === 'simple' || item.type === 'variable';
+                const isAllowedType = item.type === 'simple' || item.type === 'variable' || item.type === 'variation'; // 🔥 إضافة 'variation'
                 const matchesSearch = !term || (
                     (item.name && item.name.toLowerCase().includes(term)) ||
                     (item.id && item.id.toString().includes(term)) ||
@@ -465,8 +468,12 @@
 
                     if (item.type === 'variable' && Array.isArray(item.variations)) {
                         fetchVariationsAndShowModal(item);
-                    } else if (item.type === 'simple') {
-                        addToCartWithStockCheck(item);
+                    } else if (item.type === 'simple' || item.type === 'variation') { // 🔥 إضافة 'variation'
+                        if (item.type === 'simple') {
+                            addToCartWithStockCheck(item);
+                        } else {
+                            addVariationToCartWithStockCheck(item.id, item.name, false);
+                        }
                     }
                 };
 
@@ -1625,6 +1632,7 @@
     // 🔥🔥 هذا هو الجزء الذي تم تعديله لضمان التحميل الأولي 🔥🔥
     function checkAndFetchInitialData() {
         console.log("🔍 التحقق من وجود بيانات أولية في IndexedDB...");
+        showSearchLoadingIndicator(true); // إظهار مؤشر التحميل عند بدء التحقق
 
         const storesToCheck = [
             { name: "products", event: 'fetch-products-from-api' },
@@ -1648,6 +1656,7 @@
                     });
                 } else {
                     console.log("✅ تم العثور على بيانات في IndexedDB، لا حاجة للتحميل.");
+                    showSearchLoadingIndicator(false); // إخفاء المؤشر إذا كانت البيانات موجودة
                 }
                 return;
             }
@@ -1676,7 +1685,7 @@
 
         checkNextStore(0);
     }
-    // 🔥🔥 نهاية الجزء المعدل 🔥🔥
+    // 🔥🔥 نهاية الجزء المعدل �🔥
 
 
     // ============================================
@@ -1704,9 +1713,13 @@
                     <span class="text-gray-500 mr-2">جاري البحث...</span>
                 </div>
             `;
-            container.insertBefore(loadingDiv, container.firstChild);
+            container.innerHTML = ''; // إفراغ المحتوى قبل إضافة المؤشر
+            container.appendChild(loadingDiv);
         } else if (!show && existingIndicator) {
             existingIndicator.remove();
+        } else if (!show && !existingIndicator) {
+            // إفراغ المحتوى في حالة إخفاء المؤشر وعدم وجوده
+            container.innerHTML = '';
         }
     }
 
@@ -1772,19 +1785,19 @@
     document.addEventListener('livewire:init', () => {
         console.log("🔌 Livewire تم تهيئته");
 
+        // 🔥🔥 تم تعديل هذا المعالج ليقوم بإعادة عرض المنتجات بعد التخزين 🔥🔥
         // تخزين المنتجات
         Livewire.on('store-products', (data) => {
             if (!db) return;
             const tx = db.transaction("products", "readwrite");
             const store = tx.objectStore("products");
 
-            // تنظيف المنتجات من الصور لتسريع التخزين
             const cleanedProducts = data.products.map(product => ({
                 ...product,
-                images: [], // إزالة الصور لتسريع التحميل
-                description: '', // إزالة الوصف الطويل
+                images: [],
+                description: '',
                 short_description: product.short_description || '',
-                meta_data: [] // إزالة البيانات الإضافية
+                meta_data: []
             }));
 
             let processed = 0;
@@ -1794,13 +1807,14 @@
                     processed++;
                     if (processed === cleanedProducts.length) {
                         console.log(`✅ تم تخزين ${processed} منتج`);
-                        renderProductsFromIndexedDB(currentSearchTerm, selectedCategoryId);
+                        renderProductsFromIndexedDB(currentSearchTerm, selectedCategoryId); // 🔥 إعادة العرض بعد انتهاء التخزين
                         showNotification(`تم تحميل ${processed} منتج بنجاح`, 'success');
                     }
                 };
             });
         });
 
+        // 🔥🔥 تم تعديل هذا المعالج ليقوم بإعادة عرض الفئات بعد التخزين 🔥🔥
         // تخزين الفئات
         Livewire.on('store-categories', (data) => {
             if (!db) return;
@@ -1811,7 +1825,7 @@
 
             tx.oncomplete = () => {
                 console.log("✅ تم تخزين الفئات");
-                renderCategoriesFromIndexedDB();
+                renderCategoriesFromIndexedDB(); // 🔥 إعادة العرض بعد انتهاء التخزين
                 showNotification(`تم تحميل ${data.categories.length} فئة`, 'success');
             };
         });
@@ -2265,6 +2279,7 @@
             // منتج متغير عادي - عرض المودال
             showVariationsModalWithStock(product.variations_full, product.target_variation);
             showNotification(`تم العثور على "${product.name}" مع ${product.variations_full.length} متغير`, 'success');
+
         } else {
             showNotification(`تم العثور على "${product.name}" لكن لا توجد متغيرات متاحة`, 'warning');
         }
@@ -3681,7 +3696,7 @@
                 uniqueProducts: new Set(cartItems.map(item => item.id)).size
             };
 
-            console.log("� إحصائيات السلة:");
+            console.log("📊 إحصائيات السلة:");
             console.log(`- عدد الأنواع: ${stats.totalItems}`);
             console.log(`- إجمالي القطع: ${stats.totalQuantity}`);
             console.log(`- القيمة الإجمالية: ${stats.totalValue.toFixed(2)} ₪`);
@@ -3838,4 +3853,3 @@
 
     console.log("✅ تم تحميل جميع وظائف نظام POS المحسن");
 </script>
-
