@@ -1255,7 +1255,7 @@
     }
 
     function submitOrderData(orderData) {
-        console.log("� إرسال بيانات الطلب:", orderData);
+        console.log("📤 إرسال بيانات الطلب:", orderData);
 
         if (navigator.onLine) {
             try {
@@ -1595,28 +1595,62 @@
         });
     }
 
+    // 🔥🔥 هذا هو الجزء الذي تم تعديله لضمان التحميل الأولي 🔥🔥
     function checkAndFetchInitialData() {
-        const checks = [
-            {store: "products", action: 'fetch-products-from-api'},
-            {store: "categories", action: 'fetch-categories-from-api'},
-            {store: "customers", action: 'fetch-customers-from-api'},
-            {store: "shippingMethods", action: 'fetch-shipping-methods-from-api'},
-            {store: "shippingZones", action: 'fetch-shipping-zones-and-methods'}
+        console.log("🔍 التحقق من وجود بيانات أولية في IndexedDB...");
+
+        const storesToCheck = [
+            { name: "products", event: 'fetch-products-from-api' },
+            { name: "categories", event: 'fetch-categories-from-api' },
+            { name: "customers", event: 'fetch-customers-from-api' },
+            { name: "shippingMethods", event: 'fetch-shipping-methods-from-api' },
+            { name: "shippingZones", event: 'fetch-shipping-zones-and-methods' }
         ];
 
-        checks.forEach(check => {
-            const tx = db.transaction(check.store, "readonly");
-            const store = tx.objectStore(check.store);
+        let storesToFetch = [];
+
+        const checkNextStore = (index) => {
+            if (index >= storesToCheck.length) {
+                // انتهى التحقق من جميع المتاجر
+                if (storesToFetch.length > 0) {
+                    console.log("✅ IndexedDB فارغ، بدء تحميل البيانات من API...");
+                    showNotification("جاري تحميل البيانات الأساسية...", 'info', 5000);
+                    storesToFetch.forEach(store => {
+                        console.log(`📥 جلب البيانات لـ: ${store.name}`);
+                        Livewire.dispatch(store.event);
+                    });
+                } else {
+                    console.log("✅ تم العثور على بيانات في IndexedDB، لا حاجة للتحميل.");
+                }
+                return;
+            }
+
+            const storeInfo = storesToCheck[index];
+            const tx = db.transaction(storeInfo.name, "readonly");
+            const store = tx.objectStore(storeInfo.name);
             const countRequest = store.count();
 
             countRequest.onsuccess = function () {
                 if (countRequest.result === 0) {
-                    console.log(`📥 تحميل ${check.store} للمرة الأولى...`);
-                    Livewire.dispatch(check.action);
+                    console.log(`❌ المتجر '${storeInfo.name}' فارغ.`);
+                    storesToFetch.push(storeInfo);
+                } else {
+                    console.log(`✅ المتجر '${storeInfo.name}' يحتوي على ${countRequest.result} عنصر.`);
                 }
+                checkNextStore(index + 1);
             };
-        });
+
+            countRequest.onerror = function () {
+                console.error(`❌ خطأ في فحص المتجر: ${storeInfo.name}. سيتم محاولة التحميل.`);
+                storesToFetch.push(storeInfo);
+                checkNextStore(index + 1);
+            };
+        };
+
+        checkNextStore(0);
     }
+    // 🔥🔥 نهاية الجزء المعدل 🔥🔥
+
 
     // ============================================
     // مؤشرات التحميل والإشعارات
@@ -2245,998 +2279,6 @@
     `;
 
         return controlsHTML;
-    }
-
-    function showVariationsModalWithTarget(variations, targetVariation) {
-        const modal = Flux.modal('variations-modal');
-        const container = document.getElementById("variationsTableBody");
-        if (!container) return;
-
-        container.innerHTML = '';
-
-        if (!variations || variations.length === 0) {
-            const message = document.createElement("div");
-            message.className = "text-center text-gray-500 py-8";
-            message.innerHTML = `
-            <div class="text-4xl mb-4">📦</div>
-            <p class="text-lg font-semibold">لا يوجد متغيرات متاحة</p>
-        `;
-            container.appendChild(message);
-            modal.show();
-            return;
-        }
-
-        // عنوان المودال
-        const header = document.createElement("div");
-        header.className = "text-center mb-4 p-4 bg-blue-50 rounded-lg";
-        header.innerHTML = `
-        <h3 class="text-lg font-bold text-blue-800">اختر من المتغيرات المتاحة</h3>
-        <p class="text-sm text-blue-600">عدد المتغيرات: ${variations.length}</p>
-        ${targetVariation ? `<p class="text-sm text-green-600 font-semibold">🎯 تم العثور على: ${targetVariation.name}</p>` : ''}
-    `;
-        container.appendChild(header);
-
-        const grid = document.createElement("div");
-        grid.className = "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 p-4";
-
-        // 🔥 ترتيب المتغيرات بحيث يكون المستهدف أولاً
-        const sortedVariations = [...variations];
-        if (targetVariation) {
-            const targetIndex = sortedVariations.findIndex(v => v.id === targetVariation.id);
-            if (targetIndex > -1) {
-                // نقل المتغير المستهدف للمقدمة
-                const target = sortedVariations.splice(targetIndex, 1)[0];
-                sortedVariations.unshift(target);
-            }
-        }
-
-        sortedVariations.forEach((variation, index) => {
-            const card = document.createElement("div");
-            const isTarget = targetVariation && variation.id === targetVariation.id;
-            const isOutOfStock = variation.stock_status === 'outofstock';
-
-            // 🔥 تمييز المتغير المستهدف
-            const baseCardClass = "relative bg-white rounded-lg shadow-md overflow-hidden cursor-pointer hover:shadow-xl transition-all border";
-            const targetHighlight = isTarget ? "border-4 border-green-500 bg-green-50 ring-2 ring-green-200" : "border-gray-200 hover:border-blue-300";
-
-            card.className = `${baseCardClass} ${targetHighlight}`;
-
-            // إضافة شارة للمتغير المستهدف
-            const targetBadge = isTarget ? `
-            <div class="absolute top-0 right-0 bg-green-500 text-white text-xs px-2 py-1 rounded-bl-lg z-20">
-                🎯 الهدف
-            </div>
-        ` : '';
-
-            card.onmouseenter = () => card.classList.add('transform', 'scale-105');
-            card.onmouseleave = () => card.classList.remove('transform', 'scale-105');
-
-            card.onclick = () => {
-                if (isOutOfStock) {
-                    showNotification('هذا المتغير غير متوفر حالياً', 'warning');
-                    return;
-                }
-                addVariationToCart(variation.id);
-                showNotification(`تم إضافة "${variation.name}" للسلة`, 'success');
-            };
-
-            // تحضير معلومات الخصائص
-            let attributesText = '';
-            if (variation.attributes && variation.attributes.length > 0) {
-                const attrs = variation.attributes.map(attr => attr.option || attr.value).filter(Boolean);
-                attributesText = attrs.length > 0 ? attrs.join(' • ') : '';
-            }
-
-            // تحضير معلومات المخزون
-            let stockInfo = 'متوفر';
-            let stockClass = 'bg-green-500';
-            if (isOutOfStock) {
-                stockInfo = 'نفدت الكمية';
-                stockClass = 'bg-red-500';
-            } else if (variation.stock_quantity !== undefined && variation.stock_quantity !== null) {
-                stockInfo = `متوفر: ${variation.stock_quantity}`;
-                stockClass = variation.stock_quantity > 10 ? 'bg-green-500' : 'bg-yellow-500';
-            }
-
-            card.innerHTML = `
-            ${targetBadge}
-            <div class="absolute top-2 left-2 bg-black text-white text-xs px-2 py-1 rounded z-10 opacity-75">
-                #${variation.id}
-            </div>
-            <div class="absolute top-2 right-2 ${stockClass} text-white text-xs px-2 py-1 rounded z-10">
-                ${stockInfo}
-            </div>
-            <div class="relative h-48 bg-gray-100 flex items-center justify-center">
-                <div class="text-gray-400 text-4xl">📦</div>
-                <div class="absolute bottom-2 left-2 bg-blue-600 text-white px-3 py-1 rounded-full font-bold text-sm">
-                    ${variation.price || 0} ₪
-                </div>
-            </div>
-            <div class="p-3 space-y-2">
-                <h4 class="font-semibold text-sm text-gray-800 line-clamp-2" title="${variation.name || 'متغير'}">
-                    ${variation.name || 'متغير'}
-                </h4>
-                ${attributesText ? `
-                    <div class="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded">
-                        ${attributesText}
-                    </div>
-                ` : ''}
-                ${variation.sku ? `
-                    <div class="text-xs text-gray-500">
-                        SKU: ${variation.sku}
-                    </div>
-                ` : ''}
-                <button class="w-full mt-2 ${isOutOfStock ? 'bg-gray-400 cursor-not-allowed' : isTarget ? 'bg-green-600 hover:bg-green-700' : 'bg-green-500 hover:bg-green-600'} text-white py-2 px-3 rounded-md text-sm font-semibold transition-colors">
-                    ${isOutOfStock ? 'غير متوفر' : isTarget ? '🎯 إضافة المستهدف' : 'إضافة للسلة'}
-                </button>
-            </div>
-        `;
-
-            if (isOutOfStock) {
-                card.classList.add('opacity-60');
-            }
-
-            grid.appendChild(card);
-        });
-
-        container.appendChild(grid);
-
-        // footer للمودال
-        const footer = document.createElement("div");
-        footer.className = "text-center mt-4 p-3 bg-gray-50 rounded-lg text-xs text-gray-600";
-        footer.innerHTML = `
-        ${targetVariation ?
-            `🎯 تم العثور على المتغير المطلوب وتمييزه باللون الأخضر` :
-            'اضغط على أي متغير متوفر لإضافته إلى السلة'
-        }
-    `;
-        container.appendChild(footer);
-
-        modal.show();
-
-        // 🔥 إذا كان هناك متغير مستهدف، قم بالتمرير إليه
-        if (targetVariation) {
-            setTimeout(() => {
-                const targetCard = grid.querySelector('.border-green-500');
-                if (targetCard) {
-                    targetCard.scrollIntoView({behavior: 'smooth', block: 'center'});
-
-                    // إضافة تأثير وميض للفت الانتباه
-                    targetCard.classList.add('animate-pulse');
-                    setTimeout(() => {
-                        targetCard.classList.remove('animate-pulse');
-                    }, 2000);
-                }
-            }, 300);
-        }
-    }
-
-    // ============================================
-    // تهيئة التطبيق
-    // ============================================
-    document.addEventListener('DOMContentLoaded', function () {
-        console.log("🚀 تم تحميل صفحة POS");
-
-        // إعداد متغيرات التحسين
-        preventUnnecessaryReloads();
-
-        // إعداد event listeners للنوافذ
-        window.addEventListener('online', () => {
-            showNotification("تم استعادة الاتصال بالإنترنت", 'success');
-            console.log("🌐 تم استعادة الاتصال");
-        });
-
-        window.addEventListener('offline', () => {
-            showNotification("تم فقدان الاتصال بالإنترنت. سيتم العمل في وضع عدم الاتصال", 'warning');
-            console.log("🚫 تم فقدان الاتصال");
-        });
-
-        // إعداد اختصارات لوحة المفاتيح
-        document.addEventListener('keydown', (e) => {
-            // Ctrl/Cmd + F للتركيز على البحث
-            if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
-                e.preventDefault();
-                const searchInput = document.getElementById('searchInput');
-                if (searchInput) {
-                    searchInput.focus();
-                    searchInput.select();
-                }
-            }
-
-            // ESC لإغلاق المودالات
-            if (e.key === 'Escape') {
-                const modals = document.querySelectorAll('[data-flux-modal]');
-                modals.forEach(modal => {
-                    if (modal.style.display !== 'none') {
-                        const modalName = modal.getAttribute('data-flux-modal');
-                        if (modalName) {
-                            try {
-                                Flux.modal(modalName).close();
-                            } catch (err) {
-                                // تجاهل الأخطاء
-                            }
-                        }
-                    }
-                });
-            }
-        });
-    });
-
-    // ============================================
-    // إضافة event listeners للعملاء الجدد
-    // ============================================
-    document.addEventListener('livewire:init', () => {
-        Livewire.on('add-simple-to-cart', (data) => {
-            window.dispatchEvent(new CustomEvent('add-to-cart', {
-                detail: data
-            }));
-        });
-    });
-
-    // التأكد من تهيئة الأزرار
-    setTimeout(() => {
-        setupConfirmOrderButton();
-    }, 1000);
-
-    function reinitializeDatabase() {
-        console.log("🔄 إعادة تهيئة قاعدة البيانات...");
-
-        if (db) {
-            db.close();
-        }
-
-        const openRequest = indexedDB.open("POSProductsDB", 5);
-
-        openRequest.onupgradeneeded = function (event) {
-            db = event.target.result;
-            createObjectStores(db);
-            console.log("✅ تم إنشاء هياكل قاعدة البيانات");
-        };
-
-        openRequest.onsuccess = function (event) {
-            db = event.target.result;
-            console.log("✅ تم فتح قاعدة البيانات بنجاح");
-            renderCartWithDebug();
-        };
-
-        openRequest.onerror = function () {
-            console.error("❌ فشل في فتح قاعدة البيانات");
-        };
-    }
-
-    function recreateCartElements() {
-        console.log("🔄 إعادة إنشاء عناصر السلة...");
-
-        // البحث عن الحاوية الرئيسية
-        let cartContainer = document.getElementById("cartItemsContainer");
-
-        if (!cartContainer) {
-            console.log("🏗️ إنشاء حاوية السلة المفقودة...");
-
-            // البحث عن الحاوية الأب
-            const parentContainer = document.querySelector('.col-span-2 .bg-white');
-
-            if (parentContainer) {
-                // إنشاء حاوية السلة
-                const newCartContainer = document.createElement('div');
-                newCartContainer.id = 'cartItemsContainer';
-                newCartContainer.className = 'space-y-2 overflow-y-auto max-h-[500px] flex-1';
-
-                // إنشاء عنصر المجموع إذا لم يكن موجوداً
-                let totalElement = document.getElementById("cartTotal");
-                if (!totalElement) {
-                    const totalDiv = document.createElement('div');
-                    totalDiv.className = 'mt-4 border-t pt-4 text-right';
-                    totalDiv.innerHTML = '<p class="font-bold text-xl">المجموع: <span id="cartTotal">0 ₪</span></p>';
-                    parentContainer.appendChild(totalDiv);
-                }
-
-                // إدراج الحاوية في المكان الصحيح
-                const titleElement = parentContainer.querySelector('h2');
-                if (titleElement) {
-                    titleElement.parentNode.insertBefore(newCartContainer, titleElement.nextSibling.nextSibling);
-                } else {
-                    parentContainer.appendChild(newCartContainer);
-                }
-
-                console.log("✅ تم إنشاء حاوية السلة");
-            } else {
-                console.error("❌ لم يتم العثور على الحاوية الأب للسلة");
-            }
-        }
-
-        // التحقق من وجود زر إتمام الطلب
-        let completeOrderBtn = document.getElementById("completeOrderBtn");
-        if (!completeOrderBtn) {
-            console.log("🏗️ إنشاء زر إتمام الطلب المفقود...");
-
-            const parentContainer = document.querySelector('.col-span-2 .bg-white');
-            if (parentContainer) {
-                const btn = document.createElement('button');
-                btn.id = 'completeOrderBtn';
-                btn.className = 'mt-4 w-full bg-blue-500 text-white py-2 px-4 rounded hover:bg-blue-600 transition-colors';
-                btn.textContent = 'إتمام الطلب';
-                btn.onclick = function () {
-                    // إعادة ربط وظيفة إتمام الطلب
-                    setupOrderButton();
-                    // محاولة فتح المودال
-                    try {
-                        Flux.modal('confirm-order-modal').show();
-                    } catch (e) {
-                        alert('يرجى إعادة تحميل الصفحة لاستكمال الطلب');
-                    }
-                };
-
-                parentContainer.appendChild(btn);
-                console.log("✅ تم إنشاء زر إتمام الطلب");
-            }
-        }
-    }
-
-    function cleanupEventListeners() {
-        console.log("🧹 تنظيف event listeners...");
-
-        // إزالة listeners القديمة من المنتجات
-        document.querySelectorAll('.product-card').forEach(card => {
-            const newCard = card.cloneNode(true);
-            card.parentNode.replaceChild(newCard, card);
-        });
-
-        // إعادة ربط listeners الجديدة
-        document.querySelectorAll('.product-card').forEach(card => {
-            card.addEventListener('click', function () {
-                const productId = this.getAttribute('data-product-id');
-                if (productId) {
-                    // البحث عن المنتج في IndexedDB
-                    const tx = db.transaction("products", "readonly");
-                    const store = tx.objectStore("products");
-                    const request = store.get(parseInt(productId));
-
-                    request.onsuccess = function () {
-                        const product = request.result;
-                        if (product) {
-                            addToCartWithDebug(product);
-                        }
-                    };
-                }
-            });
-        });
-
-        console.log("✅ تم تنظيف وإعادة ربط event listeners");
-    }
-
-    function cleanupCorruptedCartData() {
-        console.log("🧹 تنظيف بيانات السلة التالفة...");
-
-        if (!db) {
-            console.error("❌ قاعدة البيانات غير متاحة");
-            return;
-        }
-
-        const tx = db.transaction("cart", "readwrite");
-        const store = tx.objectStore("cart");
-        const request = store.getAll();
-
-        request.onsuccess = function () {
-            const cartItems = request.result;
-            console.log("📦 فحص", cartItems.length, "عنصر في السلة");
-
-            let cleanedItems = [];
-            let corruptedCount = 0;
-
-            cartItems.forEach(item => {
-                // فحص صحة البيانات
-                if (item.id && item.name && typeof item.price !== 'undefined' && item.quantity > 0) {
-                    // تنظيف البيانات
-                    const cleanedItem = {
-                        id: parseInt(item.id),
-                        name: String(item.name),
-                        price: parseFloat(item.price) || 0,
-                        quantity: parseInt(item.quantity) || 1,
-                        image: item.image || '',
-                        type: item.type || 'simple',
-                        sku: item.sku || '',
-                        added_at: item.added_at || new Date().toISOString()
-                    };
-                    cleanedItems.push(cleanedItem);
-                } else {
-                    console.warn("⚠️ عنصر تالف:", item);
-                    corruptedCount++;
-                    // حذف العنصر التالف
-                    store.delete(item.id);
-                }
-            });
-
-            if (corruptedCount > 0) {
-                console.log(`🗑️ تم حذف ${corruptedCount} عنصر تالف`);
-
-                // إعادة حفظ العناصر السليمة
-                cleanedItems.forEach(item => {
-                    store.put(item);
-                });
-            }
-
-            console.log("✅ تم تنظيف بيانات السلة");
-            renderCartWithDebug();
-        };
-    }
-
-    function fixCartStyling() {
-        console.log("🎨 إصلاح تصميم السلة...");
-
-        const cartContainer = document.getElementById("cartItemsContainer");
-        if (cartContainer) {
-            // التأكد من وجود الأنماط الصحيحة
-            cartContainer.className = "space-y-2 overflow-y-auto max-h-[500px] flex-1";
-
-            // إضافة أنماط مخصصة إذا لزم الأمر
-            const style = document.createElement('style');
-            style.textContent = `
-            #cartItemsContainer {
-                min-height: 200px;
-                background: #ffffff;
-                border-radius: 8px;
-                padding: 8px;
-            }
-
-            .cart-item {
-                transition: all 0.3s ease;
-                border: 1px solid #e5e7eb;
-                margin-bottom: 8px;
-            }
-
-            .cart-item:hover {
-                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            }
-
-            #cartTotal {
-                color: #059669;
-                font-weight: bold;
-            }
-        `;
-
-            if (!document.head.querySelector('#cart-custom-styles')) {
-                style.id = 'cart-custom-styles';
-                document.head.appendChild(style);
-            }
-
-            console.log("✅ تم إصلاح تصميم السلة");
-        }
-    }
-
-    function emergencyCartFix() {
-        console.log("🚨 === بدء الإصلاح الطارئ للسلة ===");
-
-        try {
-            // 1. إعادة تهيئة قاعدة البيانات
-            console.log("1️⃣ إعادة تهيئة قاعدة البيانات...");
-            reinitializeDatabase();
-
-            setTimeout(() => {
-                // 2. إعادة إنشاء عناصر HTML
-                console.log("2️⃣ إعادة إنشاء عناصر HTML...");
-                recreateCartElements();
-
-                // 3. تنظيف البيانات التالفة
-                console.log("3️⃣ تنظيف البيانات التالفة...");
-                cleanupCorruptedCartData();
-
-                // 4. إصلاح التصميم
-                console.log("4️⃣ إصلاح التصميم...");
-                fixCartStyling();
-
-                // 5. تنظيف event listeners
-                console.log("5️⃣ تنظيف event listeners...");
-                cleanupEventListeners();
-
-                setTimeout(() => {
-                    // 6. اختبار نهائي
-                    console.log("6️⃣ اختبار نهائي...");
-                    fullCartDiagnostic();
-
-                    console.log("✅ === انتهى الإصلاح الطارئ ===");
-                    alert("تم إصلاح السلة! جرب إضافة منتج الآن.");
-
-                }, 1000);
-
-            }, 1000);
-
-        } catch (error) {
-            console.error("❌ فشل في الإصلاح الطارئ:", error);
-            alert("فشل في الإصلاح. يرجى إعادة تحميل الصفحة.");
-        }
-    }
-
-    function fixCustomersStorageHandler() {
-        console.log("🔧 إصلاح معالج تخزين العملاء...");
-
-        // إزالة المعالج القديم إذا كان موجوداً
-        if (window.Livewire) {
-            try {
-                Livewire.off('store-customers');
-                console.log("✅ تم إزالة المعالج القديم");
-            } catch (e) {
-                console.log("ℹ️ لا يوجد معالج قديم لإزالته");
-            }
-        }
-    }
-
-    function enhancedCustomersStorageHandler() {
-        if (!window.Livewire) {
-            console.warn("⚠️ Livewire غير متاح");
-            return;
-        }
-
-        Livewire.on('store-customers', (payload) => {
-            console.log("📥 بدء تخزين العملاء المحسن...");
-
-            if (!db) {
-                console.error("❌ قاعدة البيانات غير متاحة");
-                return;
-            }
-
-            // 🎯 حفظ حالة واجهة المستخدم الحالية
-            const currentState = {
-                searchTerm: currentSearchTerm || '',
-                categoryId: selectedCategoryId,
-                productsVisible: document.querySelectorAll('.product-card').length,
-                categoriesVisible: document.querySelectorAll('#categoriesContainer button').length
-            };
-
-            console.log("💾 حفظ حالة واجهة المستخدم:", currentState);
-
-            try {
-                const tx = db.transaction("customers", "readwrite");
-                const store = tx.objectStore("customers");
-
-                let processedCount = 0;
-                const totalCustomers = payload.customers?.length || 0;
-
-                if (totalCustomers === 0) {
-                    console.log("ℹ️ لا يوجد عملاء للتخزين");
-                    return;
-                }
-
-                payload.customers.forEach((customer, index) => {
-                    try {
-                        const customerData = {
-                            id: customer.id,
-                            name: `${customer.first_name || ''} ${customer.last_name || ''}`.trim() || 'عميل',
-                            email: customer.email || '',
-                            phone: customer.billing?.phone || ''
-                        };
-
-                        const putRequest = store.put(customerData);
-
-                        putRequest.onsuccess = () => {
-                            processedCount++;
-
-                            // عند الانتهاء من معالجة جميع العملاء
-                            if (processedCount === totalCustomers) {
-                                console.log(`✅ تم تخزين ${processedCount} عميل بنجاح`);
-
-                                // 🔄 استعادة حالة واجهة المستخدم
-                                setTimeout(() => {
-                                    restoreUIState(currentState);
-                                }, 100);
-
-                                // إشعار بدون تدخل في الواجهة
-                                showNotification(`تم تحميل ${processedCount} عميل`, 'success', 2000);
-                            }
-                        };
-
-                        putRequest.onerror = () => {
-                            console.error(`❌ فشل في تخزين العميل ${customer.id}`);
-                            processedCount++;
-
-                            if (processedCount === totalCustomers) {
-                                restoreUIState(currentState);
-                            }
-                        };
-
-                    } catch (customerError) {
-                        console.error(`❌ خطأ في معالجة العميل ${index}:`, customerError);
-                        processedCount++;
-
-                        if (processedCount === totalCustomers) {
-                            restoreUIState(currentState);
-                        }
-                    }
-                });
-
-            } catch (transactionError) {
-                console.error("❌ خطأ في معاملة قاعدة البيانات:", transactionError);
-
-                // استعادة الحالة حتى في حالة الخطأ
-                setTimeout(() => {
-                    restoreUIState(currentState);
-                }, 100);
-            }
-        });
-
-        console.log("✅ تم تسجيل معالج العملاء المحسن");
-    }
-
-    function restoreUIState(savedState) {
-        console.log("🔄 استعادة حالة واجهة المستخدم...", savedState);
-
-        try {
-            // التحقق من وجود المنتجات في الواجهة
-            const currentProducts = document.querySelectorAll('.product-card').length;
-            const currentCategories = document.querySelectorAll('#categoriesContainer button').length;
-
-            console.log(`📊 المنتجات الحالية: ${currentProducts}, الفئات الحالية: ${currentCategories}`);
-
-            // إذا اختفت المنتجات أو الفئات، أعد رسمها
-            if (currentProducts === 0 && savedState.productsVisible > 0) {
-                console.log("🔄 إعادة رسم المنتجات المفقودة...");
-                renderProductsFromIndexedDB(savedState.searchTerm, savedState.categoryId);
-            }
-
-            if (currentCategories <= 1 && savedState.categoriesVisible > 1) {
-                console.log("🔄 إعادة رسم الفئات المفقودة...");
-                renderCategoriesFromIndexedDB();
-            }
-
-            // استعادة حالة البحث والفئة المحددة
-            if (savedState.searchTerm && savedState.searchTerm !== currentSearchTerm) {
-                const searchInput = document.getElementById('searchInput');
-                if (searchInput) {
-                    searchInput.value = savedState.searchTerm;
-                    currentSearchTerm = savedState.searchTerm;
-                }
-            }
-
-            if (savedState.categoryId !== selectedCategoryId) {
-                selectedCategoryId = savedState.categoryId;
-                updateCategoryButtons();
-            }
-
-            console.log("✅ تم استعادة حالة واجهة المستخدم");
-
-        } catch (error) {
-            console.error("❌ خطأ في استعادة حالة واجهة المستخدم:", error);
-
-            // في حالة الخطأ، أعد رسم كل شيء
-            setTimeout(() => {
-                if (db) {
-                    renderProductsFromIndexedDB('', null);
-                    renderCategoriesFromIndexedDB();
-                }
-            }, 500);
-        }
-    }
-
-    function preventUnnecessaryCustomersFetch() {
-        console.log("🛡️ منع تحميل العملاء غير الضروري...");
-
-        // التحقق من وجود العملاء محلياً قبل التحميل
-        if (!db) return;
-
-        const tx = db.transaction("customers", "readonly");
-        const store = tx.objectStore("customers");
-        const countRequest = store.count();
-
-        countRequest.onsuccess = function () {
-            const count = countRequest.result;
-            console.log(`📊 عدد العملاء المحفوظين محلياً: ${count}`);
-
-            if (count > 0) {
-                console.log("✅ العملاء متوفرون محلياً - لا حاجة للتحميل");
-                // تحديث حالة التحميل لمنع التحميل التلقائي
-                if (typeof dataLoadingState !== 'undefined') {
-                    dataLoadingState.customers = true;
-                }
-            }
-        };
-    }
-
-    function fixInitialDataFetch() {
-        console.log("🔧 إصلاح تحميل البيانات الأولية...");
-
-        // إعادة تعريف دالة checkAndFetchInitialData مع استثناء العملاء
-        const originalCheckAndFetchInitialData = window.checkAndFetchInitialData;
-
-        window.checkAndFetchInitialData = function () {
-            console.log("🔍 فحص البيانات الأولية المحسن...");
-
-            const checks = [
-                {store: "products", action: 'fetch-products-from-api', key: 'products'},
-                {store: "categories", action: 'fetch-categories-from-api', key: 'categories'},
-                // ❌ إزالة العملاء من التحميل التلقائي
-                // {store: "customers", action: 'fetch-customers-from-api', key: 'customers'},
-                {store: "shippingMethods", action: 'fetch-shipping-methods-from-api', key: 'shipping'},
-                {store: "shippingZones", action: 'fetch-shipping-zones-and-methods', key: 'shipping'}
-            ];
-
-            checks.forEach(check => {
-                // تجاهل التحميل إذا كان محمل مسبقاً
-                if (dataLoadingState && dataLoadingState[check.key]) {
-                    console.log(`⏭️ تم تجاهل تحميل ${check.store} - محمل مسبقاً`);
-                    return;
-                }
-
-                const tx = db.transaction(check.store, "readonly");
-                const store = tx.objectStore(check.store);
-                const countRequest = store.count();
-
-                countRequest.onsuccess = function () {
-                    const count = countRequest.result;
-                    console.log(`📊 عدد عناصر ${check.store}: ${count}`);
-
-                    // تحميل فقط إذا كان فارغ ولم يتم تحميله مسبقاً
-                    if (count === 0 && (!dataLoadingState || !dataLoadingState[check.key])) {
-                        console.log(`📥 تحميل ${check.store} للمرة الأولى...`);
-                        if (dataLoadingState) {
-                            dataLoadingState[check.key] = true;
-                        }
-                        Livewire.dispatch(check.action);
-                    } else if (count > 0) {
-                        // تحديث الحالة إذا كانت البيانات موجودة
-                        if (dataLoadingState) {
-                            dataLoadingState[check.key] = true;
-                        }
-                        console.log(`✅ ${check.store} محمل مسبقاً (${count} عنصر)`);
-                    }
-                };
-
-                countRequest.onerror = function () {
-                    console.error(`❌ خطأ في فحص ${check.store}`);
-                };
-            });
-
-            // فحص العملاء بشكل منفصل دون تحميل تلقائي
-            preventUnnecessaryCustomersFetch();
-        };
-
-        console.log("✅ تم إصلاح دالة تحميل البيانات الأولية");
-    }
-
-    function loadCustomersManually() {
-        console.log("👥 تحميل العملاء يدوياً...");
-
-        if (!db) {
-            console.error("❌ قاعدة البيانات غير متاحة");
-            return;
-        }
-
-        // التحقق من وجود العملاء أولاً
-        const tx = db.transaction("customers", "readonly");
-        const store = tx.objectStore("customers");
-        const countRequest = store.count();
-
-        countRequest.onsuccess = function () {
-            const count = countRequest.result;
-
-            if (count > 0) {
-                console.log(`✅ يوجد ${count} عميل محفوظ محلياً - لا حاجة للتحميل`);
-                return;
-            }
-
-            console.log("📥 تحميل العملاء من API...");
-            showNotification("جاري تحميل العملاء...", 'info', 1000);
-            Livewire.dispatch('fetch-customers-from-api');
-        };
-
-        countRequest.onerror = function () {
-            console.error("❌ خطأ في فحص العملاء");
-        };
-    }
-
-    function applyCustomersFix() {
-        console.log("🚀 تطبيق إصلاحات العملاء...");
-
-        try {
-            // 1. إصلاح معالج العملاء
-            fixCustomersStorageHandler();
-
-            // 2. تسجيل المعالج المحسن
-            setTimeout(() => {
-                enhancedCustomersStorageHandler();
-            }, 100);
-
-            // 3. إصلاح تحميل البيانات الأولية
-            fixInitialDataFetch();
-
-            // 4. إضافة دالة التحميل اليدوي للنطاق العام
-            window.loadCustomersManually = loadCustomersManually;
-            window.preventUnnecessaryCustomersFetch = preventUnnecessaryCustomersFetch;
-
-            console.log("✅ تم تطبيق جميع إصلاحات العملاء");
-
-        } catch (error) {
-            console.error("❌ خطأ في تطبيق إصلاحات العملاء:", error);
-        }
-    }
-
-    function testCustomersFix() {
-        console.log("🧪 اختبار إصلاحات العملاء...");
-
-        // محاكاة تحميل العملاء
-        const fakeCustomers = [
-            {id: 999, first_name: "اختبار", last_name: "عميل", email: "test@example.com"}
-        ];
-
-        // حفظ حالة قبل الاختبار
-        const beforeProducts = document.querySelectorAll('.product-card').length;
-        const beforeCategories = document.querySelectorAll('#categoriesContainer button').length;
-
-        console.log(`📊 قبل الاختبار - منتجات: ${beforeProducts}, فئات: ${beforeCategories}`);
-
-        // محاكاة معالجة العملاء
-        if (window.Livewire) {
-            Livewire.dispatch('store-customers', {customers: fakeCustomers});
-
-            // فحص بعد ثانيتين
-            setTimeout(() => {
-                const afterProducts = document.querySelectorAll('.product-card').length;
-                const afterCategories = document.querySelectorAll('#categoriesContainer button').length;
-
-                console.log(`📊 بعد الاختبار - منتجات: ${afterProducts}, فئات: ${afterCategories}`);
-
-                if (afterProducts === beforeProducts && afterCategories === beforeCategories) {
-                    console.log("✅ نجح الاختبار - لم تختف المنتجات والفئات");
-                } else {
-                    console.warn("⚠️ فشل الاختبار - اختفت بعض العناصر");
-                }
-            }, 2000);
-        }
-    }
-
-    applyCustomersFix();
-
-    document.addEventListener('livewire:init', () => {
-        console.log("🔌 Livewire تم تهيئته - تطبيق إصلاحات العملاء...");
-        setTimeout(() => {
-            applyCustomersFix();
-        }, 500);
-    });
-
-    document.addEventListener("livewire:navigated", () => {
-        console.log("🚢 Livewire تم التنقل - تطبيق إصلاحات العملاء...");
-        setTimeout(() => {
-            applyCustomersFix();
-        }, 500);
-    });
-
-    window.applyCustomersFix = applyCustomersFix;
-    window.testCustomersFix = testCustomersFix;
-
-    function renderProductsFromIndexedDBWithStock(searchTerm = '', categoryId = null) {
-        const tx = db.transaction("products", "readonly");
-        const store = tx.objectStore("products");
-        const request = store.getAll();
-
-        request.onsuccess = function () {
-            const products = request.result;
-            const container = document.getElementById("productsContainer");
-            if (!container) return;
-
-            // إخفاء مؤشر التحميل
-            showSearchLoadingIndicator(false);
-
-            container.innerHTML = '';
-
-            const filtered = products.filter(item => {
-                const term = searchTerm.trim().toLowerCase();
-                const isAllowedType = item.type === 'simple' || item.type === 'variable';
-                const matchesSearch = !term || (
-                    (item.name && item.name.toLowerCase().includes(term)) ||
-                    (item.id && item.id.toString().includes(term)) ||
-                    (item.sku && item.sku.toLowerCase().includes(term))
-                );
-                const matchesCategory = !categoryId || (
-                    item.categories &&
-                    item.categories.some(cat => cat.id === categoryId)
-                );
-
-                return isAllowedType && matchesSearch && matchesCategory;
-            });
-
-            if (filtered.length === 0) {
-                container.innerHTML = '<p class="text-center text-gray-500 col-span-4">لا يوجد منتجات مطابقة</p>';
-                return;
-            }
-
-            filtered.forEach(item => {
-                const div = document.createElement("div");
-                div.classList.add("bg-white", "rounded-lg", "shadow-md", "relative", "product-card", "hover:shadow-lg", "transition-shadow");
-                div.style.cursor = "pointer";
-                div.setAttribute('data-product-id', item.id);
-
-                // تحديد حالة المخزون
-                let stockInfo = getStockDisplayInfo(item);
-
-                div.onclick = function () {
-                    // تحقق من توفر المخزون قبل السماح بالنقر
-                    if (stockInfo.isOutOfStock) {
-                        showNotification("هذا المنتج غير متوفر حالياً", 'warning');
-                        return;
-                    }
-
-                    if (item.type === 'variable' && Array.isArray(item.variations)) {
-                        fetchVariationsAndShowModal(item);
-                    } else if (item.type === 'simple') {
-                        addToCartWithStockCheck(item);
-                    }
-                };
-
-                div.innerHTML = `
-                <div class="relative h-32 bg-gray-100 rounded-t-lg flex items-center justify-center image-placeholder" data-product-id="${item.id}">
-                    <div class="text-gray-400 text-4xl">📦</div>
-                    <div class="absolute top-2 left-2 bg-black text-white text-xs px-2 py-1 rounded opacity-75">
-                        #${item.id}
-                    </div>
-                    <div class="absolute bottom-2 left-2 bg-blue-600 text-white px-2 py-1 rounded font-bold text-sm">
-                        ${item.price || 0} ₪
-                    </div>
-                    ${stockInfo.overlayHtml}
-                </div>
-                <div class="p-3">
-                    <p class="font-bold text-sm text-center truncate" title="${item.name || ''}">${item.name || ''}</p>
-                    ${item.sku ? `<p class="text-xs text-gray-500 text-center mt-1">SKU: ${item.sku}</p>` : ''}
-                    ${item.type === 'variable' ? '<p class="text-xs text-blue-500 text-center mt-1">منتج متغير</p>' : ''}
-                    ${stockInfo.badgeHtml}
-                </div>
-            `;
-
-                // إضافة كلاس للمنتجات غير المتوفرة
-                if (stockInfo.isOutOfStock) {
-                    div.classList.add('opacity-60', 'cursor-not-allowed');
-                } else if (stockInfo.isLowStock) {
-                    div.classList.add('border-2', 'border-orange-300');
-                }
-
-                container.appendChild(div);
-            });
-
-            // تطبيق Lazy Loading للصور
-            setupLazyImageLoading();
-        };
-
-        request.onerror = function () {
-            console.error("❌ Failed to fetch products from IndexedDB");
-            showSearchLoadingIndicator(false);
-        };
-    }
-
-    function getStockDisplayInfo(product) {
-        let stockQuantity = 0;
-        let stockStatus = product.stock_status || 'instock';
-        let manageStock = product.manage_stock || false;
-
-        if (manageStock && typeof product.stock_quantity !== 'undefined') {
-            stockQuantity = parseInt(product.stock_quantity) || 0;
-        }
-
-        let isOutOfStock = stockStatus === 'outofstock' || (manageStock && stockQuantity <= 0);
-        let isLowStock = !isOutOfStock && manageStock && stockQuantity > 0 && stockQuantity <= 5;
-
-        let overlayHtml = '';
-        let badgeHtml = '';
-
-        if (isOutOfStock) {
-            overlayHtml = '<div class="absolute inset-0 bg-red-500 bg-opacity-70 flex items-center justify-center rounded-t-lg"><span class="text-white font-bold text-sm">نفدت الكمية</span></div>';
-        } else if (manageStock && stockQuantity <= 10) {
-            if (isLowStock) {
-                badgeHtml = `<div class="text-xs text-orange-600 text-center mt-1 flex items-center justify-center gap-1">
-                <span>⚠️</span>
-                <span>كمية قليلة: ${stockQuantity}</span>
-            </div>`;
-            } else {
-                badgeHtml = `<div class="text-xs text-green-600 text-center mt-1">متوفر: ${stockQuantity}</div>`;
-            }
-        } else if (!manageStock && stockStatus === 'instock') {
-            badgeHtml = '<div class="text-xs text-green-600 text-center mt-1">متوفر</div>';
-        }
-
-        return {
-            isOutOfStock,
-            isLowStock,
-            stockQuantity,
-            overlayHtml,
-            badgeHtml
-        };
     }
 
     function showVariationsModalWithStock(variations, targetVariation = null) {
@@ -4196,8 +3238,23 @@
 
             if (newQuantity <= 0) {
                 console.log("🗑️ حذف المنتج من السلة");
-                store.delete(productId);
-                showNotification("تم حذف المنتج من السلة", 'info');
+
+                const deleteTx = db.transaction("cart", "readwrite");
+                const deleteStore = deleteTx.objectStore("cart");
+
+                const deleteRequest = deleteStore.delete(productId);
+
+                deleteRequest.onsuccess = function() {
+                    console.log("✅ تم حذف المنتج من السلة");
+                    showNotification("تم حذف المنتج من السلة", 'info');
+                    renderCartWithStockInfo();
+                };
+
+                deleteRequest.onerror = function() {
+                    console.error("❌ خطأ في حذف المنتج");
+                    showNotification("فشل في حذف المنتج", 'error');
+                };
+
             } else {
                 item.quantity = newQuantity;
                 item.updated_at = new Date().toISOString();
@@ -4212,7 +3269,7 @@
             }
 
             // إعادة عرض السلة
-            setTimeout(() => renderCartDebug(productId), 100);
+            setTimeout(() => renderCartWithStockInfo(productId), 100);
         };
 
         getRequest.onerror = function() {
@@ -4754,4 +3811,3 @@
 
     console.log("✅ تم تحميل جميع وظائف نظام POS المحسن");
 </script>
-
