@@ -292,7 +292,7 @@
 
             if (matched) {
                 console.log("✅ تم العثور على المنتج في IndexedDB:", matched);
-                handleFoundProduct(matched);
+                handleFoundProductEnhanced(matched);
                 clearSearchInput();
             } else {
                 console.log('🔍 لم يتم العثور على المنتج في IndexedDB، جاري البحث في API...');
@@ -425,32 +425,48 @@
                 div.style.cursor = "pointer";
                 div.setAttribute('data-product-id', item.id);
 
+                // تحديد حالة المخزون
+                let stockInfo = getStockDisplayInfo(item);
+
                 div.onclick = function () {
+                    // تحقق من توفر المخزون قبل السماح بالنقر
+                    if (stockInfo.isOutOfStock) {
+                        showNotification("هذا المنتج غير متوفر حالياً", 'warning');
+                        return;
+                    }
+
                     if (item.type === 'variable' && Array.isArray(item.variations)) {
                         fetchVariationsAndShowModal(item);
                     } else if (item.type === 'simple') {
-                        addToCart(item);
+                        addToCartWithStockCheck(item);
                     }
                 };
 
-                // استخدام placeholder بدلاً من الصورة الحقيقية لتسريع التحميل
                 div.innerHTML = `
-                    <div class="relative h-32 bg-gray-100 rounded-t-lg flex items-center justify-center image-placeholder" data-product-id="${item.id}">
-                        <div class="text-gray-400 text-4xl">📦</div>
-                        <div class="absolute top-2 left-2 bg-black text-white text-xs px-2 py-1 rounded opacity-75">
-                            #${item.id}
-                        </div>
-                        <div class="absolute bottom-2 left-2 bg-blue-600 text-white px-2 py-1 rounded font-bold text-sm">
-                            ${item.price || 0} ₪
-                        </div>
-                        ${item.stock_status === 'outofstock' ? '<div class="absolute inset-0 bg-red-500 bg-opacity-50 flex items-center justify-center"><span class="text-white font-bold">نفدت الكمية</span></div>' : ''}
+                <div class="relative h-32 bg-gray-100 rounded-t-lg flex items-center justify-center image-placeholder" data-product-id="${item.id}">
+                    <div class="text-gray-400 text-4xl">📦</div>
+                    <div class="absolute top-2 left-2 bg-black text-white text-xs px-2 py-1 rounded opacity-75">
+                        #${item.id}
                     </div>
-                    <div class="p-3">
-                        <p class="font-bold text-sm text-center truncate" title="${item.name || ''}">${item.name || ''}</p>
-                        ${item.sku ? `<p class="text-xs text-gray-500 text-center mt-1">SKU: ${item.sku}</p>` : ''}
-                        ${item.type === 'variable' ? '<p class="text-xs text-blue-500 text-center mt-1">منتج متغير</p>' : ''}
+                    <div class="absolute bottom-2 left-2 bg-blue-600 text-white px-2 py-1 rounded font-bold text-sm">
+                        ${item.price || 0} ₪
                     </div>
-                `;
+                    ${stockInfo.overlayHtml}
+                </div>
+                <div class="p-3">
+                    <p class="font-bold text-sm text-center truncate" title="${item.name || ''}">${item.name || ''}</p>
+                    ${item.sku ? `<p class="text-xs text-gray-500 text-center mt-1">SKU: ${item.sku}</p>` : ''}
+                    ${item.type === 'variable' ? '<p class="text-xs text-blue-500 text-center mt-1">منتج متغير</p>' : ''}
+                    ${stockInfo.badgeHtml}
+                </div>
+            `;
+
+                // إضافة كلاس للمنتجات غير المتوفرة
+                if (stockInfo.isOutOfStock) {
+                    div.classList.add('opacity-60', 'cursor-not-allowed');
+                } else if (stockInfo.isLowStock) {
+                    div.classList.add('border-2', 'border-orange-300');
+                }
 
                 container.appendChild(div);
             });
@@ -2131,38 +2147,26 @@
             variations_count: product.variations_full?.length || 0
         });
 
-        if (product.type === 'simple') {
-            // منتج بسيط - إضافة مباشرة
-            addToCart(product);
-            showNotification(`تم إضافة "${product.name}" للسلة`, 'success');
+        // 🔥 التغيير هنا
+        if (product.type === 'simple' || (product.type === 'variable' && product.target_variation)) {
+            // إذا كان منتج بسيط أو منتج متغير محدد (تم البحث عنه بالباركود)
+            const itemToAdd = product.type === 'simple' ? product : product.target_variation;
 
-        } else if (product.type === 'variable') {
-
-            if (product.target_variation) {
-                // 🎯 تم العثور على متغير محدد
-                console.log("🎯 تم العثور على متغير مستهدف:", product.target_variation);
-
-                // خيار للمستخدم: إضافة مباشرة أم عرض المودال
-                const userPreference = getUserVariationPreference();
-
-                if (userPreference === 'direct') {
-                    addTargetVariationDirectly(product.target_variation, false);
-                } else {
-                    addTargetVariationDirectly(product.target_variation, true);
-                }
-
-            } else if (product.variations_full && product.variations_full.length > 0) {
-                // عرض جميع المتغيرات
-                showVariationsModal(product.variations_full);
-                showNotification(`تم العثور على "${product.name}" مع ${product.variations_full.length} متغير`, 'success');
-
-            } else {
-                showNotification(`تم العثور على "${product.name}" لكن لا توجد متغيرات متاحة`, 'warning');
+            if (itemToAdd.type === 'simple') {
+                addToCartWithStockCheck(itemToAdd);
+            } else if (itemToAdd.type === 'variation') {
+                addVariationToCartWithStockCheck(itemToAdd.id, itemToAdd.name, true);
             }
 
-        } else if (product.type === 'variation') {
-            // متغير مباشر
-            addVariationToCartEnhanced(product.id, product.name, true);
+            showNotification(`تم إضافة "${itemToAdd.name}" للسلة`, 'success');
+
+        } else if (product.type === 'variable' && product.variations_full && product.variations_full.length > 0) {
+            // منتج متغير عادي - عرض المودال
+            showVariationsModalWithStock(product.variations_full, product.target_variation);
+            showNotification(`تم العثور على "${product.name}" مع ${product.variations_full.length} متغير`, 'success');
+
+        } else {
+            showNotification(`تم العثور على "${product.name}" لكن لا توجد متغيرات متاحة`, 'warning');
         }
     }
 
