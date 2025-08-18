@@ -2541,45 +2541,6 @@
         });
     });
 
-    document.addEventListener('keydown', function(e) {
-        // تجاهل إذا كان المستخدم يكتب في حقل نص
-        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
-            return;
-        }
-
-        // إذا كان رقم أو حرف
-        if (e.key.length === 1 && /[a-zA-Z0-9]/.test(e.key)) {
-            barcodeBuffer += e.key;
-
-            // إعادة تعيين التايمر
-            if (barcodeTimeout) {
-                clearTimeout(barcodeTimeout);
-            }
-
-            barcodeTimeout = setTimeout(() => {
-                // إذا كان طول الباركود معقول (أكثر من 5 أحرف)
-                if (barcodeBuffer.length > 5) {
-                    console.log('📷 Barcode detected:', barcodeBuffer);
-                    searchAndAddDirectly(barcodeBuffer);
-                }
-                barcodeBuffer = '';
-            }, 300); // 300ms بين الأحرف
-
-            // منع السلوك الافتراضي للمفاتيح
-            e.preventDefault();
-        }
-        // إذا كان Enter
-        else if (e.key === 'Enter' && barcodeBuffer.length > 0) {
-            if (barcodeTimeout) {
-                clearTimeout(barcodeTimeout);
-            }
-
-            console.log('📷 Barcode completed:', barcodeBuffer);
-            searchAndAddDirectly(barcodeBuffer);
-            barcodeBuffer = '';
-            e.preventDefault();
-        }
-    });
 
     // ============================================
     // إضافة event listeners للعملاء الجدد
