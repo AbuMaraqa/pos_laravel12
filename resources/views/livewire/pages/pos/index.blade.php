@@ -266,11 +266,12 @@
                 return;
             }
 
-            searchProductInIndexedDB(searchTerm);
+            // 🔥 تمرير معامل للإضافة المباشرة
+            searchProductInIndexedDB(searchTerm, true); // true = إضافة مباشرة
         }
     }
 
-    function searchProductInIndexedDB(searchTerm) {
+    function searchProductInIndexedDB(searchTerm, directAdd = false) {
         if (!db) {
             console.error('Database not initialized');
             return;
@@ -292,11 +293,19 @@
 
             if (matched) {
                 console.log("✅ تم العثور على المنتج في IndexedDB:", matched);
-                handleFoundProduct(matched);
+
+                if (directAdd) {
+                    // 🔥 إضافة مباشرة للسلة بدلاً من handleFoundProduct
+                    addProductDirectlyToCart(matched);
+                } else {
+                    handleFoundProduct(matched);
+                }
+
                 clearSearchInput();
             } else {
                 console.log('🔍 لم يتم العثور على المنتج في IndexedDB، جاري البحث في API...');
-                searchProductFromAPI(searchTerm);
+                // 🔥 تمرير معامل الإضافة المباشرة لـ API
+                searchProductFromAPI(searchTerm, directAdd);
             }
         };
 
@@ -306,10 +315,43 @@
         };
     }
 
-    function searchProductFromAPI(searchTerm) {
-        console.log('🌐 إرسال طلب البحث إلى API:', searchTerm);
+    function addProductDirectlyToCart(product) {
+        console.log("🛒 إضافة المنتج مباشرة للسلة:", product);
+
+        if (product.type === 'simple') {
+            // منتج بسيط - إضافة مباشرة
+            addToCartWithStockCheck(product);
+            showNotification(`تم إضافة "${product.name}" للسلة مباشرة`, 'success');
+
+        } else if (product.type === 'variable') {
+            // منتج متغير - إذا كان له متغير واحد فقط، أضفه مباشرة
+            if (product.variations && product.variations.length === 1) {
+                // إضافة المتغير الوحيد مباشرة
+                const variationId = product.variations[0];
+                addVariationToCartWithStockCheck(variationId, product.name, true);
+                showNotification(`تم إضافة "${product.name}" للسلة مباشرة`, 'success');
+            } else {
+                // عدة متغيرات - عرض المودال
+                showNotification(`"${product.name}" له عدة متغيرات، يرجى الاختيار`, 'info');
+                fetchVariationsAndShowModal(product);
+            }
+
+        } else if (product.type === 'variation') {
+            // متغير مباشر
+            addVariationToCartWithStockCheck(product.id, product.name, true);
+            showNotification(`تم إضافة "${product.name}" للسلة مباشرة`, 'success');
+        }
+    }
+
+    function searchProductFromAPI(searchTerm, directAdd = false) {
+        console.log('🌐 إرسال طلب البحث إلى API:', searchTerm, 'إضافة مباشرة:', directAdd);
         showLoadingIndicator(true);
-        Livewire.dispatch('search-product-from-api', {searchTerm: searchTerm});
+
+        // 🔥 إرسال معامل الإضافة المباشرة مع البحث
+        Livewire.dispatch('search-product-from-api', {
+            searchTerm: searchTerm,
+            directAdd: directAdd
+        });
     }
 
     function clearSearchInput() {
@@ -1787,11 +1829,13 @@
             hideLoadingIndicator();
             const product = data[0]?.product;
             const searchTerm = data[0]?.search_term;
+            const directAdd = data[0]?.direct_add || false; // 🔥 جديد
             const hasTargetVariation = data[0]?.has_target_variation;
 
             console.log("✅ تم العثور على المنتج من API:", {
                 product_id: product?.id,
                 product_type: product?.type,
+                direct_add: directAdd, // 🔥 جديد
                 has_target_variation: hasTargetVariation,
                 target_variation: product?.target_variation
             });
@@ -1799,7 +1843,7 @@
             // تنظيف المنتج من الصور قبل التخزين
             const cleanedProduct = {
                 ...product,
-                images: [], // إزالة الصور لتسريع التخزين
+                images: [],
                 description: '',
                 meta_data: []
             };
@@ -1825,26 +1869,8 @@
                 console.log("✅ تم تخزين المنتج والمتغيرات في IndexedDB");
                 renderProductsFromIndexedDB(currentSearchTerm, selectedCategoryId);
 
-                // 🔥 معالجة المنتج حسب نوعه مع التركيز على المتغير المحدد
-                if (product.type === 'simple') {
-                    addToCart(cleanedProduct);
-                    showNotification(`تم العثور على "${product.name}" وإضافته للسلة`, 'success');
-                } else if (product.type === 'variable') {
-                    // 🔥 إذا كان هناك متغير محدد من البحث
-                    if (hasTargetVariation && product.target_variation) {
-                        console.log("🎯 تم العثور على متغير محدد:", product.target_variation);
-
-                        // عرض المودال مع تمييز المتغير المستهدف
-                        showVariationsModalWithTarget(product.variations_full, product.target_variation);
-                        showNotification(`تم العثور على "${product.target_variation.name}"`, 'success');
-                    } else if (product.variations_full && product.variations_full.length > 0) {
-                        // عرض المودال العادي
-                        showVariationsModal(product.variations_full);
-                        showNotification(`تم العثور على "${product.name}" مع ${product.variations_full.length} متغير`, 'success');
-                    } else {
-                        showNotification(`تم العثور على "${product.name}" لكن لا توجد متغيرات متاحة`, 'warning');
-                    }
-                }
+                // 🔥 معالجة المنتج مع تمرير معامل الإضافة المباشرة
+                handleFoundProductEnhanced(cleanedProduct, directAdd);
 
                 clearSearchInput();
             };
@@ -1854,7 +1880,6 @@
                 showNotification("فشل في حفظ المنتج محلياً", 'error');
             };
         });
-
         // استقبال إشعار عدم وجود المنتج
         Livewire.on('product-not-found', (data) => {
             hideLoadingIndicator();
@@ -2123,37 +2148,43 @@
         };
     }
 
-    function handleFoundProductEnhanced(product) {
+    function handleFoundProductEnhanced(product, directAdd = false) {
         console.log("🔍 معالجة المنتج الموجود:", {
             type: product.type,
             id: product.id,
+            directAdd: directAdd,
             has_target_variation: !!product.target_variation,
             variations_count: product.variations_full?.length || 0
         });
 
+        if (directAdd) {
+            // 🔥 إضافة مباشرة للسلة
+            addProductDirectlyToCart(product);
+            return;
+        }
+
+        // السلوك العادي (عرض المودال للمتغيرات)
         if (product.type === 'simple') {
-            // منتج بسيط - إضافة مباشرة
             addToCart(product);
             showNotification(`تم إضافة "${product.name}" للسلة`, 'success');
 
         } else if (product.type === 'variable') {
-
             if (product.target_variation) {
-                // 🎯 تم العثور على متغير محدد - إضافة مباشرة للسلة
-                console.log("🎯 إضافة المتغير المستهدف مباشرة للسلة:", product.target_variation);
-                addTargetVariationDirectly(product.target_variation, false);
-
+                // إذا كان هناك متغير محدد
+                if (directAdd) {
+                    addTargetVariationDirectly(product.target_variation, false);
+                } else {
+                    addTargetVariationDirectly(product.target_variation, false);
+                }
             } else if (product.variations_full && product.variations_full.length > 0) {
                 // عرض جميع المتغيرات
                 showVariationsModal(product.variations_full);
                 showNotification(`تم العثور على "${product.name}" مع ${product.variations_full.length} متغير`, 'success');
-
             } else {
                 showNotification(`تم العثور على "${product.name}" لكن لا توجد متغيرات متاحة`, 'warning');
             }
 
         } else if (product.type === 'variation') {
-            // متغير مباشر
             addVariationToCartEnhanced(product.id, product.name, true);
         }
     }
