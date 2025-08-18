@@ -100,17 +100,14 @@ class Index extends Component
      * هذه الدالة هي المسؤولة عن البحث عن المنتج الأب أو المتغير
      */
     #[On('search-product-from-api')]
-    public function searchProductFromAPI($searchTerm, $directAdd = false)
+    public function searchProductFromAPI($searchTerm)
     {
         try {
-            logger()->info('Searching for product in API', [
-                'term' => $searchTerm,
-                'direct_add' => $directAdd // 🔥 جديد - معامل الإضافة المباشرة
-            ]);
+            logger()->info('Searching for product in API', ['term' => $searchTerm]);
 
             $foundProduct = null;
             $foundVariation = null;
-            $specificVariation = null;
+            $specificVariation = null; // 🔥 المتغير المحدد الذي تم العثور عليه
 
             // ================================================
             // ✅ البحث المباشر عن المتغير أولاً
@@ -119,28 +116,27 @@ class Index extends Component
                 $searchResult = $this->wooService->getProduct($searchTerm);
 
                 if ($searchResult && isset($searchResult['type']) && $searchResult['type'] === 'variation') {
-                    logger()->info('Variation found directly by ID/SKU', [
-                        'id' => $searchResult['id'],
-                        'direct_add' => $directAdd
-                    ]);
+                    logger()->info('Variation found directly by ID/SKU', ['id' => $searchResult['id']]);
 
+                    // 🔥 احفظ تفاصيل المتغير المحدد
                     $specificVariation = $searchResult;
-                    $parentProductId = $searchResult['parent_id'] ?? null;
 
+                    // 🔥 اجلب المنتج الأب للمتغير
+                    $parentProductId = $searchResult['parent_id'] ?? null;
                     if ($parentProductId) {
                         $foundProduct = $this->wooService->getProductsById($parentProductId);
+                        logger()->info('Parent product found for variation', [
+                            'variation_id' => $searchResult['id'],
+                            'parent_id' => $parentProductId
+                        ]);
                     } else {
+                        // إذا لم نجد parent_id، ابحث عنه في جميع المنتجات المتغيرة
                         $foundProduct = $this->findParentProductForVariation($searchResult['id']);
                     }
 
                     if ($foundProduct) {
-                        // 🔥 للإضافة المباشرة - نرسل المتغير فقط بدون تحميل كل المتغيرات
-                        if ($directAdd) {
-                            return $this->sendVariationForDirectAdd($foundProduct, $specificVariation, $searchTerm);
-                        } else {
-                            // السلوك العادي - تحميل كل المتغيرات
-                            return $this->sendFoundProductWithSpecificVariation($foundProduct, $specificVariation, $searchTerm, $directAdd);
-                        }
+                        // ✅ إرسال المنتج مع المتغير المحدد مباشرة
+                        return $this->sendFoundProductWithSpecificVariation($foundProduct, $specificVariation, $searchTerm);
                     }
                 }
             } catch (\Exception $e) {
@@ -151,23 +147,15 @@ class Index extends Component
             }
 
             // ================================================
-            // البحث عن المنتج الأب
+            // إذا لم يتم العثور على متغير، ابحث عن المنتج الأب
             // ================================================
 
-            // 1. البحث بالـ ID أولاً
+            // 1. البحث بالـ ID أولاً (للباركود)
             if (is_numeric($searchTerm)) {
                 try {
                     $foundProduct = $this->wooService->getProductsById($searchTerm);
                     if ($foundProduct && isset($foundProduct['id'])) {
-                        logger()->info('Product found by ID', [
-                            'product_id' => $foundProduct['id'],
-                            'direct_add' => $directAdd
-                        ]);
-
-                        // 🔥 للإضافة المباشرة - لا نحتاج لتحميل المتغيرات إلا إذا كان ضروري
-                        if ($directAdd && $foundProduct['type'] === 'simple') {
-                            return $this->sendSimpleProductForDirectAdd($foundProduct, $searchTerm);
-                        }
+                        logger()->info('Product found by ID', ['product_id' => $foundProduct['id']]);
                     }
                 } catch (\Exception $e) {
                     logger()->info('Product not found by ID', ['id' => $searchTerm]);
@@ -175,7 +163,7 @@ class Index extends Component
                 }
             }
 
-            // 2. البحث بالاسم أو SKU
+            // 2. إذا لم نجد بالـ ID، نبحث بالاسم أو SKU
             if (!$foundProduct) {
                 $searchResults = $this->wooService->getProducts([
                     'search' => $searchTerm,
@@ -186,19 +174,11 @@ class Index extends Component
                     $data = isset($searchResults['data']) ? $searchResults['data'] : $searchResults;
                     if (count($data) > 0) {
                         $foundProduct = $data[0];
-                        logger()->info('Product found by search', [
-                            'product_id' => $foundProduct['id'],
-                            'direct_add' => $directAdd
-                        ]);
-
-                        // 🔥 للإضافة المباشرة - تحسين الاستجابة
-                        if ($directAdd && $foundProduct['type'] === 'simple') {
-                            return $this->sendSimpleProductForDirectAdd($foundProduct, $searchTerm);
-                        }
+                        logger()->info('Product found by search', ['product_id' => $foundProduct['id']]);
                     }
                 }
 
-                // البحث بـ SKU
+                // البحث بـ SKU إذا لم نجد شيئاً
                 if (!$foundProduct) {
                     $skuResults = $this->wooService->getProducts([
                         'sku' => $searchTerm,
@@ -209,21 +189,13 @@ class Index extends Component
                         $data = isset($skuResults['data']) ? $skuResults['data'] : $skuResults;
                         if (count($data) > 0) {
                             $foundProduct = $data[0];
-                            logger()->info('Product found by SKU', [
-                                'product_id' => $foundProduct['id'],
-                                'direct_add' => $directAdd
-                            ]);
-
-                            // 🔥 للإضافة المباشرة
-                            if ($directAdd && $foundProduct['type'] === 'simple') {
-                                return $this->sendSimpleProductForDirectAdd($foundProduct, $searchTerm);
-                            }
+                            logger()->info('Product found by SKU', ['product_id' => $foundProduct['id']]);
                         }
                     }
                 }
             }
 
-            // 3. البحث في المتغيرات
+            // 3. إذا لم نجد المنتج، نحاول البحث في المتغيرات
             if (!$foundProduct) {
                 $variationSearchResult = $this->searchInVariationsAPI($searchTerm);
 
@@ -233,19 +205,13 @@ class Index extends Component
 
                     logger()->info('Product found through variation search', [
                         'parent_product_id' => $foundProduct['id'],
-                        'found_variation_id' => $specificVariation['id'],
-                        'direct_add' => $directAdd
+                        'found_variation_id' => $specificVariation['id']
                     ]);
-
-                    // 🔥 للإضافة المباشرة - إرسال المتغير مباشرة
-                    if ($directAdd) {
-                        return $this->sendVariationForDirectAdd($foundProduct, $specificVariation, $searchTerm);
-                    }
                 }
             }
 
             if ($foundProduct) {
-                return $this->sendFoundProductWithSpecificVariation($foundProduct, $specificVariation, $searchTerm, $directAdd);
+                return $this->sendFoundProductWithSpecificVariation($foundProduct, $specificVariation, $searchTerm);
             } else {
                 logger()->info('Product not found in API', ['term' => $searchTerm]);
                 $this->dispatch('product-not-found', ['term' => $searchTerm]);
@@ -255,7 +221,6 @@ class Index extends Component
         } catch (\Exception $e) {
             logger()->error('Error searching product from API', [
                 'term' => $searchTerm,
-                'direct_add' => $directAdd,
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
@@ -268,111 +233,17 @@ class Index extends Component
         }
     }
 
-    private function sendVariationForDirectAdd($parentProduct, $variation, $searchTerm)
-    {
-        logger()->info('Sending variation for direct add', [
-            'parent_product_id' => $parentProduct['id'],
-            'variation_id' => $variation['id']
-        ]);
-
-        // تحضير المتغير المحسن
-        $optimizedVariation = [
-            'id' => $variation['id'],
-            'name' => $this->generateVariationName($variation),
-            'sku' => $variation['sku'] ?? '',
-            'price' => $variation['price'] ?? $variation['regular_price'] ?? 0,
-            'type' => 'variation',
-            'product_id' => $parentProduct['id'],
-            'images' => [], // إزالة الصور
-            'attributes' => $variation['attributes'] ?? [],
-            'stock_status' => $variation['stock_status'] ?? 'instock',
-            'stock_quantity' => $variation['stock_quantity'] ?? 0,
-            'manage_stock' => $variation['manage_stock'] ?? false,
-            'description' => ''
-        ];
-
-        // تحضير المنتج الأب المبسط
-        $simplifiedParent = [
-            'id' => $parentProduct['id'],
-            'name' => $parentProduct['name'],
-            'type' => 'variable',
-            'images' => [],
-            'categories' => $parentProduct['categories'] ?? [],
-            'variations' => [$variation['id']], // فقط المتغير المطلوب
-            'target_variation' => $optimizedVariation, // 🔥 المتغير المحدد
-            'description' => '',
-            'meta_data' => []
-        ];
-
-        // إرسال للـ JavaScript
-        $this->dispatch('product-found-from-api', [
-            'product' => $simplifiedParent,
-            'search_term' => $searchTerm,
-            'direct_add' => true, // 🔥 مهم
-            'has_target_variation' => true
-        ]);
-
-        // تخزين المتغير منفصلاً
-        $this->dispatch('store-variations', [
-            'product_id' => $parentProduct['id'],
-            'variations' => [$optimizedVariation],
-        ]);
-
-        return $simplifiedParent;
-    }
-
-    private function sendSimpleProductForDirectAdd($product, $searchTerm)
-    {
-        logger()->info('Sending simple product for direct add', [
-            'product_id' => $product['id'],
-            'product_name' => $product['name']
-        ]);
-
-        // تنظيف المنتج (إزالة البيانات غير الضرورية لتوفير السرعة)
-        $cleanedProduct = [
-            'id' => $product['id'],
-            'name' => $product['name'],
-            'sku' => $product['sku'] ?? '',
-            'price' => $product['price'] ?? $product['regular_price'] ?? 0,
-            'type' => 'simple',
-            'images' => [], // إزالة الصور لتوفير السرعة
-            'categories' => $product['categories'] ?? [],
-            'stock_status' => $product['stock_status'] ?? 'instock',
-            'stock_quantity' => $product['stock_quantity'] ?? 0,
-            'manage_stock' => $product['manage_stock'] ?? false,
-            'description' => '',
-            'meta_data' => []
-        ];
-
-        // إرسال للـ JavaScript
-        $this->dispatch('product-found-from-api', [
-            'product' => $cleanedProduct,
-            'search_term' => $searchTerm,
-            'direct_add' => true, // 🔥 مهم
-            'has_target_variation' => false
-        ]);
-
-        return $cleanedProduct;
-    }
-
-    private function sendFoundProductWithSpecificVariation($foundProduct, $specificVariation, $searchTerm, $directAdd = false)
+    private function sendFoundProductWithSpecificVariation($foundProduct, $specificVariation, $searchTerm)
     {
         try {
-            // 🔥 إذا كانت إضافة مباشرة ولدينا متغير محدد، استخدم الدالة المحسنة
-            if ($directAdd && $specificVariation) {
-                return $this->sendVariationForDirectAdd($foundProduct, $specificVariation, $searchTerm);
-            }
-
-            // 🔥 إذا كانت إضافة مباشرة ومنتج بسيط، استخدم الدالة المحسنة
-            if ($directAdd && $foundProduct['type'] === 'simple') {
-                return $this->sendSimpleProductForDirectAdd($foundProduct, $searchTerm);
-            }
-
-            // السلوك العادي للعرض مع كل المتغيرات
+            // ✅ إذا كان المنتج متغير، اجلب متغيراته كاملة
             if ($foundProduct['type'] === 'variable' && !empty($foundProduct['variations'])) {
                 $variationsData = $this->fetchCompleteVariations($foundProduct['id'], $foundProduct['variations']);
+
+                // إضافة المتغيرات للمنتج
                 $foundProduct['variations_full'] = $variationsData['variations_full'];
 
+                // 🔥 إذا تم العثور على متغير محدد، ضعه في المقدمة
                 if ($specificVariation) {
                     $foundProduct['target_variation'] = [
                         'id' => $specificVariation['id'],
@@ -385,9 +256,15 @@ class Index extends Component
                         'type' => 'variation',
                         'product_id' => $foundProduct['id']
                     ];
+
+                    logger()->info('Product prepared with target variation', [
+                        'product_id' => $foundProduct['id'],
+                        'target_variation_id' => $specificVariation['id'],
+                        'search_term' => $searchTerm
+                    ]);
                 }
 
-                // إرسال المتغيرات للتخزين
+                // إرسال المتغيرات للتخزين في IndexedDB
                 if (!empty($variationsData['for_storage'])) {
                     $this->dispatch('store-variations', [
                         'product_id' => $foundProduct['id'],
@@ -396,11 +273,10 @@ class Index extends Component
                 }
             }
 
-            // إرسال المنتج
+            // إرسال المنتج الموجود للـ JavaScript
             $this->dispatch('product-found-from-api', [
                 'product' => $foundProduct,
                 'search_term' => $searchTerm,
-                'direct_add' => $directAdd, // 🔥 تمرير المعامل
                 'has_target_variation' => isset($foundProduct['target_variation'])
             ]);
 
@@ -409,12 +285,12 @@ class Index extends Component
         } catch (\Exception $e) {
             logger()->error('Error preparing found product', [
                 'product_id' => $foundProduct['id'] ?? 'unknown',
-                'direct_add' => $directAdd,
                 'error' => $e->getMessage()
             ]);
             throw $e;
         }
     }
+
     private function findParentProductForVariation($variationId)
     {
         try {
