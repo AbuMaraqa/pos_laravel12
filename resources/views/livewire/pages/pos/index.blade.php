@@ -191,41 +191,11 @@
         });
     }
 
-    // 🔥🔥 تم تعديل هذه الدالة للتحقق من البيانات وعرضها بشكل صحيح 🔥🔥
     function initializeUI() {
-        console.log("🛠️ تهيئة الواجهة...");
-
-        // إظهار مؤشر تحميل عام في البداية
-        showSearchLoadingIndicator(true);
-
-        const txProducts = db.transaction("products", "readonly");
-        const storeProducts = txProducts.objectStore("products");
-        const productsCountRequest = storeProducts.count();
-
-        productsCountRequest.onsuccess = function() {
-            if (productsCountRequest.result > 0) {
-                console.log("✅ تم العثور على منتجات في IndexedDB. جاري العرض...");
-                renderProductsFromIndexedDB(currentSearchTerm, selectedCategoryId);
-            } else {
-                console.log("⚠️ IndexedDB فارغ من المنتجات. سيتم جلبها من API.");
-                // لا يوجد منتجات، لذا نترك مؤشر التحميل حتى يتم جلبها
-            }
-        };
-
-        const txCategories = db.transaction("categories", "readonly");
-        const storeCategories = txCategories.objectStore("categories");
-        const categoriesCountRequest = storeCategories.count();
-        categoriesCountRequest.onsuccess = function() {
-            if (categoriesCountRequest.result > 0) {
-                console.log("✅ تم العثور على فئات في IndexedDB. جاري العرض...");
-                renderCategoriesFromIndexedDB();
-            }
-        };
-
-        // عرض السلة دائمًا عند التهيئة
+        setTimeout(() => renderProductsFromIndexedDB(currentSearchTerm, selectedCategoryId), 300);
+        renderCategoriesFromIndexedDB();
         renderCart();
     }
-    // 🔥🔥 نهاية الجزء المعدل 🔥🔥
 
     // ============================================
     // إعداد Event Listeners
@@ -431,7 +401,7 @@
 
             const filtered = products.filter(item => {
                 const term = searchTerm.trim().toLowerCase();
-                const isAllowedType = item.type === 'simple' || item.type === 'variable' || item.type === 'variation'; // 🔥 إضافة 'variation'
+                const isAllowedType = item.type === 'simple' || item.type === 'variable';
                 const matchesSearch = !term || (
                     (item.name && item.name.toLowerCase().includes(term)) ||
                     (item.id && item.id.toString().includes(term)) ||
@@ -468,12 +438,8 @@
 
                     if (item.type === 'variable' && Array.isArray(item.variations)) {
                         fetchVariationsAndShowModal(item);
-                    } else if (item.type === 'simple' || item.type === 'variation') { // 🔥 إضافة 'variation'
-                        if (item.type === 'simple') {
-                            addToCartWithStockCheck(item);
-                        } else {
-                            addVariationToCartWithStockCheck(item.id, item.name, false);
-                        }
+                    } else if (item.type === 'simple') {
+                        addToCartWithStockCheck(item);
                     }
                 };
 
@@ -1633,39 +1599,55 @@
     function checkAndFetchInitialData() {
         console.log("🔍 التحقق من وجود بيانات أولية في IndexedDB...");
 
-        // لا نقوم بأي تحميل من الـ API في هذه الدالة.
-        // فقط نتحقق من وجود البيانات محلياً لعرضها.
-        const storesToDisplay = [
-            { name: "products", renderFunction: renderProductsFromIndexedDB },
-            { name: "categories", renderFunction: renderCategoriesFromIndexedDB }
+        const storesToCheck = [
+            { name: "products", event: 'fetch-products-from-api' },
+            { name: "categories", event: 'fetch-categories-from-api' },
+            { name: "customers", event: 'fetch-customers-from-api' },
+            { name: "shippingMethods", event: 'fetch-shipping-methods-from-api' },
+            { name: "shippingZones", event: 'fetch-shipping-zones-and-methods' }
         ];
 
-        storesToDisplay.forEach(storeInfo => {
+        let storesToFetch = [];
+
+        const checkNextStore = (index) => {
+            if (index >= storesToCheck.length) {
+                // انتهى التحقق من جميع المتاجر
+                if (storesToFetch.length > 0) {
+                    console.log("✅ IndexedDB فارغ، بدء تحميل البيانات من API...");
+                    showNotification("جاري تحميل البيانات الأساسية...", 'info', 5000);
+                    storesToFetch.forEach(store => {
+                        console.log(`📥 جلب البيانات لـ: ${store.name}`);
+                        Livewire.dispatch(store.event);
+                    });
+                } else {
+                    console.log("✅ تم العثور على بيانات في IndexedDB، لا حاجة للتحميل.");
+                }
+                return;
+            }
+
+            const storeInfo = storesToCheck[index];
             const tx = db.transaction(storeInfo.name, "readonly");
             const store = tx.objectStore(storeInfo.name);
             const countRequest = store.count();
 
             countRequest.onsuccess = function () {
-                if (countRequest.result > 0) {
-                    console.log(`✅ المتجر '${storeInfo.name}' يحتوي على ${countRequest.result} عنصر. جاري العرض.`);
-                    storeInfo.renderFunction(currentSearchTerm, selectedCategoryId);
+                if (countRequest.result === 0) {
+                    console.log(`❌ المتجر '${storeInfo.name}' فارغ.`);
+                    storesToFetch.push(storeInfo);
                 } else {
-                    console.log(`❌ المتجر '${storeInfo.name}' فارغ. لا يوجد ما يتم عرضه.`);
-                    // هنا يمكن عرض رسالة توجيهية للمستخدم بالضغط على "مزامنة"
-                    const container = (storeInfo.name === 'products') ? document.getElementById('productsContainer') : document.getElementById('categoriesContainer');
-                    if (container) {
-                        container.innerHTML = '<p class="text-center text-gray-500 col-span-4 py-8">لا يوجد بيانات. يرجى الضغط على زر "Sync" للمزامنة.</p>';
-                    }
+                    console.log(`✅ المتجر '${storeInfo.name}' يحتوي على ${countRequest.result} عنصر.`);
                 }
+                checkNextStore(index + 1);
             };
 
             countRequest.onerror = function () {
-                console.error(`❌ خطأ في فحص المتجر: ${storeInfo.name}.`);
+                console.error(`❌ خطأ في فحص المتجر: ${storeInfo.name}. سيتم محاولة التحميل.`);
+                storesToFetch.push(storeInfo);
+                checkNextStore(index + 1);
             };
-        });
+        };
 
-        // إخفاء مؤشر التحميل العام
-        hideLoadingIndicator();
+        checkNextStore(0);
     }
     // 🔥🔥 نهاية الجزء المعدل 🔥🔥
 
@@ -1695,13 +1677,9 @@
                     <span class="text-gray-500 mr-2">جاري البحث...</span>
                 </div>
             `;
-            container.innerHTML = ''; // إفراغ المحتوى قبل إضافة المؤشر
-            container.appendChild(loadingDiv);
+            container.insertBefore(loadingDiv, container.firstChild);
         } else if (!show && existingIndicator) {
             existingIndicator.remove();
-        } else if (!show && !existingIndicator) {
-            // إفراغ المحتوى في حالة إخفاء المؤشر وعدم وجوده
-            container.innerHTML = '';
         }
     }
 
@@ -1767,19 +1745,19 @@
     document.addEventListener('livewire:init', () => {
         console.log("🔌 Livewire تم تهيئته");
 
-        // 🔥🔥 تم تعديل هذا المعالج ليقوم بإعادة عرض المنتجات بعد التخزين 🔥🔥
         // تخزين المنتجات
         Livewire.on('store-products', (data) => {
             if (!db) return;
             const tx = db.transaction("products", "readwrite");
             const store = tx.objectStore("products");
 
+            // تنظيف المنتجات من الصور لتسريع التخزين
             const cleanedProducts = data.products.map(product => ({
                 ...product,
-                images: [],
-                description: '',
+                images: [], // إزالة الصور لتسريع التحميل
+                description: '', // إزالة الوصف الطويل
                 short_description: product.short_description || '',
-                meta_data: []
+                meta_data: [] // إزالة البيانات الإضافية
             }));
 
             let processed = 0;
@@ -1789,14 +1767,13 @@
                     processed++;
                     if (processed === cleanedProducts.length) {
                         console.log(`✅ تم تخزين ${processed} منتج`);
-                        renderProductsFromIndexedDB(currentSearchTerm, selectedCategoryId); // 🔥 إعادة العرض بعد انتهاء التخزين
+                        renderProductsFromIndexedDB(currentSearchTerm, selectedCategoryId);
                         showNotification(`تم تحميل ${processed} منتج بنجاح`, 'success');
                     }
                 };
             });
         });
 
-        // 🔥🔥 تم تعديل هذا المعالج ليقوم بإعادة عرض الفئات بعد التخزين 🔥🔥
         // تخزين الفئات
         Livewire.on('store-categories', (data) => {
             if (!db) return;
@@ -1807,7 +1784,7 @@
 
             tx.oncomplete = () => {
                 console.log("✅ تم تخزين الفئات");
-                renderCategoriesFromIndexedDB(); // 🔥 إعادة العرض بعد انتهاء التخزين
+                renderCategoriesFromIndexedDB();
                 showNotification(`تم تحميل ${data.categories.length} فئة`, 'success');
             };
         });
@@ -2083,37 +2060,17 @@
                 if (existing) {
                     // فحص الكمية الجديدة
                     const newQuantity = existing.quantity + 1;
+                    const newStockCheck = await checkProductStock(variation.id, newQuantity);
 
-                    checkProductStock(variation.id, newQuantity).then(newStockCheck => {
-                        if (!newStockCheck.available) {
-                            showNotification(`الحد الأقصى المتاح: ${newStockCheck.maxQuantity} قطعة (الكمية الحالية في السلة: ${existing.quantity})`, 'warning');
-                            return;
-                        }
-
-                        // إنشاء معاملة جديدة للتحديث
-                        const updateTx = db.transaction("cart", "readwrite");
-                        const updateStore = updateTx.objectStore("cart");
-
+                    if (newStockCheck.available) {
                         existing.quantity = newQuantity;
                         existing.updated_at = new Date().toISOString();
-                        existing.stock_info = {
-                            max_quantity: newStockCheck.maxQuantity,
-                            stock_status: newStockCheck.stockStatus,
-                            manage_stock: newStockCheck.manageStock
-                        };
-
-                        const updateRequest = updateStore.put(existing);
-
-                        updateRequest.onsuccess = function() {
-                            console.log("✅ تم تحديث كمية المتغير في السلة:", displayName);
-                            renderCartWithStockInfo(variation.id);
-                            showNotification(`تم تحديث الكمية إلى ${newQuantity} (متوفر: ${newStockCheck.maxQuantity})`, 'success');
-
-                            if (directAdd) {
-                                try { Flux.modal('variations-modal').close(); } catch (e) {}
-                            }
-                        };
-                    });
+                        cartStore.put(existing);
+                        console.log("تم تحديث كمية المتغير في السلة:", displayName);
+                    } else {
+                        showNotification(`الحد الأقصى المتاح: ${newStockCheck.maxQuantity} قطعة`, 'warning');
+                        return;
+                    }
                 } else {
                     // إضافة جديدة
                     const cartItem = {
@@ -2134,34 +2091,37 @@
                         }
                     };
 
-                    const putRequest = cartStore.put(cartItem);
-
-                    putRequest.onsuccess = function() {
-                        console.log("✅ تم إضافة المتغير للسلة:", displayName);
-                        renderCartWithStockInfo(variation.id);
-                        showNotification(`تم إضافة "${displayName}" للسلة (متوفر: ${stockCheck.maxQuantity})`, 'success');
-
-                        if (directAdd) {
-                            try { Flux.modal('variations-modal').close(); } catch (e) {}
-                        }
-                    };
-
-                    putRequest.onerror = function() {
-                        console.error("❌ فشل في إضافة المتغير للسلة");
-                        showNotification("حدث خطأ أثناء إضافة المنتج", 'error');
-                    };
+                    cartStore.put(cartItem);
+                    console.log("تم إضافة المتغير للسلة:", displayName);
                 }
+
+                // تحديث عرض السلة
+                renderCartWithStockInfo(variation.id);
+
+                // إغلاق المودال إذا كانت الإضافة مباشرة
+                if (directAdd) {
+                    try {
+                        Flux.modal('variations-modal').close();
+                    } catch (e) {
+                        console.log("المودال مغلق مسبقاً");
+                    }
+                }
+
+                // عرض إشعار النجاح
+                showNotification(`تم إضافة "${displayName}" للسلة`, 'success');
             };
 
             getCartItem.onerror = function() {
-                console.error("❌ فشل في قراءة السلة");
-                showNotification("حدث خطأ أثناء قراءة السلة", 'error');
+                console.error("فشل في إضافة المتغير للسلة");
+                showNotification("حدث خطأ أثناء إضافة المنتج", 'error');
             };
-        }).catch(error => {
-            console.error("❌ خطأ في فحص المخزون:", error);
-            showNotification("حدث خطأ في فحص المخزون", 'error');
-        });
-    };
+        };
+
+        request.onerror = function() {
+            console.error("فشل في جلب بيانات المتغير:", variationId);
+            showNotification("حدث خطأ أثناء إضافة المتغير", 'error');
+        };
+    }
 
     function validateCartStock() {
         return new Promise((resolve) => {
@@ -2278,7 +2238,6 @@
             // منتج متغير عادي - عرض المودال
             showVariationsModalWithStock(product.variations_full, product.target_variation);
             showNotification(`تم العثور على "${product.name}" مع ${product.variations_full.length} متغير`, 'success');
-
         } else {
             showNotification(`تم العثور على "${product.name}" لكن لا توجد متغيرات متاحة`, 'warning');
         }
@@ -3314,8 +3273,8 @@
         };
 
         getRequest.onerror = function() {
-            console.error("❌ خطأ في قراءة بيانات المنتج");
-            showNotification("فشل في قراءة بيانات المنتج", 'error');
+            console.error("❌ خطأ في تحديث الكمية");
+            showNotification("فشل في تحديث الكمية", 'error');
         };
     }
 
@@ -3412,7 +3371,7 @@
             setTimeout(() => renderCartWithStockInfo(), 500);
         } else {
             console.error("❌ لم يتم العثور على الحاوية الأب للسلة");
-        };
+        }
     }
 
     setTimeout(() => {
