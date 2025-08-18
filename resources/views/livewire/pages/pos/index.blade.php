@@ -191,11 +191,38 @@
         });
     }
 
+    // 🔥🔥 تم تعديل هذه الدالة لاستدعاء دوال العرض بعد التحقق 🔥🔥
     function initializeUI() {
-        setTimeout(() => renderProductsFromIndexedDB(currentSearchTerm, selectedCategoryId), 300);
-        renderCategoriesFromIndexedDB();
+        // نتحقق أولاً من وجود المنتجات والفئات في IndexedDB
+        const checkProductsTx = db.transaction("products", "readonly");
+        const checkProductsStore = checkProductsTx.objectStore("products");
+        const countProductsRequest = checkProductsStore.count();
+
+        countProductsRequest.onsuccess = function() {
+            if (countProductsRequest.result > 0) {
+                console.log(`✅ تم العثور على ${countProductsRequest.result} منتج في IndexedDB. جاري العرض...`);
+                renderProductsFromIndexedDB(currentSearchTerm, selectedCategoryId);
+            } else {
+                console.log("⚠️ IndexedDB فارغ من المنتجات. لن يتم العرض حتى يتم التحميل.");
+                // يمكن هنا إضافة مؤشر "جاري التحميل" إذا لم يتم عرضه
+                showSearchLoadingIndicator(true);
+            }
+        };
+
+        const checkCategoriesTx = db.transaction("categories", "readonly");
+        const checkCategoriesStore = checkCategoriesTx.objectStore("categories");
+        const countCategoriesRequest = checkCategoriesStore.count();
+        countCategoriesRequest.onsuccess = function() {
+            if (countCategoriesRequest.result > 0) {
+                console.log(`✅ تم العثور على ${countCategoriesRequest.result} فئة في IndexedDB. جاري العرض...`);
+                renderCategoriesFromIndexedDB();
+            }
+        };
+
+        // عرض السلة بغض النظر عن وجود المنتجات، لأنها قد تكون موجودة من جلسة سابقة
         renderCart();
     }
+    // 🔥🔥 نهاية الجزء المعدل 🔥🔥
 
     // ============================================
     // إعداد Event Listeners
@@ -3654,7 +3681,7 @@
                 uniqueProducts: new Set(cartItems.map(item => item.id)).size
             };
 
-            console.log("📊 إحصائيات السلة:");
+            console.log("� إحصائيات السلة:");
             console.log(`- عدد الأنواع: ${stats.totalItems}`);
             console.log(`- إجمالي القطع: ${stats.totalQuantity}`);
             console.log(`- القيمة الإجمالية: ${stats.totalValue.toFixed(2)} ₪`);
@@ -3811,3 +3838,4 @@
 
     console.log("✅ تم تحميل جميع وظائف نظام POS المحسن");
 </script>
+
