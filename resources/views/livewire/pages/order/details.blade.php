@@ -16,7 +16,7 @@
                 @foreach ($products as $product)
                     <div class="flex justify-between items-center w-full">
                         <div class="flex justify-start items-center space-x-4">
-                            <img class="w-10 h-10" src="{{ $product['images'][0]['src'] }}" alt="dress" />
+                            <img class="w-10 h-10" src="{{ $product['image']['src'] }}" alt="dress" />
                             <p class="text-base dark:text-white font-semibold leading-4 text-gray-800">
                                 {{ $product['name'] }}</p>
                         </div>

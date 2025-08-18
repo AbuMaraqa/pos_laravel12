@@ -1864,47 +1864,87 @@ class WooCommerceService
         return $this->get('reports/orders/totals');
     }
 
-    public function getAllVariations(): array
+    /**
+     * Prepares the query and loads product variations.
+     * This will result in $this->products containing only a single variation.
+     */
+    public function loadProducts(array $query = []): void
+    {
+        if (!empty($this->search)) {
+            $query['search'] = $this->search;
+        }
+
+        // We fetch variations from only the first parent product found
+        $query['per_page'] = 1;
+
+        // Get all variations from the single parent product
+        $variations = $this->wooService->getAllVariations($query);
+
+        // Ensure $this->products contains only the very first variation from the list
+        $this->products = array_slice($variations, 0, 1);
+    }
+
+    /**
+     * Fetches all variations from products matching the query.
+     * It now accepts and uses the $query parameter for filtering, pagination, etc.
+     *
+     * @param array $query Query parameters to pass to the WooCommerce API.
+     * @return array A list of all found variations.
+     */
+    public function getAllVariations(array $query = []): array
     {
         $allVariations = [];
 
+        // Set default parameters and merge them with the incoming query
+        $params = array_merge([
+            'type' => 'variable',
+            'per_page' => 100, // This is a default, can be overridden by $query
+            'status' => 'publish'
+        ], $query); // The $query you pass will override the defaults
+
         try {
-            // 1. جلب كل المنتجات القابلة للتغيير (variable)
             $page = 1;
             do {
-                $response = $this->get('products', [
-                    'type' => 'variable',
-                    'per_page' => 100,
-                    'page' => $page,
-                    'status' => 'publish'
-                ]);
+                $params['page'] = $page;
+
+                // Use the combined $params for the API call
+                $response = $this->get('products', $params);
 
                 $products = is_array($response) && isset($response['data']) ? $response['data'] : $response;
+
+                if (empty($products)) {
+                    break; // No more products found, exit the loop
+                }
 
                 foreach ($products as $product) {
                     $productId = $product['id'];
 
-                    // 2. جلب المتغيرات الخاصة بهذا المنتج
+                    // Get the variations for this specific product
                     $variations = $this->getVariationsByProductId($productId);
 
                     foreach ($variations as &$variation) {
-                        $variation['product_id'] = $productId; // نضيف معرف المنتج لسهولة الاستخدام
+                        $variation['product_id'] = $productId; // Add parent ID for reference
                     }
 
                     $allVariations = array_merge($allVariations, $variations);
                 }
 
-                // 3. تحقق من وجود صفحات أخرى
+                // If a specific 'per_page' was requested in the query,
+                // we assume we only want that one page of results and exit the loop.
+                if (isset($query['per_page'])) {
+                    break;
+                }
+
                 $totalPages = $response['total_pages'] ?? 1;
                 $page++;
             } while ($page <= $totalPages);
 
-            logger()->info("✅ All variations fetched", ['total' => count($allVariations)]);
+            logger()->info("✅ Variations fetched", ['count' => count($allVariations)]);
             return $allVariations;
+
         } catch (\Exception $e) {
-            logger()->error('❌ Error fetching all variations', [
-                'message' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+            logger()->error('❌ Error fetching variations', [
+                'message' => $e->getMessage()
             ]);
             return [];
         }

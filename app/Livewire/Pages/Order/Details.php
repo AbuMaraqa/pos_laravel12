@@ -70,7 +70,10 @@ class Details extends Component
             $query['search'] = $this->search;
         }
 
-        $this->products = $this->wooService->getProducts($query)['data'];
+        $query['per_page'] = 1;
+
+        $asd = $this->products = $this->wooService->getAllVariations($query);
+
 //        dd($this->products = $this->wooService->getProducts($query));
     }
 
