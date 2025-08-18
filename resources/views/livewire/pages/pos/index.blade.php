@@ -195,7 +195,7 @@
     function initializeUI() {
         console.log("🛠️ تهيئة الواجهة...");
 
-        // عرض مؤشر تحميل عام في البداية
+        // إظهار مؤشر تحميل عام في البداية
         showSearchLoadingIndicator(true);
 
         const txProducts = db.transaction("products", "readonly");
@@ -1632,60 +1632,42 @@
     // 🔥🔥 هذا هو الجزء الذي تم تعديله لضمان التحميل الأولي 🔥🔥
     function checkAndFetchInitialData() {
         console.log("🔍 التحقق من وجود بيانات أولية في IndexedDB...");
-        showSearchLoadingIndicator(true); // إظهار مؤشر التحميل عند بدء التحقق
 
-        const storesToCheck = [
-            { name: "products", event: 'fetch-products-from-api' },
-            { name: "categories", event: 'fetch-categories-from-api' },
-            { name: "customers", event: 'fetch-customers-from-api' },
-            { name: "shippingMethods", event: 'fetch-shipping-methods-from-api' },
-            { name: "shippingZones", event: 'fetch-shipping-zones-and-methods' }
+        // لا نقوم بأي تحميل من الـ API في هذه الدالة.
+        // فقط نتحقق من وجود البيانات محلياً لعرضها.
+        const storesToDisplay = [
+            { name: "products", renderFunction: renderProductsFromIndexedDB },
+            { name: "categories", renderFunction: renderCategoriesFromIndexedDB }
         ];
 
-        let storesToFetch = [];
-
-        const checkNextStore = (index) => {
-            if (index >= storesToCheck.length) {
-                // انتهى التحقق من جميع المتاجر
-                if (storesToFetch.length > 0) {
-                    console.log("✅ IndexedDB فارغ، بدء تحميل البيانات من API...");
-                    showNotification("جاري تحميل البيانات الأساسية...", 'info', 5000);
-                    storesToFetch.forEach(store => {
-                        console.log(`📥 جلب البيانات لـ: ${store.name}`);
-                        Livewire.dispatch(store.event);
-                    });
-                } else {
-                    console.log("✅ تم العثور على بيانات في IndexedDB، لا حاجة للتحميل.");
-                    showSearchLoadingIndicator(false); // إخفاء المؤشر إذا كانت البيانات موجودة
-                }
-                return;
-            }
-
-            const storeInfo = storesToCheck[index];
+        storesToDisplay.forEach(storeInfo => {
             const tx = db.transaction(storeInfo.name, "readonly");
             const store = tx.objectStore(storeInfo.name);
             const countRequest = store.count();
 
             countRequest.onsuccess = function () {
-                if (countRequest.result === 0) {
-                    console.log(`❌ المتجر '${storeInfo.name}' فارغ.`);
-                    storesToFetch.push(storeInfo);
+                if (countRequest.result > 0) {
+                    console.log(`✅ المتجر '${storeInfo.name}' يحتوي على ${countRequest.result} عنصر. جاري العرض.`);
+                    storeInfo.renderFunction(currentSearchTerm, selectedCategoryId);
                 } else {
-                    console.log(`✅ المتجر '${storeInfo.name}' يحتوي على ${countRequest.result} عنصر.`);
+                    console.log(`❌ المتجر '${storeInfo.name}' فارغ. لا يوجد ما يتم عرضه.`);
+                    // هنا يمكن عرض رسالة توجيهية للمستخدم بالضغط على "مزامنة"
+                    const container = (storeInfo.name === 'products') ? document.getElementById('productsContainer') : document.getElementById('categoriesContainer');
+                    if (container) {
+                        container.innerHTML = '<p class="text-center text-gray-500 col-span-4 py-8">لا يوجد بيانات. يرجى الضغط على زر "Sync" للمزامنة.</p>';
+                    }
                 }
-                checkNextStore(index + 1);
             };
 
             countRequest.onerror = function () {
-                console.error(`❌ خطأ في فحص المتجر: ${storeInfo.name}. سيتم محاولة التحميل.`);
-                storesToFetch.push(storeInfo);
-                checkNextStore(index + 1);
+                console.error(`❌ خطأ في فحص المتجر: ${storeInfo.name}.`);
             };
-        };
+        });
 
-        checkNextStore(0);
+        // إخفاء مؤشر التحميل العام
+        hideLoadingIndicator();
     }
-    // 🔥🔥 نهاية الجزء المعدل �🔥
+    // 🔥🔥 نهاية الجزء المعدل 🔥🔥
 
 
     // ============================================
@@ -2101,17 +2083,37 @@
                 if (existing) {
                     // فحص الكمية الجديدة
                     const newQuantity = existing.quantity + 1;
-                    const newStockCheck = await checkProductStock(variation.id, newQuantity);
 
-                    if (newStockCheck.available) {
+                    checkProductStock(variation.id, newQuantity).then(newStockCheck => {
+                        if (!newStockCheck.available) {
+                            showNotification(`الحد الأقصى المتاح: ${newStockCheck.maxQuantity} قطعة (الكمية الحالية في السلة: ${existing.quantity})`, 'warning');
+                            return;
+                        }
+
+                        // إنشاء معاملة جديدة للتحديث
+                        const updateTx = db.transaction("cart", "readwrite");
+                        const updateStore = updateTx.objectStore("cart");
+
                         existing.quantity = newQuantity;
                         existing.updated_at = new Date().toISOString();
-                        cartStore.put(existing);
-                        console.log("تم تحديث كمية المتغير في السلة:", displayName);
-                    } else {
-                        showNotification(`الحد الأقصى المتاح: ${newStockCheck.maxQuantity} قطعة`, 'warning');
-                        return;
-                    }
+                        existing.stock_info = {
+                            max_quantity: newStockCheck.maxQuantity,
+                            stock_status: newStockCheck.stockStatus,
+                            manage_stock: newStockCheck.manageStock
+                        };
+
+                        const updateRequest = updateStore.put(existing);
+
+                        updateRequest.onsuccess = function() {
+                            console.log("✅ تم تحديث كمية المتغير في السلة:", displayName);
+                            renderCartWithStockInfo(variation.id);
+                            showNotification(`تم تحديث الكمية إلى ${newQuantity} (متوفر: ${newStockCheck.maxQuantity})`, 'success');
+
+                            if (directAdd) {
+                                try { Flux.modal('variations-modal').close(); } catch (e) {}
+                            }
+                        };
+                    });
                 } else {
                     // إضافة جديدة
                     const cartItem = {
@@ -2132,37 +2134,34 @@
                         }
                     };
 
-                    cartStore.put(cartItem);
-                    console.log("تم إضافة المتغير للسلة:", displayName);
+                    const putRequest = cartStore.put(cartItem);
+
+                    putRequest.onsuccess = function() {
+                        console.log("✅ تم إضافة المتغير للسلة:", displayName);
+                        renderCartWithStockInfo(variation.id);
+                        showNotification(`تم إضافة "${displayName}" للسلة (متوفر: ${stockCheck.maxQuantity})`, 'success');
+
+                        if (directAdd) {
+                            try { Flux.modal('variations-modal').close(); } catch (e) {}
+                        }
+                    };
+
+                    putRequest.onerror = function() {
+                        console.error("❌ فشل في إضافة المتغير للسلة");
+                        showNotification("حدث خطأ أثناء إضافة المنتج", 'error');
+                    };
                 }
-
-                // تحديث عرض السلة
-                renderCartWithStockInfo(variation.id);
-
-                // إغلاق المودال إذا كانت الإضافة مباشرة
-                if (directAdd) {
-                    try {
-                        Flux.modal('variations-modal').close();
-                    } catch (e) {
-                        console.log("المودال مغلق مسبقاً");
-                    }
-                }
-
-                // عرض إشعار النجاح
-                showNotification(`تم إضافة "${displayName}" للسلة`, 'success');
             };
 
             getCartItem.onerror = function() {
-                console.error("فشل في إضافة المتغير للسلة");
-                showNotification("حدث خطأ أثناء إضافة المنتج", 'error');
+                console.error("❌ فشل في قراءة السلة");
+                showNotification("حدث خطأ أثناء قراءة السلة", 'error');
             };
-        };
-
-        request.onerror = function() {
-            console.error("فشل في جلب بيانات المتغير:", variationId);
-            showNotification("حدث خطأ أثناء إضافة المتغير", 'error');
-        };
-    }
+        }).catch(error => {
+            console.error("❌ خطأ في فحص المخزون:", error);
+            showNotification("حدث خطأ في فحص المخزون", 'error');
+        });
+    };
 
     function validateCartStock() {
         return new Promise((resolve) => {
@@ -3315,8 +3314,8 @@
         };
 
         getRequest.onerror = function() {
-            console.error("❌ خطأ في تحديث الكمية");
-            showNotification("فشل في تحديث الكمية", 'error');
+            console.error("❌ خطأ في قراءة بيانات المنتج");
+            showNotification("فشل في قراءة بيانات المنتج", 'error');
         };
     }
 
@@ -3413,7 +3412,7 @@
             setTimeout(() => renderCartWithStockInfo(), 500);
         } else {
             console.error("❌ لم يتم العثور على الحاوية الأب للسلة");
-        }
+        };
     }
 
     setTimeout(() => {
