@@ -6,22 +6,22 @@
             </div>
 
             <flux:input wire:model.live.debounce.500ms="search" label="{{ __('Product') }}"
-                placeholder="{{ __('Search Product') }}" />
+                        placeholder="{{ __('Search Product') }}"/>
 
             <div class="flex">
-                <flux:spacer />
+                <flux:spacer/>
             </div>
 
             <div>
                 @foreach ($products as $product)
                     <div class="flex justify-between items-center w-full">
                         <div class="flex justify-start items-center space-x-4">
-                            <img class="w-10 h-10" src="{{ $product['image']['src'] }}" alt="dress" />
+                            <img class="w-10 h-10" src="{{ $product['image']['src'] }}" alt="dress"/>
                             <p class="text-base dark:text-white font-semibold leading-4 text-gray-800">
                                 {{ $product['name'] }}</p>
                         </div>
                         <flux:button wire:click="addProductToOrder({{ $product['id'] }})" variant="primary"
-                            size="xs" icon="plus">{{ __('Add') }}</flux:button>
+                                     size="xs" icon="plus">{{ __('Add') }}</flux:button>
                     </div>
                 @endforeach
             </div>
@@ -52,8 +52,8 @@
                         <div
                             class="mt-4 md:mt-6 flex flex-col md:flex-row justify-start items-start md:items-center md:space-x-6 xl:space-x-8 w-full">
                             <div class="pb-4 md:pb-8 w-full md:w-40">
-                                <img class="w-full hidden md:block" src="{{ $item['image']['src'] }}" alt="dress" />
-                                <img class="w-full md:hidden" src="{{ $item['image']['src'] }}" alt="dress" />
+                                <img class="w-full hidden md:block" src="{{ $item['image']['src'] }}" alt="dress"/>
+                                <img class="w-full md:hidden" src="{{ $item['image']['src'] }}" alt="dress"/>
                             </div>
 
                             <div
@@ -80,9 +80,10 @@
                                     </p>
                                     <p class="text-base dark:text-white xl:text-lg leading-6 text-gray-800">
                                         <flux:input wire:model="quantities.{{ $item['product_id'] }}"
-                                            style="width:120px; text-align:center" wire:target="changeQty"
-                                            wire:change="changeQty({{ $item['product_id'] }})" class="text-center"
-                                            value="{{ $item['quantity'] }}" placeholder="{{ __('Quantity') }}" />
+                                                    style="width:120px; text-align:center" wire:target="changeQty"
+                                                    wire:change="changeQty({{ $item['product_id'] }})"
+                                                    class="text-center"
+                                                    value="{{ $item['quantity'] }}" placeholder="{{ __('Quantity') }}"/>
                                     </p>
                                     <p
                                         class="text-base dark:text-white xl:text-lg font-semibold leading-6 text-gray-800">
@@ -130,7 +131,7 @@
                             <div class="flex justify-center items-center space-x-4">
                                 <div class="w-8 h-8">
                                     <img class="w-full h-full" alt="logo"
-                                        src="https://i.ibb.co/L8KSdNQ/image-3.png" />
+                                         src="https://i.ibb.co/L8KSdNQ/image-3.png"/>
                                 </div>
                                 {{-- <div class="flex flex-col justify-start items-center">
                                     <p class="text-lg leading-6 dark:text-white font-semibold text-gray-800">DPD Delivery<br /><span class="font-normal">Delivery with 24 Hours</span></p>
@@ -154,7 +155,8 @@
                                                     wire:target="updateOrder"
                                                 >
                                                 <label for="{{ $method['id'] ?? '' }}" class="block cursor-pointer">
-                                                    {{ $method['title'] ?? 'بدون عنوان' }} - {{ $method['settings']['cost']['value'] ?? '0' }} شيكل
+                                                    {{ $method['title'] ?? 'بدون عنوان' }}
+                                                    - {{ $method['settings']['cost']['value'] ?? '0' }} شيكل
                                                 </label>
                                             </div>
                                         @endforeach
@@ -177,8 +179,8 @@
                 <div class="w-full mb-3">
                     <select style="background-color: #FACA15
 ;"
-                        wire:change="updateOrderStatus({{ $order['id'] }}, $event.target.value)"
-                        class="appearance-none dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-white text-sm rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 block w-full px-4 py-2 pr-10">
+                            wire:change="updateOrderStatus({{ $order['id'] }}, $event.target.value)"
+                            class="appearance-none dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-white text-sm rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 block w-full px-4 py-2 pr-10">
                         <option value="completed" {{ $order['status'] == 'completed' ? 'selected' : '' }}>
                             {{ __('Completed') }}</option>
                         <option value="processing" {{ $order['status'] == 'processing' ? 'selected' : '' }}>
@@ -195,7 +197,7 @@
                     <div class="flex flex-col justify-start items-start flex-shrink-0">
                         <div
                             class="flex justify-center w-full md:justify-start items-center space-x-4 py-8 border-b border-gray-200">
-                            <flux:avatar icon="user" />
+                            <flux:avatar icon="user"/>
 
                             <div class="flex justify-start items-start flex-col space-y-2">
                                 <p class="text-base dark:text-white font-semibold leading-4 text-left text-gray-800">
@@ -207,11 +209,11 @@
                         <div
                             class="flex justify-center text-gray-800 dark:text-white md:justify-start items-center space-x-4 py-4 border-b border-gray-200 w-full">
                             <img class="dark:hidden"
-                                src="https://tuk-cdn.s3.amazonaws.com/can-uploader/order-summary-3-svg1.svg"
-                                alt="email">
+                                 src="https://tuk-cdn.s3.amazonaws.com/can-uploader/order-summary-3-svg1.svg"
+                                 alt="email">
                             <img class="hidden dark:block"
-                                src="https://tuk-cdn.s3.amazonaws.com/can-uploader/order-summary-3-svg1dark.svg"
-                                alt="email">
+                                 src="https://tuk-cdn.s3.amazonaws.com/can-uploader/order-summary-3-svg1dark.svg"
+                                 alt="email">
                             <p class="cursor-pointer text-sm leading-5 ">{{ $order['billing']['email'] }}</p>
                         </div>
                     </div>
