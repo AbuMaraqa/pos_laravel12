@@ -33,9 +33,16 @@
                 <flux:navbar.item icon="shopping-cart" :href="route('order.index')" :current="request()->routeIs('order.index')" wire:navigate>
                     {{ __('Orders') }}
                 </flux:navbar.item>
-                <flux:navbar.item icon="clipboard-document-list" :href="route('inventory.index')" :current="request()->routeIs('inventory.index')" wire:navigate>
-                    {{ __('Inventories') }}
-                </flux:navbar.item>
+{{--                <flux:navbar.item icon="clipboard-document-list" :href="route('inventory.index')" :current="request()->routeIs('inventory.index')" wire:navigate>--}}
+{{--                    {{ __('Inventories') }}--}}
+{{--                </flux:navbar.item>--}}
+                <flux:dropdown class="max-lg:hidden">
+                    <flux:navbar.item icon="cog-6-tooth">{{ __('Inventories') }}</flux:navbar.item>
+                    <flux:navmenu>
+                        <flux:navmenu.item wire:navigate href="{{ route('inventory.index') }}">{{ __('Inventory') }}</flux:navmenu.item>
+                        <flux:navmenu.item wire:navigate href="{{ route('inventory.decremrnt') }}">{{ __('decremrnt Inventory') }}</flux:navmenu.item>
+                    </flux:navmenu>
+                </flux:dropdown>
                 <flux:navbar.item icon="users" wire:navigate :href="route('client.index')" :current="request()->routeIs('client.index')" wire:navigate>
                     {{ __('Clients') }}
                 </flux:navbar.item>

@@ -44,6 +44,7 @@ Route::group(
         Route::get('/product/attributes/add', \App\Livewire\Pages\Product\Attributes\Index::class)->name('product.attributes.add');
         Route::get('/product/variation/image/{id}', \App\Livewire\Pages\Product\VariationImages::class)->name('product.variation.image');
         Route::get('/inventory/index', \App\Livewire\Pages\Inventory\Index::class)->name('inventory.index');
+        Route::get('/inventory/decremrnt', \App\Livewire\Pages\Inventory\Decrement::class)->name('inventory.decremrnt');
 
         Route::get('/order/index', \App\Livewire\Pages\Order\Index::class)->name('order.index');
         Route::get('/order/{order}/details', \App\Livewire\Pages\Order\Details::class)->name('order.details');

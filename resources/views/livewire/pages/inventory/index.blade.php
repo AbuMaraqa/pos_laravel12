@@ -143,35 +143,33 @@
                                         </span>
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-right">
-                                        <div x-data="{
-                                            quantity: {{ $scannedProducts[$productId]['quantity'] }}
-                                        }" class="flex items-center gap-2">
+                                        <div class="flex items-center gap-2">
                                             <flux:button
-                                                wire:click="updateQuantity({{ $productId }}, {{ $scannedProducts[$productId]['quantity'] - 1 }})"
+                                                wire:click="decrementQuantity({{ $productId }})"
                                                 color="secondary" size="xs" class="!p-1">
-                                                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24"
-                                                    stroke="currentColor">
+                                                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                     <path stroke-linecap="round" stroke-linejoin="round"
-                                                        stroke-width="2" d="M20 12H4" />
+                                                          stroke-width="2" d="M20 12H4" />
                                                 </svg>
                                             </flux:button>
 
-                                            <input type="number" min="1"
+                                            <input
+                                                type="number"
+                                                min="1"
                                                 wire:model.live="scannedProducts.{{ $productId }}.quantity"
                                                 class="w-24 border border-gray-300 text-center py-1 text-sm"
                                                 style="background-color: #52525C; color: white; min-width: 150px; max-width: 150px; min-height: 100px; max-height: 100px; border-radius: 10px; font-size: 25px; font-weight: bold;" />
 
                                             <flux:button
-                                                wire:click="updateQuantity({{ $productId }}, {{ $scannedProducts[$productId]['quantity'] + 1 }})"
+                                                wire:click="incrementQuantity({{ $productId }})"
                                                 color="secondary" size="xs" class="!p-1">
                                                 <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24"
-                                                    stroke="currentColor">
+                                                     stroke="currentColor">
                                                     <path stroke-linecap="round" stroke-linejoin="round"
-                                                        stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                                                          stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                                                 </svg>
                                             </flux:button>
                                         </div>
-
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-right text-sm">
                                         <flux:button wire:click="removeProduct({{ $productId }})" color="danger"

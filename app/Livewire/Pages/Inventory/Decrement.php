@@ -10,7 +10,7 @@ use Livewire\Component;
 use Exception;
 use Masmerise\Toaster\Toaster;
 
-class Index extends Component
+class Decrement extends Component
 {
     public $productId = '';
     public $scannedProducts = [];
@@ -78,7 +78,7 @@ class Index extends Component
 
                     $currentStock = (int) ($currentProduct['stock_quantity'] ?? 0);
                     $requestedQuantity = (int) $product['quantity'];
-                    $newStock = $currentStock + $requestedQuantity;
+                    $newStock = $currentStock - $requestedQuantity; // تغيير: نطرح بدلاً من الجمع
 
                     logger()->info('Stock calculation:', [
                         'current_stock' => $currentStock,
@@ -106,10 +106,10 @@ class Index extends Component
 
                     Inventory::create([
                         'product_id' => $productId,
-                        'quantity' => $requestedQuantity,
+                        'quantity' => -$requestedQuantity, // تغيير: نحفظ بالسالب للدلالة على الخروج
                         'store_id' => $this->storeId,
                         'user_id' => auth()->user()->id,
-                        'type' => InventoryType::INPUT
+                        'type' => InventoryType::OUTPUT // تغيير: نوع العملية إخراج
                     ]);
 
                     logger()->info('Update response:', [
@@ -139,14 +139,14 @@ class Index extends Component
             if ($failCount > 0) {
                 if ($successCount > 0) {
                     $this->error = "تم تحديث {$successCount} منتج، وفشل تحديث {$failCount} منتج";
-                    Toaster::warning('تم تحديث {$successCount} منتج، وفشل تحديث {$failCount} منتج');
+                    Toaster::warning("تم تحديث {$successCount} منتج، وفشل تحديث {$failCount} منتج");
                 } else {
                     $this->error = "فشل تحديث جميع المنتجات. يرجى التحقق من سجلات النظام للمزيد من التفاصيل.";
                     Toaster::warning('فشل تحديث جميع المنتجات. يرجى التحقق من سجلات النظام للمزيد من التفاصيل.');
                 }
             } else {
-                $this->success = "تم إضافة الكميات بنجاح";
-                Toaster::success('تم إضافة الكميات بنجاح');
+                $this->success = "تم خصم الكميات بنجاح";
+                Toaster::success('تم خصم الكميات بنجاح');
                 $this->scannedProducts = []; // مسح القائمة بعد الحفظ الناجح
             }
 
@@ -187,9 +187,18 @@ class Index extends Component
 
             // إذا كان المنتج موجود مسبقاً
             if (isset($this->scannedProducts[$searchId])) {
-                $this->scannedProducts[$searchId]['quantity']++;
-                $this->success = "تم تحديث كمية المنتج";
-                Toaster::success('تم تحديث كمية المنتج');
+                // التحقق من عدم تجاوز الكمية المتوفرة
+                $currentQuantity = $this->scannedProducts[$searchId]['quantity'];
+                $availableStock = $this->scannedProducts[$searchId]['stock_quantity'];
+
+                if ($currentQuantity < $availableStock) {
+                    $this->scannedProducts[$searchId]['quantity']++;
+                    $this->success = "تم تحديث كمية المنتج";
+                    Toaster::success('تم تحديث كمية المنتج');
+                } else {
+                    $this->error = "لا يمكن إضافة المزيد - الكمية المطلوبة تتجاوز المخزون المتوفر";
+                    Toaster::error('لا يمكن إضافة المزيد - الكمية المطلوبة تتجاوز المخزون المتوفر');
+                }
                 return;
             }
 
@@ -233,13 +242,22 @@ class Index extends Component
                 return;
             }
 
+            $stockQuantity = $product['stock_quantity'] ?? 0;
+
+            // التحقق من وجود مخزون
+            if ($stockQuantity <= 0) {
+                $this->error = 'هذا المنتج غير متوفر في المخزون';
+                Toaster::error('هذا المنتج غير متوفر في المخزون');
+                return;
+            }
+
             // إضافة أو تحديث المنتج في القائمة
             $this->scannedProducts[$id] = [
                 'name' => $product['name'],
                 'price' => $product['price'],
                 'quantity' => isset($this->scannedProducts[$id]) ?
-                    $this->scannedProducts[$id]['quantity'] + 1 : 1,
-                'stock_quantity' => $product['stock_quantity'] ?? 0,
+                    min($this->scannedProducts[$id]['quantity'] + 1, $stockQuantity) : 1,
+                'stock_quantity' => $stockQuantity,
                 'sku' => $product['sku'] ?? '',
                 'is_variation' => isset($product['type']) && $product['type'] === 'variation',
                 'parent_id' => $product['parent_id'] ?? null
@@ -259,7 +277,14 @@ class Index extends Component
     {
         $quantity = (int) $quantity;
         if ($quantity > 0 && isset($this->scannedProducts[$productId])) {
-            $this->scannedProducts[$productId]['quantity'] = $quantity;
+            $availableStock = $this->scannedProducts[$productId]['stock_quantity'];
+
+            if ($quantity <= $availableStock) {
+                $this->scannedProducts[$productId]['quantity'] = $quantity;
+            } else {
+                $this->scannedProducts[$productId]['quantity'] = $availableStock;
+                Toaster::warning("تم تعديل الكمية إلى الحد الأقصى المتوفر: {$availableStock}");
+            }
         } else {
             $this->removeProduct($productId);
         }
@@ -275,7 +300,14 @@ class Index extends Component
     public function incrementQuantity($productId)
     {
         if (isset($this->scannedProducts[$productId])) {
-            $this->scannedProducts[$productId]['quantity']++;
+            $currentQuantity = $this->scannedProducts[$productId]['quantity'];
+            $availableStock = $this->scannedProducts[$productId]['stock_quantity'];
+
+            if ($currentQuantity < $availableStock) {
+                $this->scannedProducts[$productId]['quantity']++;
+            } else {
+                Toaster::warning('لا يمكن إضافة المزيد - تم الوصول للحد الأقصى المتوفر');
+            }
         }
     }
 
@@ -308,6 +340,11 @@ class Index extends Component
                 $qty = 1; // لا نسمح بأقل من 1
             }
             if (isset($this->scannedProducts[$id])) {
+                $availableStock = $this->scannedProducts[$id]['stock_quantity'];
+                if ($qty > $availableStock) {
+                    $qty = $availableStock;
+                    Toaster::warning("تم تعديل الكمية إلى الحد الأقصى المتوفر: {$availableStock}");
+                }
                 $this->scannedProducts[$id]['quantity'] = $qty;
             }
         }
@@ -315,6 +352,6 @@ class Index extends Component
 
     public function render()
     {
-        return view('livewire.pages.inventory.index');
+        return view('livewire.pages.inventory.decrement');
     }
 }
