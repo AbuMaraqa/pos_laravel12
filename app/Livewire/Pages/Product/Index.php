@@ -101,7 +101,7 @@ class Index extends Component
             'variations' => $this->variations,
             'quantities' => $this->quantities,
         ], [], [
-            'format' => [80, 30]
+            'format' => [49, 27]
         ]);
 
         return response()->streamDownload(function () use ($pdf) {
