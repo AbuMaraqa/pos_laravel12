@@ -376,7 +376,7 @@ class WooCommerceService
 
     public function getCategories(array $query = []): array
     {
-        return $this->get('products/categories', $query)['data'];
+        return $this->get('products/categories', $query);
     }
 
     public function getVariationsByProductId($productId): array
