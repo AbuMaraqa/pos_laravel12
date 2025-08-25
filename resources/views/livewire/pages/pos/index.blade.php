@@ -97,7 +97,7 @@
 
         <!-- Cart Sidebar -->
         <div class="col-span-2 h-full">
-            <div class="bg-white p-4 rounded-lg shadow-md h-full flex flex-col">
+            <div wire:ignore class="bg-white p-4 rounded-lg shadow-md h-full flex flex-col">
                 <h2 class="text-lg font-medium mb-4">إجمالي المبيعات</h2>
                 <button onclick="clearCart()" class="mt-2 bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700">
                     🧹 حذف جميع المنتجات
@@ -154,12 +154,16 @@
         if (el) el.classList.add('hidden');
     }
 
-    // Hook Livewire network requests to the global loader
+    // Hook Livewire requests: show global loader ONLY for blocking actions
+    // Use window.blockingRequest = true around long operations (order submit, shipping fetch)
     document.addEventListener('livewire:init', () => {
         Livewire.hook('request', ({ succeed, fail }) => {
-            showLoader();
-            succeed(() => hideLoader());
-            fail(() => hideLoader());
+            const shouldBlock = !!window.blockingRequest;
+            if (shouldBlock) {
+                showLoader();
+            }
+            succeed(() => { if (shouldBlock) hideLoader(); });
+            fail(() => { if (shouldBlock) hideLoader(); });
         });
     });
 
@@ -363,7 +367,9 @@
 
     function searchProductFromAPI(searchTerm) {
         console.log('🌐 إرسال طلب البحث إلى API:', searchTerm);
-        showLoadingIndicator(true);
+        // لا تمنع المستخدم من التفاعل أثناء بحث المنتج
+        showSearchLoadingIndicator(true);
+        window.blockingRequest = false;
         Livewire.dispatch('search-product-from-api', {searchTerm: searchTerm});
     }
 
@@ -1976,7 +1982,7 @@
         // 🔥 هذا هو الجزء الذي تم تعديله 🔥
         // استقبال المنتج الموجود من API
         Livewire.on('product-found-from-api', (data) => {
-            hideLoadingIndicator();
+            showSearchLoadingIndicator(false);
             hideLoader();
             const product = data[0]?.product;
             const searchTerm = data[0]?.search_term;
@@ -2032,7 +2038,7 @@
 
         // استقبال إشعار عدم وجود المنتج
         Livewire.on('product-not-found', (data) => {
-            hideLoadingIndicator();
+            showSearchLoadingIndicator(false);
             hideLoader();
             console.log("❌ لم يتم العثور على المنتج:", data[0].term);
             showNotification(`لم يتم العثور على المنتج: "${data[0].term}"`, 'error');
@@ -2040,7 +2046,7 @@
 
         // استقبال خطأ في البحث
         Livewire.on('search-error', (data) => {
-            hideLoadingIndicator();
+            showSearchLoadingIndicator(false);
             hideLoader();
             console.error("❌ خطأ في البحث:", data[0].message);
             showNotification(data[0].message, 'error');

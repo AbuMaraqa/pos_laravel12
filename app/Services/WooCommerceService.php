@@ -2182,15 +2182,15 @@ class WooCommerceService
                 }
             }
 
-            // 2) محاولة SKU (دقيقة)
-            $bySku = $this->getProducts(['sku' => $term, 'per_page' => 1]);
+            // 2) محاولة SKU (دقيقة) - طلب خفيف للغاية
+            $bySku = $this->getProducts(['sku' => $term, 'per_page' => 1, 'status' => 'publish', 'fields' => 'id,name,sku,type,price,regular_price,images']);
             $skuData = isset($bySku['data']) ? $bySku['data'] : $bySku;
             if (!empty($skuData[0])) {
                 return $this->normalizeProductForPOS($skuData[0]);
             }
 
-            // 3) بحث بالاسم (أو أي حقل تدعمه واجهتك)
-            $bySearch = $this->getProducts(['search' => $term, 'per_page' => 5]);
+            // 3) بحث بالاسم (خفيف)
+            $bySearch = $this->getProducts(['search' => $term, 'per_page' => 5, 'status' => 'publish', 'fields' => 'id,name,sku,type,price,regular_price,images']);
             $searchData = isset($bySearch['data']) ? $bySearch['data'] : $bySearch;
             if (!empty($searchData[0])) {
                 return $this->normalizeProductForPOS($searchData[0]);
