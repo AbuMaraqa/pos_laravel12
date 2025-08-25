@@ -514,8 +514,20 @@ class Index extends Component
     #[On('fetch-customers-from-api')]
     public function fetchCustomersFromAPI()
     {
-        $customers = $this->wooService->getCustomers();
-        $this->dispatch('store-customers', customers: $customers);
+        try {
+            $customers = $this->wooService->getCustomers();
+            // تأكد من أنها مصفوفة
+            if (!is_array($customers)) {
+                $customers = [];
+            }
+            $this->dispatch('store-customers', customers: $customers);
+        } catch (\Throwable $e) {
+            logger()->error('Failed to fetch customers', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            $this->dispatch('store-customers', customers: []);
+        }
     }
 
     #[On('add-simple-to-cart')]

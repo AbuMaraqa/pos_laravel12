@@ -1155,7 +1155,7 @@ class WooCommerceService
 
     public function shippingMethods()
     {
-        return $this->get('shipping_methods');
+        return $this->get('shipping_methods')['data'];
     }
 
     public function updateShippingMethod($methodId, $settings)
@@ -1167,7 +1167,8 @@ class WooCommerceService
 
     public function shippingZones()
     {
-        return $this->get('shipping/zones')['data'];
+        $response = $this->get('shipping/zones');
+        return is_array($response) && isset($response['data']) ? $response['data'] : $response;
     }
 
     public function shippingZoneById($zoneId)
@@ -1177,14 +1178,16 @@ class WooCommerceService
 
     public function shippingZoneMethods($zoneId)
     {
-        return $this->get("shipping/zones/{$zoneId}/methods")['data'];
+        $response = $this->get("shipping/zones/{$zoneId}/methods");
+        return is_array($response) && isset($response['data']) ? $response['data'] : $response;
     }
 
     public function updateShippingZoneMethod($zoneId, $methodId, $settings)
     {
-        return $this->put("shipping/zones/{$zoneId}/methods/{$methodId}", [
+        $response = $this->put("shipping/zones/{$zoneId}/methods/{$methodId}", [
             'settings' => $settings
-        ])['data'];
+        ]);
+        return is_array($response) && isset($response['data']) ? $response['data'] : $response;
     }
 
     public function getProductVariations($productId, $query = []): array
@@ -1962,7 +1965,7 @@ class WooCommerceService
 
     public function getShippingMethods(): array
     {
-        return $this->get('shipping_methods');
+        return $this->get('shipping_methods')['data'];
     }
 
     public function getCustomers(array $query = []): array

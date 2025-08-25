@@ -52,6 +52,11 @@
         </div>
     </flux:modal>
 
+    <!-- Global Loader Overlay -->
+    <div id="globalLoader" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/40">
+        <div class="h-10 w-10 animate-spin rounded-full border-4 border-white border-t-transparent"></div>
+    </div>
+
     <!-- Main Interface -->
     <div class="grid gap-4 grid-cols-6">
         <div class="col-span-4">
@@ -135,6 +140,28 @@
     let allProductsLoaded = false;
 
     // ============================================
+    // Global loader helpers
+    // ============================================
+    function showLoader() {
+        const el = document.getElementById('globalLoader');
+        if (el) el.classList.remove('hidden');
+    }
+
+    function hideLoader() {
+        const el = document.getElementById('globalLoader');
+        if (el) el.classList.add('hidden');
+    }
+
+    // Hook Livewire network requests to the global loader
+    document.addEventListener('livewire:init', () => {
+        Livewire.hook('request', ({ succeed, fail }) => {
+            showLoader();
+            succeed(() => hideLoader());
+            fail(() => hideLoader());
+        });
+    });
+
+    // ============================================
     // تهيئة قاعدة البيانات
     // ============================================
     document.addEventListener("livewire:navigated", () => {
@@ -155,6 +182,18 @@
             initializeUI();
             setupEventListeners();
             checkAndFetchInitialData();
+            // فور التهيئة: تأكد من جلب الشحن أيضاً إن لم يكن موجوداً
+            try {
+                const tx = db.transaction('shippingZones', 'readonly');
+                const store = tx.objectStore('shippingZones');
+                const req = store.count();
+                req.onsuccess = function () {
+                    if (req.result === 0) {
+                        Livewire.dispatch('fetch-shipping-methods-from-api');
+                        Livewire.dispatch('fetch-shipping-zones-and-methods');
+                    }
+                };
+            } catch (e) { console.warn(e); }
             preventUnnecessaryReloads();
         };
 
@@ -195,6 +234,19 @@
         setTimeout(() => renderProductsFromIndexedDB(currentSearchTerm, selectedCategoryId), 300);
         renderCategoriesFromIndexedDB();
         renderCart();
+
+        // تحميل الشحن فور الدخول إن لم تكن البيانات موجودة
+        const txZ = db.transaction("shippingZones", "readonly");
+        const storeZ = txZ.objectStore("shippingZones");
+        const countZones = storeZ.count();
+        countZones.onsuccess = function () {
+            if (countZones.result === 0) {
+                try {
+                    Livewire.dispatch('fetch-shipping-methods-from-api');
+                    Livewire.dispatch('fetch-shipping-zones-and-methods');
+                } catch (e) { console.warn(e); }
+            }
+        };
     }
 
     // ============================================
@@ -1084,16 +1136,24 @@
     // ============================================
     function setupOrderButton() {
         document.getElementById('completeOrderBtn').addEventListener('click', function () {
+            showLoader();
             const dropdown = document.getElementById("customerSelect");
             if (dropdown) {
                 dropdown.innerHTML = '<option value="">جاري التحميل...</option>';
             }
 
+            // جلب طرق الشحن والمناطق قبل العرض
+            try {
+                Livewire.dispatch('fetch-shipping-methods-from-api');
+                Livewire.dispatch('fetch-shipping-zones-and-methods');
+            } catch (e) { console.warn(e); }
+
             renderCustomersDropdown();
             renderShippingZonesWithMethods();
             setTimeout(() => {
                 updateOrderTotalInModal();
-            }, 300);
+                hideLoader();
+            }, 500);
 
             Flux.modal('confirm-order-modal').show();
         });
@@ -1123,6 +1183,7 @@
         e.preventDefault();
 
         console.log("🔄 بدء عملية إرسال الطلب...");
+        showLoader();
         const confirmBtn = document.getElementById('confirmOrderSubmitBtn');
         const customerId = document.getElementById("customerSelect")?.value;
         const notes = document.getElementById("orderNotes")?.value || '';
@@ -1776,41 +1837,46 @@
             };
         });
 
-        // تخزين العملاء
+        // تخزين العملاء (يتعامل مع مصفوفة أو كائن مغلف)
         Livewire.on('store-customers', (payload) => {
             if (!db) return;
+            const list = Array.isArray(payload?.customers) ? payload.customers : [];
             const tx = db.transaction("customers", "readwrite");
             const store = tx.objectStore("customers");
 
-            payload.customers.forEach(customer => {
+            list.forEach(customer => {
+                if (!customer || !customer.id) return;
                 store.put({
                     id: customer.id,
                     name: `${customer.first_name || ''} ${customer.last_name || ''}`.trim() || 'عميل',
                     email: customer.email || '',
-                    phone: customer.billing?.phone || ''
+                    phone: (customer.billing && customer.billing.phone) ? customer.billing.phone : ''
                 });
             });
 
             tx.oncomplete = () => {
                 console.log("✅ تم تخزين العملاء");
-                showNotification(`تم تحميل ${payload.customers.length} عميل`, 'success');
+                showNotification(`تم تحميل ${list.length} عميل`, 'success');
             };
         });
 
         // تخزين طرق الشحن
         Livewire.on('store-shipping-methods', (data) => {
             if (!db) return;
+            showLoader();
             const tx = db.transaction("shippingMethods", "readwrite");
             const store = tx.objectStore("shippingMethods");
             data.methods.forEach(method => store.put(method));
             tx.oncomplete = () => {
                 console.log("✅ تم تخزين طرق الشحن");
+                hideLoader();
             };
         });
 
         // تخزين مناطق الشحن
         Livewire.on('store-shipping-zones', (payload) => {
             if (!db) return;
+            showLoader();
             const data = Array.isArray(payload) ? payload[0] : payload;
 
             if (!data || !Array.isArray(data.zones)) {
@@ -1830,28 +1896,35 @@
 
             tx.oncomplete = () => {
                 console.log("✅ تم تخزين مناطق الشحن");
+                hideLoader();
             };
         });
 
         // تخزين طرق الشحن للمناطق
         Livewire.on('store-shipping-zone-methods', (methods) => {
             if (!db) return;
+            showLoader();
             const tx = db.transaction("shippingZoneMethods", "readwrite");
             const store = tx.objectStore("shippingZoneMethods");
 
-            methods.forEach(method => {
-                method.forEach(m => {
-                    store.put({
-                        id: m.id,
-                        zone_id: m.zone_id,
-                        title: m.title,
-                        cost: parseFloat(m.settings?.cost?.value || 0)
-                    });
+            // methods قد تصل كمصفوفة مسطحة أو كمصفوفات متداخلة
+            const list = Array.isArray(methods) ? methods.flat ? methods.flat() : [].concat(...methods) : [];
+
+            list.forEach(m => {
+                if (!m || typeof m !== 'object') return;
+                store.put({
+                    id: m.id,
+                    zone_id: m.zone_id,
+                    title: m.title,
+                    cost: parseFloat(m.settings?.cost?.value || 0)
                 });
             });
 
             tx.oncomplete = () => {
                 console.log("✅ تم تخزين طرق الشحن للمناطق");
+                // إعادة عرض طرق الشحن بعد التخزين
+                try { renderShippingZonesWithMethods(); } catch (e) { console.warn(e); }
+                hideLoader();
             };
         });
 
@@ -1859,6 +1932,7 @@
         // استقبال المنتج الموجود من API
         Livewire.on('product-found-from-api', (data) => {
             hideLoadingIndicator();
+            hideLoader();
             const product = data[0]?.product;
             const searchTerm = data[0]?.search_term;
             const hasTargetVariation = data[0]?.has_target_variation;
@@ -1914,6 +1988,7 @@
         // استقبال إشعار عدم وجود المنتج
         Livewire.on('product-not-found', (data) => {
             hideLoadingIndicator();
+            hideLoader();
             console.log("❌ لم يتم العثور على المنتج:", data[0].term);
             showNotification(`لم يتم العثور على المنتج: "${data[0].term}"`, 'error');
         });
@@ -1921,6 +1996,7 @@
         // استقبال خطأ في البحث
         Livewire.on('search-error', (data) => {
             hideLoadingIndicator();
+            hideLoader();
             console.error("❌ خطأ في البحث:", data[0].message);
             showNotification(data[0].message, 'error');
         });
@@ -1931,6 +2007,7 @@
             console.log("📊 بيانات النجاح:", data);
 
             hideLoadingIndicator();
+            hideLoader();
             resetOrderButton();
 
             // مسح السلة
@@ -1962,6 +2039,7 @@
             console.log("📊 بيانات الفشل:", data);
 
             hideLoadingIndicator();
+            hideLoader();
             resetOrderButton();
 
             let errorMessage = "فشل في إرسال الطلب";
@@ -2942,8 +3020,7 @@
             const checks = [
                 {store: "products", action: 'fetch-products-from-api', key: 'products'},
                 {store: "categories", action: 'fetch-categories-from-api', key: 'categories'},
-                // ❌ إزالة العملاء من التحميل التلقائي
-                // {store: "customers", action: 'fetch-customers-from-api', key: 'customers'},
+                {store: "customers", action: 'fetch-customers-from-api', key: 'customers'},
                 {store: "shippingMethods", action: 'fetch-shipping-methods-from-api', key: 'shipping'},
                 {store: "shippingZones", action: 'fetch-shipping-zones-and-methods', key: 'shipping'}
             ];
