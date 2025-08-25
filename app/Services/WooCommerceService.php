@@ -2016,6 +2016,56 @@ class WooCommerceService
         }
     }
 
+    /**
+     * جلب جميع العملاء عبر التصفح على الصفحات
+     */
+    public function getAllCustomers(array $query = []): array
+    {
+        $all = [];
+        $page = 1;
+        $perPage = (int)($query['per_page'] ?? 100);
+        $baseQuery = array_merge(['per_page' => $perPage, 'order' => 'desc'], $query);
+
+        try {
+            do {
+                $baseQuery['page'] = $page;
+                $response = $this->get('customers', $baseQuery);
+                $batch = isset($response['data']) ? $response['data'] : $response;
+                if (!is_array($batch) || empty($batch)) {
+                    break;
+                }
+                // Filter valid ids
+                foreach ($batch as $c) {
+                    if (is_array($c) && isset($c['id']) && !empty($c['id'])) {
+                        $all[] = $c;
+                    }
+                }
+
+                $totalPages = isset($response['total_pages']) ? (int)$response['total_pages'] : null;
+                if ($totalPages !== null && $totalPages > 0) {
+                    $page++;
+                    if ($page > $totalPages) {
+                        break;
+                    }
+                } else {
+                    // Fallback: stop if returned less than per_page
+                    if (count($batch) < $perPage) {
+                        break;
+                    }
+                    $page++;
+                }
+            } while (true);
+
+            logger()->info('All customers fetched', ['count' => count($all)]);
+            return $all;
+        } catch (\Exception $e) {
+            logger()->error('Error fetching all customers', [
+                'error' => $e->getMessage(),
+            ]);
+            return [];
+        }
+    }
+
     public function createCustomer(array $customerData): ?array
     {
         try {

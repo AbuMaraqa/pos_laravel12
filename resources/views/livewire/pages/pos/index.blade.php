@@ -1142,8 +1142,9 @@
                 dropdown.innerHTML = '<option value="">جاري التحميل...</option>';
             }
 
-            // جلب طرق الشحن والمناطق قبل العرض
+            // جلب العملاء + طرق الشحن والمناطق قبل العرض
             try {
+                Livewire.dispatch('fetch-customers-from-api');
                 Livewire.dispatch('fetch-shipping-methods-from-api');
                 Livewire.dispatch('fetch-shipping-zones-and-methods');
             } catch (e) { console.warn(e); }
@@ -1242,19 +1243,41 @@
                     return;
                 }
 
-                // تحضير بيانات الطلب
-                const orderData = prepareOrderData(customerId, notes, shippingMethod, cartItems);
+                // تحضير guest_info من IndexedDB في حال كان العميل محلياً أو غير رقمي
+                const customerTx = db.transaction("customers", "readonly");
+                const customerStore = customerTx.objectStore("customers");
+                const selectedCustomerReq = customerStore.get(isNaN(parseInt(customerId)) ? customerId : parseInt(customerId));
 
-                // التحقق من صحة البيانات
-                const validationErrors = validateOrderData(orderData);
-                if (validationErrors.length > 0) {
-                    showNotification("خطأ في البيانات: " + validationErrors.join(', '), 'error');
-                    resetOrderButton(confirmBtn);
-                    return;
-                }
+                selectedCustomerReq.onsuccess = function () {
+                    const selectedCustomer = selectedCustomerReq.result;
 
-                // إرسال الطلب
-                submitOrderData(orderData);
+                    // تحضير بيانات الطلب
+                    const orderData = prepareOrderData(customerId, notes, shippingMethod, cartItems);
+
+                    // إرفاق guest_info دائماً إن وُجد عميل مختار من المخزن المحلي
+                    if (selectedCustomer && selectedCustomer.name) {
+                        const parts = (selectedCustomer.name || '').split(' ');
+                        const firstName = parts.shift() || '';
+                        const lastName = parts.join(' ') || '';
+                        orderData.guest_info = {
+                            first_name: firstName,
+                            last_name: lastName,
+                            email: selectedCustomer.email || '',
+                            phone: selectedCustomer.phone || ''
+                        };
+                    }
+
+                    // التحقق من صحة البيانات
+                    const validationErrors = validateOrderData(orderData);
+                    if (validationErrors.length > 0) {
+                        showNotification("خطأ في البيانات: " + validationErrors.join(', '), 'error');
+                        resetOrderButton(confirmBtn);
+                        return;
+                    }
+
+                    // إرسال الطلب
+                    submitOrderData(orderData);
+                };
             };
 
             cartRequest.onerror = function () {
@@ -1837,18 +1860,26 @@
             };
         });
 
-        // تخزين العملاء (يتعامل مع مصفوفة أو كائن مغلف)
+        // تخزين العملاء (يتعامل مع مصفوفة)
         Livewire.on('store-customers', (payload) => {
             if (!db) return;
-            const list = Array.isArray(payload?.customers) ? payload.customers : [];
+            let list = Array.isArray(payload?.customers) ? payload.customers : [];
+
+            // فلترة عميل POS المؤقت إن وجد (اسم كامل == 'POS')
+            list = list.filter(c => {
+                const fullName = `${c.first_name || ''} ${c.last_name || ''}`.trim();
+                return fullName !== 'POS';
+            });
+
             const tx = db.transaction("customers", "readwrite");
             const store = tx.objectStore("customers");
 
             list.forEach(customer => {
                 if (!customer || !customer.id) return;
+                const fullName = `${customer.first_name || ''} ${customer.last_name || ''}`.trim();
                 store.put({
                     id: customer.id,
-                    name: `${customer.first_name || ''} ${customer.last_name || ''}`.trim() || 'عميل',
+                    name: fullName || (customer.username || customer.email || 'عميل'),
                     email: customer.email || '',
                     phone: (customer.billing && customer.billing.phone) ? customer.billing.phone : ''
                 });
@@ -1857,6 +1888,7 @@
             tx.oncomplete = () => {
                 console.log("✅ تم تخزين العملاء");
                 showNotification(`تم تحميل ${list.length} عميل`, 'success');
+                try { renderCustomersDropdown(); } catch (e) { console.warn(e); }
             };
         });
 

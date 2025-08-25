@@ -515,7 +515,8 @@ class Index extends Component
     public function fetchCustomersFromAPI()
     {
         try {
-            $customers = $this->wooService->getCustomers();
+            // جلب جميع العملاء بترقيم الصفحات
+            $customers = $this->wooService->getAllCustomers();
             // تأكد من أنها مصفوفة
             if (!is_array($customers)) {
                 $customers = [];
@@ -725,12 +726,19 @@ class Index extends Component
         // إزالة معرف العميل غير الصالح
         unset($orderData['customer_id']);
 
-        // إضافة بيانات ضيف افتراضية
+        // تفضيل guest_info القادمة من الواجهة إن توفرت
+        $guestInfo = $orderData['guest_info'] ?? [];
+        $firstName = $guestInfo['first_name'] ?? 'عميل';
+        $lastName = $guestInfo['last_name'] ?? 'POS';
+        $email = $guestInfo['email'] ?? ('guest-' . time() . '@pos.local');
+        $phone = $guestInfo['phone'] ?? '';
+
+        // إضافة بيانات ضيف
         $orderData['billing'] = [
-            'first_name' => 'عميل',
-            'last_name' => 'POS',
-            'email' => 'guest-' . time() . '@pos.local',
-            'phone' => '',
+            'first_name' => $firstName,
+            'last_name' => $lastName,
+            'email' => $email,
+            'phone' => $phone,
             'address_1' => '',
             'city' => '',
             'state' => '',
