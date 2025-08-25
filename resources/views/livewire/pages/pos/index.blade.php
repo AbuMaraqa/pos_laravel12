@@ -22,11 +22,13 @@
                 <p id="finalTotalDisplay" style="font-size: 60px" class="text-lg font-bold text-black">0 ₪</p>
             </div>
 
+            <div wire:ignore>
             <flux:select id="customerSelect" label="اختر العميل">
                 <option value="">جاري التحميل...</option>
             </flux:select>
+            </div>
 
-            <div id="shippingZonesContainer" class="space-y-4"></div>
+            <div wire:ignore id="shippingZonesContainer" class="space-y-4"></div>
 
             <flux:input id="orderNotes" label="ملاحظات إضافية" placeholder="اكتب أي ملاحظة (اختياري)"/>
 
@@ -70,7 +72,7 @@
 
                 <!-- Categories -->
                 <div class="mt-4">
-                    <div id="categoriesContainer" class="flex items-center gap-2 overflow-x-auto whitespace-nowrap">
+                    <div wire:ignore id="categoriesContainer" class="flex items-center gap-2 overflow-x-auto whitespace-nowrap">
                         <!-- التصنيفات سيتم تحميلها من IndexedDB عبر JS -->
                     </div>
                 </div>
@@ -81,7 +83,7 @@
 
                 <!-- Products Grid -->
                 <div class="mt-4 h-full bg-gray-200 p-4 rounded-lg shadow-md">
-                    <div id="productsContainer" class="grid grid-cols-4 gap-4 overflow-y-auto max-h-[600px]">
+                    <div wire:ignore id="productsContainer" class="grid grid-cols-4 gap-4 overflow-y-auto max-h-[600px]">
                         <!-- Loading indicator -->
                         <div id="searchLoadingIndicator" class="col-span-4 text-center py-8" style="display: none;">
                             <div
