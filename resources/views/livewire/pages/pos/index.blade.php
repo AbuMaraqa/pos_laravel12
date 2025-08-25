@@ -945,7 +945,14 @@
             showNotification(`تم إضافة "${itemToAdd.name}" للسلة`, 'success');
 
         } else if (product.type === 'variable') {
-            // منتج متغير - عرض المودال
+            // إذا توفر target_variation (نتيجة مسح باركود لمتغير) → أضفه مباشرة
+            if (product.target_variation && product.target_variation.id) {
+                addVariationToCartWithStockCheck(product.target_variation.id, product.target_variation.name, true);
+                showNotification(`تم إضافة "${product.target_variation.name}" للسلة`, 'success');
+                return;
+            }
+
+            // منتج متغير بدون target → عرض المودال لاختيار متغير
             if (product.variations && product.variations.length > 0) {
                 fetchVariationsAndShowModal(product);
             } else {
@@ -1796,9 +1803,11 @@
     document.addEventListener('livewire:init', () => {
         console.log("🔌 Livewire تم تهيئته");
 
-        // تخزين المنتجات
+        // تخزين المنتجات مع مؤشرات تحميل واضحة
         Livewire.on('store-products', (data) => {
             if (!db) return;
+            showLoader();
+            showSearchLoadingIndicator(true);
             const tx = db.transaction("products", "readwrite");
             const store = tx.objectStore("products");
 
@@ -1820,6 +1829,8 @@
                         console.log(`✅ تم تخزين ${processed} منتج`);
                         renderProductsFromIndexedDB(currentSearchTerm, selectedCategoryId);
                         showNotification(`تم تحميل ${processed} منتج بنجاح`, 'success');
+                        hideLoader();
+                        showSearchLoadingIndicator(false);
                     }
                 };
             });
