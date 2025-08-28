@@ -42,7 +42,7 @@
     {{-- المنتج الرئيسي --}}
     @for ($i = 0; $i < ($quantities['main'] ?? 1); $i++)
         <div class="barcode-box">
-            <div style="padding-top: 20px">
+            <div style="">
                 <img src="data:image/png;base64,{{ DNS1D::getBarcodePNG($product['id'], 'C39', 1.5, 60) }}" alt="barcode" />
             </div>
             <div class="barcode-label">{{ $product['name'] }}</div>
@@ -59,10 +59,10 @@
 
             @for ($j = 0; $j < $qty; $j++)
                 <div class="barcode-box">
-                    <div style="padding-top: 20px">
+                    <p style="font-size: 10px">{{ $variation['id'] }}</p>
+                    <div style="">
                         <img src="data:image/png;base64,{{ DNS1D::getBarcodePNG($variationId, 'C39', 1.5, 60) }}" alt="barcode" />
                     </div>
-                    <p>{{ $variation['id'] }}</p>
                     <div class="barcode-label">{{ $variation['name'] }}</div>
                 </div>
             @endfor
