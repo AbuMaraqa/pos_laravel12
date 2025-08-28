@@ -45,6 +45,9 @@
             <div style="padding-top: 20px">
                 <img src="data:image/png;base64,{{ DNS1D::getBarcodePNG($product['id'], 'C39', 1.5, 60) }}" alt="barcode" />
             </div>
+            <div>
+                {{ $product['id'] }}
+            </div>
             <div class="barcode-label">{{ $product['name'] }}</div>
         </div>
     @endfor

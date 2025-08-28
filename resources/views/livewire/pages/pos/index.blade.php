@@ -1995,6 +1995,18 @@
                 target_variation: product?.target_variation
             });
 
+            // لو كان النوع Variation مباشرة (نتيجة باركود متغير) خزّنه وأضفه مباشرة
+            if (product && product.type === 'variation') {
+                const txVar = db.transaction("products", "readwrite");
+                txVar.objectStore("products").put({ ...product, images: [], description: '' });
+                txVar.oncomplete = () => {
+                    addVariationToCartWithStockCheck(product.id, product.name || '', true);
+                    renderProductsFromIndexedDB(currentSearchTerm, selectedCategoryId);
+                    clearSearchInput();
+                };
+                return;
+            }
+
             // تنظيف المنتج من الصور قبل التخزين
             const cleanedProduct = {
                 ...product,
