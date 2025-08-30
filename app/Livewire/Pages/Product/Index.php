@@ -2,8 +2,10 @@
 
 namespace App\Livewire\Pages\Product;
 
+use App\Jobs\SyncProduct;
 use App\Services\WooCommerceService;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\Auth;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Isolate;
 use Livewire\Component;
@@ -125,6 +127,15 @@ class Index extends Component
     {
         $this->wooService->updateProductFeatured($productId, $featured);
         Toaster::success('تم تحديث المنتج بنجاح');
+    }
+
+    public function syncProduct()
+    {
+//        $subId = optional(Auth::user())->subscription_id;
+//        abort_unless($subId, 403, 'No subscription assigned to the current user.');
+//
+//
+        SyncProduct::dispatch((int) Auth::id());
     }
 
     public function openListVariationsModal($productId)

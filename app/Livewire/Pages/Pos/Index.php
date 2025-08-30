@@ -1,23 +1,23 @@
 <?php
 // ================================================
 // FILENAME: Index.php
-// الوصف: يحتوي على منطق Livewire لإدارة نقطة البيع
+// الوصف: يحتوي على منطق Livewire لإدارة نقطة البيع - نسخة قاعدة البيانات
 // ================================================
 
 namespace App\Livewire\Pages\Pos;
 
 use App\Enums\InventoryType;
 use App\Models\Inventory;
+use App\Models\Product;
+use App\Models\Store;
 use App\Services\WooCommerceService;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\On;
 use Livewire\Component;
-use Livewire\Livewire;
+use Illuminate\Support\Facades\DB;
 
 class Index extends Component
 {
-    // These properties will be used to initially populate IndexedDB
-    // but the actual UI interaction will be handled by JavaScript
     public string $search = '';
     public array $categories = [];
     public array $products = [];
@@ -25,64 +25,91 @@ class Index extends Component
     public array $productArray = [];
 
     public ?int $selectedCategory = 0;
-
     public array $cart = [];
 
     protected $wooService;
+
+    public function mount()
+    {
+        $this->categories = []; // إزالة الفئات مؤقتاً
+
+        // جلب جميع المنتجات النشطة بدلاً من تحديد عدد معين
+        $this->products = Product::where('status', 'active')->get()->toArray();
+    }
 
     public function boot(WooCommerceService $wooService)
     {
         $this->wooService = $wooService;
     }
 
-    public function mount()
-    {
-        $this->categories = $this->wooService->getCategories(['parent' => 0]);
-        $this->products = $this->wooService->getProducts(
-            [
-                'per_page' => 100,
-                'page' => 1,
-            ]
-        );
-    }
-
     public function selectCategory(?int $id = null)
     {
         $this->selectedCategory = $id;
 
-        $params = [];
-
-        if ($id !== null) {
-            $params['category'] = $id;
-        }
-
-        $this->products = $this->wooService->getProducts($params);
+        // تعطيل تصفية الفئات مؤقتاً - عرض جميع المنتجات
+        $this->products = Product::where('status', 'active')->get()->toArray();
     }
 
     public function syncProductsToIndexedDB()
     {
-        // Get fresh products from the API
-        $products = $this->wooService->getProducts(['per_page' => 100]);
+        // جلب جميع المنتجات النشطة للتخزين المحلي
+        $products = Product::where('status', 'active')
+            ->get()
+            ->map(function ($product) {
+                return [
+                    'id' => $product->id,
+                    'name' => $product->name,
+                    'price' => $product->price,
+                    'stock_quantity' => $product->stock_quantity,
+                    'stock_status' => $product->stock_status,
+                    'manage_stock' => $product->manage_stock,
+                    'sku' => $product->sku,
+                    'type' => $product->type,
+                    'status' => $product->status,
+                    'remote_wp_id' => $product->remote_wp_id,
+                    'variations' => $product->variations ? $product->variations->pluck('id')->toArray() : [],
+                    'images' => [] // يمكن إضافة الصور إذا كانت متاحة
+                ];
+            })
+            ->toArray();
+
         return $products;
     }
 
     public function syncCategoriesToIndexedDB()
     {
-        // Get fresh categories from the API
-        $categories = $this->wooService->getCategories();
-        return $categories;
+        // إزالة الفئات مؤقتاً - إرجاع مصفوفة فارغة
+        return [];
     }
 
     public function updatedSearch()
     {
-        $this->products = $this->wooService->getProducts(['per_page' => 100, 'search' => $this->search]);
+        $this->products = Product::where('name', 'like', '%' . $this->search . '%')
+            ->orWhere('sku', 'like', '%' . $this->search . '%')
+            ->orWhere('remote_wp_id', $this->search)
+            ->where('status', 'active')
+            ->get()
+            ->toArray();
     }
 
     public function openVariationsModal($id, string $type)
     {
         if ($type == 'variable') {
-            $this->variations = $this->wooService->getProductVariations($id);
-            $this->modal('variations-modal')->show();
+            $this->variations = Product::where('parent_id', $id)
+                ->where('type', 'variation')
+                ->get()
+                ->map(function ($variation) {
+                    return [
+                        'id' => $variation->id,
+                        'name' => $variation->name,
+                        'price' => $variation->price,
+                        'stock_quantity' => $variation->stock_quantity,
+                        'stock_status' => $variation->stock_status,
+                        'sku' => $variation->sku,
+                        'attributes' => json_decode($variation->attributes ?? '[]', true),
+                    ];
+                })
+                ->toArray();
         }
     }
 
@@ -95,131 +122,99 @@ class Index extends Component
         ];
     }
 
-    /**
-     * ✅ دالة جديدة للبحث عن منتج واحد من API
-     * هذه الدالة هي المسؤولة عن البحث عن المنتج الأب أو المتغير
-     */
     #[On('search-product-from-api')]
     public function searchProductFromAPI($searchTerm)
     {
         try {
-            logger()->info('Searching for product in API', ['term' => $searchTerm]);
+            logger()->info('Searching for product in database', ['term' => $searchTerm]);
 
             $foundProduct = null;
             $foundVariation = null;
-            $specificVariation = null; // 🔥 المتغير المحدد الذي تم العثور عليه
+            $specificVariation = null;
 
-            // ================================================
-            // ✅ البحث المباشر عن المتغير أولاً
-            // ================================================
-            try {
-                $searchResult = $this->wooService->getProduct($searchTerm);
+            // البحث المباشر عن المتغير أولاً باستخدام remote_wp_id
+            $searchResult = Product::where('remote_wp_id', $searchTerm)
+                ->orWhere('sku', $searchTerm)
+                ->first();
 
-                if ($searchResult && isset($searchResult['type']) && $searchResult['type'] === 'variation') {
-                    logger()->info('Variation found directly by ID/SKU', ['id' => $searchResult['id']]);
+            if ($searchResult && $searchResult->type === 'variation') {
+                logger()->info('Variation found directly by remote_wp_id/SKU', ['id' => $searchResult->id]);
 
-                    // 🔥 احفظ تفاصيل المتغير المحدد
-                    $specificVariation = $searchResult;
+                $specificVariation = [
+                    'id' => $searchResult->id,
+                    'name' => $searchResult->name,
+                    'price' => $searchResult->price,
+                    'stock_quantity' => $searchResult->stock_quantity,
+                    'stock_status' => $searchResult->stock_status,
+                    'sku' => $searchResult->sku,
+                    'type' => 'variation',
+                    'parent_id' => $searchResult->parent_id,
+                    'attributes' => json_decode($searchResult->attributes ?? '[]', true)
+                ];
 
-                    // 🔥 اجلب المنتج الأب للمتغير
-                    $parentProductId = $searchResult['parent_id'] ?? null;
-                    if ($parentProductId) {
-                        $foundProduct = $this->wooService->getProductsById($parentProductId);
-                        logger()->info('Parent product found for variation', [
-                            'variation_id' => $searchResult['id'],
-                            'parent_id' => $parentProductId
-                        ]);
-                    } else {
-                        // إذا لم نجد parent_id، ابحث عنه في جميع المنتجات المتغيرة
-                        $foundProduct = $this->findParentProductForVariation($searchResult['id']);
-                    }
-
+                // جلب المنتج الأب مع جميع متغيراته
+                if ($searchResult->parent_id) {
+                    $foundProduct = Product::find($searchResult->parent_id);
                     if ($foundProduct) {
-                        // ✅ إرسال المنتج مع المتغير المحدد مباشرة
+                        $foundProduct = $this->formatProductForResponseWithAllVariations($foundProduct, $specificVariation);
                         return $this->sendFoundProductWithSpecificVariation($foundProduct, $specificVariation, $searchTerm);
                     }
                 }
-            } catch (\Exception $e) {
-                logger()->warning('Direct variation search failed, continuing with product search', [
-                    'term' => $searchTerm,
-                    'error' => $e->getMessage()
-                ]);
             }
 
-            // ================================================
-            // إذا لم يتم العثور على متغير، ابحث عن المنتج الأب
-            // ================================================
-
-            // 1. البحث بالـ ID أولاً (للباركود)
-            if (is_numeric($searchTerm)) {
-                try {
-                    $foundProduct = $this->wooService->getProductsById($searchTerm);
-                    if ($foundProduct && isset($foundProduct['id'])) {
-                        logger()->info('Product found by ID', ['product_id' => $foundProduct['id']]);
-                    }
-                } catch (\Exception $e) {
-                    logger()->info('Product not found by ID', ['id' => $searchTerm]);
-                    $foundProduct = null;
-                }
-            }
-
-            // 2. إذا لم نجد بالـ ID، نبحث بالاسم أو SKU
+            // البحث عن المنتج الأب باستخدام remote_wp_id أولاً
             if (!$foundProduct) {
-                $searchResults = $this->wooService->getProducts([
-                    'search' => $searchTerm,
-                    'per_page' => 10
-                ]);
+                $foundProduct = Product::where('remote_wp_id', $searchTerm)
+                    ->orWhere('sku', $searchTerm)
+                    ->orWhere('name', 'like', '%' . $searchTerm . '%')
+                    ->where('status', 'active')
+                    ->first();
 
-                if (!empty($searchResults)) {
-                    $data = isset($searchResults['data']) ? $searchResults['data'] : $searchResults;
-                    if (count($data) > 0) {
-                        $foundProduct = $data[0];
-                        logger()->info('Product found by search', ['product_id' => $foundProduct['id']]);
-                    }
-                }
-
-                // البحث بـ SKU إذا لم نجد شيئاً
-                if (!$foundProduct) {
-                    $skuResults = $this->wooService->getProducts([
-                        'sku' => $searchTerm,
-                        'per_page' => 5
-                    ]);
-
-                    if (!empty($skuResults)) {
-                        $data = isset($skuResults['data']) ? $skuResults['data'] : $skuResults;
-                        if (count($data) > 0) {
-                            $foundProduct = $data[0];
-                            logger()->info('Product found by SKU', ['product_id' => $foundProduct['id']]);
-                        }
-                    }
+                // إذا وُجد المنتج، جلب جميع متغيراته
+                if ($foundProduct) {
+                    $foundProduct = $this->formatProductForResponseWithAllVariations($foundProduct);
                 }
             }
 
-            // 3. إذا لم نجد المنتج، نحاول البحث في المتغيرات
+            // البحث في المتغيرات إذا لم نجد المنتج باستخدام remote_wp_id
             if (!$foundProduct) {
-                $variationSearchResult = $this->searchInVariationsAPI($searchTerm);
+                $variation = Product::where('type', 'variation')
+                    ->where(function ($query) use ($searchTerm) {
+                        $query->where('remote_wp_id', $searchTerm)
+                            ->orWhere('sku', $searchTerm);
+                    })
+                    ->first();
 
-                if ($variationSearchResult) {
-                    $foundProduct = $variationSearchResult['parent_product'];
-                    $specificVariation = $variationSearchResult['found_variation'];
+                if ($variation && $variation->parent_id) {
+                    $specificVariation = [
+                        'id' => $variation->id,
+                        'name' => $variation->name,
+                        'price' => $variation->price,
+                        'stock_quantity' => $variation->stock_quantity,
+                        'stock_status' => $variation->stock_status,
+                        'sku' => $variation->sku,
+                        'type' => 'variation',
+                        'parent_id' => $variation->parent_id,
+                        'attributes' => json_decode($variation->attributes ?? '[]', true)
+                    ];
 
-                    logger()->info('Product found through variation search', [
-                        'parent_product_id' => $foundProduct['id'],
-                        'found_variation_id' => $specificVariation['id']
-                    ]);
+                    $foundProduct = Product::find($variation->parent_id);
+                    if ($foundProduct) {
+                        $foundProduct = $this->formatProductForResponseWithAllVariations($foundProduct, $specificVariation);
+                    }
                 }
             }
 
             if ($foundProduct) {
                 return $this->sendFoundProductWithSpecificVariation($foundProduct, $specificVariation, $searchTerm);
             } else {
-                logger()->info('Product not found in API', ['term' => $searchTerm]);
+                logger()->info('Product not found in database', ['term' => $searchTerm]);
                 $this->dispatch('product-not-found', ['term' => $searchTerm]);
                 return null;
             }
 
         } catch (\Exception $e) {
-            logger()->error('Error searching product from API', [
+            logger()->error('Error searching product from database', [
                 'term' => $searchTerm,
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
@@ -233,47 +228,59 @@ class Index extends Component
         }
     }
 
+    private function formatProductForResponseWithAllVariations($product, $specificVariation = null)
+    {
+        $formattedProduct = [
+            'id' => $product->id,
+            'name' => $product->name,
+            'price' => $product->price,
+            'stock_quantity' => $product->stock_quantity,
+            'stock_status' => $product->stock_status,
+            'manage_stock' => $product->manage_stock,
+            'sku' => $product->sku,
+            'type' => $product->type,
+            'status' => $product->status,
+            'remote_wp_id' => $product->remote_wp_id,
+            'images' => []
+        ];
+
+        // جلب جميع المتغيرات بغض النظر عن نوع المنتج
+        $variations = Product::where('parent_id', $product->id)
+            ->where('type', 'variation')
+            ->get();
+
+        if ($variations->count() > 0) {
+            $formattedProduct['variations'] = $variations->pluck('id')->toArray();
+            $formattedProduct['variations_full'] = $variations->map(function ($variation) {
+                return [
+                    'id' => $variation->id,
+                    'name' => $variation->name,
+                    'price' => $variation->price,
+                    'stock_quantity' => $variation->stock_quantity,
+                    'stock_status' => $variation->stock_status,
+                    'sku' => $variation->sku,
+                    'type' => 'variation',
+                    'product_id' => $variation->parent_id,
+                    'attributes' => json_decode($variation->attributes ?? '[]', true)
+                ];
+            })->toArray();
+
+            // تحديث نوع المنتج إلى variable إذا كان له متغيرات
+            $formattedProduct['type'] = 'variable';
+
+            // إضافة المتغير المحدد إذا وجد
+            if ($specificVariation) {
+                $formattedProduct['target_variation'] = $specificVariation;
+            }
+        }
+
+        return $formattedProduct;
+    }
+
     private function sendFoundProductWithSpecificVariation($foundProduct, $specificVariation, $searchTerm)
     {
         try {
-            // ✅ إذا كان المنتج متغير، اجلب متغيراته كاملة
-            if ($foundProduct['type'] === 'variable' && !empty($foundProduct['variations'])) {
-                $variationsData = $this->fetchCompleteVariations($foundProduct['id'], $foundProduct['variations']);
-
-                // إضافة المتغيرات للمنتج
-                $foundProduct['variations_full'] = $variationsData['variations_full'];
-
-                // 🔥 إذا تم العثور على متغير محدد، ضعه في المقدمة
-                if ($specificVariation) {
-                    $foundProduct['target_variation'] = [
-                        'id' => $specificVariation['id'],
-                        'name' => $this->generateVariationName($specificVariation),
-                        'price' => $specificVariation['price'] ?? $specificVariation['regular_price'] ?? 0,
-                        'sku' => $specificVariation['sku'] ?? '',
-                        'attributes' => $specificVariation['attributes'] ?? [],
-                        'stock_status' => $specificVariation['stock_status'] ?? 'instock',
-                        'stock_quantity' => $specificVariation['stock_quantity'] ?? 0,
-                        'type' => 'variation',
-                        'product_id' => $foundProduct['id']
-                    ];
-
-                    logger()->info('Product prepared with target variation', [
-                        'product_id' => $foundProduct['id'],
-                        'target_variation_id' => $specificVariation['id'],
-                        'search_term' => $searchTerm
-                    ]);
-                }
-
-                // إرسال المتغيرات للتخزين في IndexedDB
-                if (!empty($variationsData['for_storage'])) {
-                    $this->dispatch('store-variations', [
-                        'product_id' => $foundProduct['id'],
-                        'variations' => $variationsData['for_storage'],
-                    ]);
-                }
-            }
-
-            // إرسال المنتج الموجود للـ JavaScript
+            // إرسال المنتج للـ JavaScript
             $this->dispatch('product-found-from-api', [
                 'product' => $foundProduct,
                 'search_term' => $searchTerm,
@@ -291,182 +298,52 @@ class Index extends Component
         }
     }
 
-    private function findParentProductForVariation($variationId)
-    {
-        try {
-            // البحث في المنتجات المتغيرة للعثور على المنتج الأب
-            $variableProducts = $this->wooService->getProducts([
-                'type' => 'variable',
-                'per_page' => 100,
-                'status' => 'publish'
-            ]);
-
-            $products = isset($variableProducts['data']) ? $variableProducts['data'] : $variableProducts;
-
-            foreach ($products as $product) {
-                if (!empty($product['variations']) && in_array($variationId, $product['variations'])) {
-                    logger()->info('Parent product found for variation', [
-                        'variation_id' => $variationId,
-                        'parent_product_id' => $product['id']
-                    ]);
-                    return $product;
-                }
-            }
-
-            logger()->warning('Parent product not found for variation', ['variation_id' => $variationId]);
-            return null;
-        } catch (\Exception $e) {
-            logger()->error('Error finding parent product for variation', [
-                'variation_id' => $variationId,
-                'error' => $e->getMessage()
-            ]);
-            return null;
-        }
-    }
-
-
-    private function fetchCompleteVariations($productId, $variationIds)
-    {
-        $variationsForDisplay = [];
-        $variationsForStorage = [];
-
-        try {
-            // جلب تفاصيل كل متغير
-            foreach ($variationIds as $variationId) {
-                $variation = $this->wooService->getProductsById($variationId);
-
-                if ($variation) {
-                    // إضافة product_id للمتغير
-                    $variation['product_id'] = $productId;
-
-                    // تحضير للعرض (مع اسم محسن)
-                    $displayVariation = [
-                        'id' => $variation['id'],
-                        'name' => $this->generateVariationName($variation),
-                        'price' => $variation['price'] ?? 0,
-                        'sku' => $variation['sku'] ?? '',
-                        'images' => $variation['images'] ?? [],
-                        'attributes' => $variation['attributes'] ?? [],
-                        'stock_status' => $variation['stock_status'] ?? 'instock',
-                        'stock_quantity' => $variation['stock_quantity'] ?? 0,
-                        'type' => 'variation',
-                        'product_id' => $productId
-                    ];
-
-                    $variationsForDisplay[] = $displayVariation;
-                    $variationsForStorage[] = $variation; // البيانات الكاملة للتخزين
-                }
-            }
-
-            logger()->info('Fetched complete variations', [
-                'product_id' => $productId,
-                'variations_count' => count($variationsForDisplay)
-            ]);
-
-        } catch (\Exception $e) {
-            logger()->error('Error fetching complete variations', [
-                'product_id' => $productId,
-                'error' => $e->getMessage()
-            ]);
-        }
-
-        return [
-            'variations_full' => $variationsForDisplay,
-            'for_storage' => $variationsForStorage
-        ];
-    }
-
-    private function generateVariationName($variation)
-    {
-        $baseName = $variation['name'] ?? 'منتج متغير';
-
-        if (empty($variation['attributes'])) {
-            return $baseName;
-        }
-
-        $attributeParts = [];
-        foreach ($variation['attributes'] as $attribute) {
-            if (!empty($attribute['option'])) {
-                $attributeParts[] = $attribute['option'];
-            }
-        }
-
-        if (!empty($attributeParts)) {
-            return $baseName . ' - ' . implode(', ', $attributeParts);
-        }
-
-        return $baseName;
-    }
-
-    /**
-     * ✅ دالة البحث عن المنتج الأب بناءً على المتغير (Variation)
-     */
-    private function searchInVariationsAPI($searchTerm)
-    {
-        try {
-            // جلب المنتجات المتغيرة
-            $variableProducts = $this->wooService->getProducts([
-                'type' => 'variable',
-                'per_page' => 50,
-                'status' => 'publish'
-            ]);
-
-            $products = isset($variableProducts['data']) ? $variableProducts['data'] : $variableProducts;
-
-            foreach ($products as $product) {
-                if (!empty($product['variations'])) {
-                    // جلب تفاصيل المتغيرات
-                    $variations = $this->wooService->getProductVariations($product['id']);
-
-                    foreach ($variations as $variation) {
-                        // فحص SKU أو ID للمتغير
-                        $skuMatch = !empty($variation['sku']) && strcasecmp($variation['sku'], $searchTerm) === 0;
-                        $idMatch = ctype_digit($searchTerm) && $variation['id'] == (int)$searchTerm;
-
-                        if ($skuMatch || $idMatch) {
-                            logger()->info('Variation found in search', [
-                                'parent_product_id' => $product['id'],
-                                'variation_id' => $variation['id'],
-                                'variation_sku' => $variation['sku'] ?? 'no_sku'
-                            ]);
-
-                            return [
-                                'parent_product' => $product,
-                                'found_variation' => $variation
-                            ];
-                        }
-                    }
-                }
-            }
-
-            return null;
-        } catch (\Exception $e) {
-            logger()->error('Error searching in variations via API', [
-                'term' => $searchTerm,
-                'error' => $e->getMessage()
-            ]);
-            return null;
-        }
-    }
-
     #[On('fetch-products-from-api')]
     public function fetchProductsFromAPI()
     {
-        $products = $this->wooService->getProducts(['per_page' => 15])['data'];
+        // جلب جميع المنتجات النشطة بدلاً من تحديد عدد معين
+        $products = Product::where('status', 'active')->get();
+
         $allProducts = [];
+
         foreach ($products as $product) {
-            $allProducts[] = $product;
+            $formattedProduct = [
+                'id' => $product->id,
+                'name' => $product->name,
+                'price' => $product->price,
+                'stock_quantity' => $product->stock_quantity,
+                'stock_status' => $product->stock_status,
+                'manage_stock' => $product->manage_stock,
+                'sku' => $product->sku,
+                'type' => $product->type,
+                'status' => $product->status,
+                'remote_wp_id' => $product->remote_wp_id,
+                'images' => []
+            ];
 
-            if ($product['type'] === 'variable' && !empty($product['variations'])) {
-                // اجلب تفاصيل كل variation
-                foreach ($product['variations'] as $variationId) {
-                    $variation = $this->wooService->getProduct($variationId);
+            $allProducts[] = $formattedProduct;
 
-                    if ($variation) {
-                        // ضع علاقة للمنتج الأب إن أردت تتبعها لاحقًا
-                        $variation['product_id'] = $product['id'];
-                        $allProducts[] = $variation;
-                    }
+            // إضافة المتغيرات إذا كان المنتج متغير
+            if ($product->type === 'variable') {
+                $variations = Product::where('parent_id', $product->id)
+                    ->where('type', 'variation')
+                    ->get();
+
+                foreach ($variations as $variation) {
+                    $formattedVariation = [
+                        'id' => $variation->id,
+                        'name' => $variation->name,
+                        'price' => $variation->price,
+                        'stock_quantity' => $variation->stock_quantity,
+                        'stock_status' => $variation->stock_status,
+                        'sku' => $variation->sku,
+                        'type' => 'variation',
+                        'product_id' => $product->id,
+                        'parent_id' => $product->id,
+                        'attributes' => json_decode($variation->attributes ?? '[]', true)
+                    ];
+
+                    $allProducts[] = $formattedVariation;
                 }
             }
         }
@@ -477,53 +354,100 @@ class Index extends Component
     #[On('fetch-categories-from-api')]
     public function fetchCategoriesFromAPI()
     {
-        $categories = $this->wooService->getCategories(['parent' => 0]);
-        $this->dispatch('store-categories', categories: $categories);
+        // إزالة الفئات مؤقتاً - إرسال مصفوفة فارغة
+        $this->dispatch('store-categories', categories: []);
     }
 
     #[On('fetch-all-variations')]
     public function fetchAllVariations()
     {
-        $page = 1;
-        do {
-            $response = $this->wooService->getVariableProductsPaginated($page);
-            $products = $response['data'] ?? $response;
-            $productId = $id ?? $this->productId ?? null;
+        $variableProducts = Product::where('type', 'variable')
+            ->where('status', 'active')
+            ->with('variations')
+            ->get();
 
-            foreach ($products as $product) {
-                $variations = $this->wooService->getVariationsByProductId($product['id']);
+        foreach ($variableProducts as $product) {
+            $variations = $product->variations->map(function ($variation) use ($product) {
+                return [
+                    'id' => $variation->id,
+                    'name' => $variation->name,
+                    'price' => $variation->price,
+                    'stock_quantity' => $variation->stock_quantity,
+                    'stock_status' => $variation->stock_status,
+                    'sku' => $variation->sku,
+                    'type' => 'variation',
+                    'product_id' => $product->id,
+                    'parent_id' => $product->id,
+                    'attributes' => json_decode($variation->attributes ?? '[]', true)
+                ];
+            })->toArray();
 
-                // أضف معرف المنتج لكل متغير
-                foreach ($variations as &$v) {
-                    $v['product_id'] = $product['id'];
-                }
-
-
-                // إرسال إلى JavaScript لتخزينهم
-                $this->dispatch('store-variations', [
-                    'product_id' => $productId,
-                    'variations' => $variations,
-                ]);
-            }
-
-            $page++;
-            $hasMore = isset($response['total_pages']) && $page <= $response['total_pages'];
-        } while ($hasMore);
+            // إرسال إلى JavaScript لتخزينهم
+            $this->dispatch('store-variations', [
+                'product_id' => $product->id,
+                'variations' => $variations,
+            ]);
+        }
     }
 
     #[On('fetch-customers-from-api')]
     public function fetchCustomersFromAPI()
     {
         try {
-            // جلب جميع العملاء بترقيم الصفحات
+            // جلب العملاء من WooCommerce API
+            if (!$this->wooService) {
+                logger()->warning('WooCommerce service not available');
+                $this->dispatch('store-customers', customers: []);
+                return;
+            }
+
+            // جلب جميع العملاء من WooCommerce
             $customers = $this->wooService->getAllCustomers();
+
             // تأكد من أنها مصفوفة
             if (!is_array($customers)) {
                 $customers = [];
             }
-            $this->dispatch('store-customers', customers: $customers);
+
+            // تنسيق بيانات العملاء
+            $formattedCustomers = [];
+            foreach ($customers as $customer) {
+                if (isset($customer['id']) && !empty($customer['first_name'] . $customer['last_name'])) {
+                    $formattedCustomers[] = [
+                        'id' => $customer['id'],
+                        'first_name' => $customer['first_name'] ?? '',
+                        'last_name' => $customer['last_name'] ?? '',
+                        'email' => $customer['email'] ?? '',
+                        'phone' => $customer['billing']['phone'] ?? '',
+                        'billing' => [
+                            'phone' => $customer['billing']['phone'] ?? '',
+                            'address_1' => $customer['billing']['address_1'] ?? '',
+                            'city' => $customer['billing']['city'] ?? '',
+                            'state' => $customer['billing']['state'] ?? '',
+                            'postcode' => $customer['billing']['postcode'] ?? '',
+                            'country' => $customer['billing']['country'] ?? 'PS'
+                        ],
+                        'shipping' => [
+                            'first_name' => $customer['shipping']['first_name'] ?? $customer['first_name'] ?? '',
+                            'last_name' => $customer['shipping']['last_name'] ?? $customer['last_name'] ?? '',
+                            'address_1' => $customer['shipping']['address_1'] ?? $customer['billing']['address_1'] ?? '',
+                            'city' => $customer['shipping']['city'] ?? $customer['billing']['city'] ?? '',
+                            'state' => $customer['shipping']['state'] ?? $customer['billing']['state'] ?? '',
+                            'postcode' => $customer['shipping']['postcode'] ?? $customer['billing']['postcode'] ?? '',
+                            'country' => $customer['shipping']['country'] ?? $customer['billing']['country'] ?? 'PS'
+                        ]
+                    ];
+                }
+            }
+
+            logger()->info('Fetched customers from WooCommerce', [
+                'total_customers' => count($formattedCustomers)
+            ]);
+
+            $this->dispatch('store-customers', customers: $formattedCustomers);
+
         } catch (\Throwable $e) {
-            logger()->error('Failed to fetch customers', [
+            logger()->error('Failed to fetch customers from WooCommerce', [
                 'message' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
@@ -538,7 +462,6 @@ class Index extends Component
 
         if (!$productId) return;
 
-        // فرضًا تضيف إلى this->cart[]
         $this->cart[] = [
             'id' => $productId,
             'name' => $product['name'] ?? '',
@@ -559,150 +482,115 @@ class Index extends Component
             ]);
 
             // التحقق من البيانات الأساسية
-            if (empty($orderData['customer_id'])) {
-                throw new \Exception('معرف العميل مطلوب');
+            if (empty($orderData['customer_id']) && empty($orderData['guest_info'])) {
+                throw new \Exception('معرف العميل أو بيانات الضيف مطلوبة');
             }
 
             if (empty($orderData['line_items']) || !is_array($orderData['line_items'])) {
                 throw new \Exception('يجب إضافة منتجات للطلب');
             }
 
-            // ✅ التحقق من صحة معرف العميل
-            $customerId = (int) $orderData['customer_id'];
-            logger()->info('Checking customer ID', ['customer_id' => $customerId]);
+            DB::beginTransaction();
 
-            try {
-                // محاولة جلب بيانات العميل من WooCommerce
-                $customer = $this->wooService->getCustomerById($customerId);
-
-                if (!$customer || !isset($customer['id'])) {
-                    logger()->warning('Customer not found in WooCommerce, creating guest order', [
-                        'attempted_customer_id' => $customerId
-                    ]);
-
-                    // إنشاء طلب كضيف بدلاً من رفض الطلب
-                    $orderData = $this->createGuestOrder($orderData);
-                } else {
-                    logger()->info('Customer found, adding billing data', [
-                        'customer_id' => $customer['id'],
-                        'customer_email' => $customer['email'] ?? 'no_email'
-                    ]);
-
-                    // إضافة بيانات العميل الموجود
-                    $orderData['billing'] = [
-                        'first_name' => $customer['first_name'] ?? 'عميل',
-                        'last_name' => $customer['last_name'] ?? 'POS',
-                        'email' => $customer['email'] ?? 'pos@example.com',
-                        'phone' => $customer['billing']['phone'] ?? '',
-                        'address_1' => $customer['billing']['address_1'] ?? '',
-                        'city' => $customer['billing']['city'] ?? '',
-                        'state' => $customer['billing']['state'] ?? '',
-                        'postcode' => $customer['billing']['postcode'] ?? '',
-                        'country' => $customer['billing']['country'] ?? 'PS',
-                    ];
-
-                    $orderData['shipping'] = [
-                        'first_name' => $customer['shipping']['first_name'] ?? $customer['first_name'] ?? 'عميل',
-                        'last_name' => $customer['shipping']['last_name'] ?? $customer['last_name'] ?? 'POS',
-                        'address_1' => $customer['shipping']['address_1'] ?? $customer['billing']['address_1'] ?? '',
-                        'city' => $customer['shipping']['city'] ?? $customer['billing']['city'] ?? '',
-                        'state' => $customer['shipping']['state'] ?? $customer['billing']['state'] ?? '',
-                        'postcode' => $customer['shipping']['postcode'] ?? $customer['billing']['postcode'] ?? '',
-                        'country' => $customer['shipping']['country'] ?? $customer['billing']['country'] ?? 'PS',
-                    ];
-                }
-
-            } catch (\Exception $e) {
-                logger()->warning('Failed to fetch customer, creating guest order', [
-                    'customer_id' => $customerId,
-                    'error' => $e->getMessage()
-                ]);
-
-                // إنشاء طلب كضيف
-                $orderData = $this->createGuestOrder($orderData);
-            }
-
-            // إعداد بيانات الطلب الأساسية
-            $orderData['payment_method'] = $orderData['payment_method'] ?? 'cod';
-            $orderData['payment_method_title'] = $orderData['payment_method_title'] ?? 'الدفع عند الاستلام';
-            $orderData['set_paid'] = $orderData['set_paid'] ?? false;
-            $orderData['created_via'] = 'pos';
-            $orderData['status'] = $orderData['status'] ?? 'processing';
-
-            // إضافة metadata
-            $orderData['meta_data'] = array_merge($orderData['meta_data'] ?? [], [
-                ['key' => '_pos_order', 'value' => 'true'],
-                ['key' => '_order_source', 'value' => 'POS System'],
-                ['key' => '_pos_user_id', 'value' => auth()->id()],
-                ['key' => '_pos_timestamp', 'value' => now()->toISOString()],
+            // إنشاء الطلب
+            $orderRecord = DB::table('orders')->insertGetId([
+                'customer_id' => $orderData['customer_id'] ?? null,
+                'status' => $orderData['status'] ?? 'processing',
+                'total' => $this->calculateOrderTotal($orderData['line_items'], $orderData['shipping_lines'] ?? []),
+                'payment_method' => $orderData['payment_method'] ?? 'cod',
+                'payment_method_title' => $orderData['payment_method_title'] ?? 'الدفع عند الاستلام',
+                'customer_note' => $orderData['customer_note'] ?? '',
+                'created_via' => 'pos',
+                'user_id' => auth()->id(),
+                'created_at' => now(),
+                'updated_at' => now()
             ]);
 
-            // تنظيف بيانات المنتجات
-            foreach ($orderData['line_items'] as &$item) {
-                $item['quantity'] = max(1, intval($item['quantity'] ?? 1));
+            // إضافة عناصر الطلب
+            foreach ($orderData['line_items'] as $item) {
+                DB::table('order_items')->insert([
+                    'order_id' => $orderRecord,
+                    'product_id' => $item['product_id'],
+                    'quantity' => $item['quantity'],
+                    'price' => $item['price'],
+                    'total' => $item['price'] * $item['quantity'],
+                    'created_at' => now(),
+                    'updated_at' => now()
+                ]);
 
-                if (empty($item['price'])) {
-                    $item['price'] = 0;
+                // تحديث المخزون
+                $product = Product::find($item['product_id']);
+                if ($product && $product->manage_stock) {
+                    $newStock = max(0, $product->stock_quantity - $item['quantity']);
+                    $product->update([
+                        'stock_quantity' => $newStock,
+                        'stock_status' => $newStock > 0 ? 'instock' : 'outofstock'
+                    ]);
+                }
+
+                // إنشاء سجل المخزون
+                Inventory::create([
+                    'store_id' => 1,
+                    'product_id' => $item['product_id'],
+                    'quantity' => -$item['quantity'], // سالب للإشارة للخروج
+                    'type' => InventoryType::OUTPUT,
+                    'user_id' => auth()->id(),
+                    'notes' => 'POS Order #' . $orderRecord,
+                ]);
+            }
+
+            // إضافة معلومات الشحن
+            if (!empty($orderData['shipping_lines'])) {
+                foreach ($orderData['shipping_lines'] as $shipping) {
+                    DB::table('order_shipping')->insert([
+                        'order_id' => $orderRecord,
+                        'method_id' => $shipping['method_id'],
+                        'method_title' => $shipping['method_title'],
+                        'total' => $shipping['total'],
+                        'created_at' => now()
+                    ]);
                 }
             }
 
-            logger()->info('Final order data prepared', [
-                'has_customer_id' => isset($orderData['customer_id']),
-                'customer_id' => $orderData['customer_id'] ?? 'guest',
-                'line_items_count' => count($orderData['line_items']),
-                'has_billing' => isset($orderData['billing']),
-                'has_shipping' => isset($orderData['shipping'])
-            ]);
-
-            // إرسال الطلب إلى WooCommerce
-            logger()->info('Sending order to WooCommerce API...');
-
-            $createdOrder = $this->wooService->createOrder($orderData);
-
-            if (!$createdOrder || !isset($createdOrder['id'])) {
-                logger()->error('WooCommerce returned invalid response', [
-                    'response' => $createdOrder
-                ]);
-                throw new \Exception('فشل في إنشاء الطلب في WooCommerce');
+            // إضافة البيانات الإضافية
+            if (!empty($orderData['meta_data'])) {
+                foreach ($orderData['meta_data'] as $meta) {
+                    DB::table('order_meta')->insert([
+                        'order_id' => $orderRecord,
+                        'meta_key' => $meta['key'],
+                        'meta_value' => $meta['value'],
+                        'created_at' => now()
+                    ]);
+                }
             }
+
+            DB::commit();
+
+            $createdOrder = [
+                'id' => $orderRecord,
+                'number' => $orderRecord,
+                'status' => $orderData['status'] ?? 'processing',
+                'total' => $this->calculateOrderTotal($orderData['line_items'], $orderData['shipping_lines'] ?? [])
+            ];
 
             logger()->info('Order created successfully', [
-                'order_id' => $createdOrder['id'],
-                'order_number' => $createdOrder['number'] ?? $createdOrder['id'],
+                'order_id' => $orderRecord,
                 'status' => $createdOrder['status']
             ]);
-
-            // تحديث المخزون
-            foreach ($orderData['line_items'] as $item) {
-                try {
-                    Inventory::create([
-                        'store_id' => 1,
-                        'product_id' => $item['product_id'],
-                        'quantity' => $item['quantity'],
-                        'type' => InventoryType::OUTPUT,
-                        'user_id' => auth()->id(),
-                        'notes' => 'POS Order #' . $createdOrder['id'],
-                        'created_at' => now(),
-                    ]);
-                } catch (\Exception $e) {
-                    logger()->error('Failed to create inventory record', [
-                        'product_id' => $item['product_id'],
-                        'error' => $e->getMessage()
-                    ]);
-                }
-            }
 
             // إرسال استجابة النجاح
             $this->dispatch('order-success', [
                 'order' => $createdOrder,
                 'message' => 'تم إنشاء الطلب بنجاح',
-                'order_id' => $createdOrder['id'],
-                'order_number' => $createdOrder['number'] ?? $createdOrder['id']
+                'order_id' => $orderRecord,
+                'order_number' => $orderRecord
             ]);
 
             return $createdOrder;
 
         } catch (\Exception $e) {
+            DB::rollBack();
+
             logger()->error('Order creation failed', [
                 'error_message' => $e->getMessage(),
                 'error_code' => $e->getCode(),
@@ -719,46 +607,19 @@ class Index extends Component
         }
     }
 
-    private function createGuestOrder(array $orderData): array
+    private function calculateOrderTotal($lineItems, $shippingLines = [])
     {
-        logger()->info('Creating guest order');
+        $subtotal = 0;
+        foreach ($lineItems as $item) {
+            $subtotal += $item['price'] * $item['quantity'];
+        }
 
-        // إزالة معرف العميل غير الصالح
-        unset($orderData['customer_id']);
+        $shippingTotal = 0;
+        foreach ($shippingLines as $shipping) {
+            $shippingTotal += floatval($shipping['total']);
+        }
 
-        // تفضيل guest_info القادمة من الواجهة إن توفرت
-        $guestInfo = $orderData['guest_info'] ?? [];
-        $firstName = $guestInfo['first_name'] ?? 'عميل';
-        $lastName = $guestInfo['last_name'] ?? 'POS';
-        $email = $guestInfo['email'] ?? ('guest-' . time() . '@pos.local');
-        $phone = $guestInfo['phone'] ?? '';
-
-        // إضافة بيانات ضيف
-        $orderData['billing'] = [
-            'first_name' => $firstName,
-            'last_name' => $lastName,
-            'email' => $email,
-            'phone' => $phone,
-            'address_1' => '',
-            'city' => '',
-            'state' => '',
-            'postcode' => '',
-            'country' => 'PS',
-        ];
-
-        $orderData['shipping'] = $orderData['billing'];
-
-        // إضافة معلومة أنه طلب ضيف
-        $orderData['meta_data'] = array_merge($orderData['meta_data'] ?? [], [
-            ['key' => '_pos_guest_order', 'value' => 'true'],
-            ['key' => '_original_customer_id', 'value' => $orderData['customer_id'] ?? 'unknown']
-        ]);
-
-        logger()->info('Guest order prepared', [
-            'billing_email' => $orderData['billing']['email']
-        ]);
-
-        return $orderData;
+        return $subtotal + $shippingTotal;
     }
 
     #[On('fetch-shipping-methods-from-api')]

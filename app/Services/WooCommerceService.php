@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Subscription;
+use App\Models\User;
 use GuzzleHttp\Client;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Curl;
@@ -18,9 +19,10 @@ class WooCommerceService
     protected string $consumerKey;
     protected string $consumerSecret;
 
-    public function __construct()
+    public function __construct(public ?int $userId = null)
     {
-        $user = Auth::user();
+        $user = Auth::user() ?? User::find($this->userId);
+        Log::warning($user);
         if (!$user || !$user->subscription_id) {
             abort(403, "المستخدم غير مسجل الدخول أو لا يملك اشتراك");
         }
@@ -53,6 +55,38 @@ class WooCommerceService
             'timeout' => 30.0,
             'verify' => false // تجاهل شهادة SSL في بيئة التطوير
         ]);
+    }
+
+    public static function fromSubscriptionId(int $subscriptionId): self
+    {
+        $subscription = Subscription::findOrFail($subscriptionId);
+
+        if (!$subscription->consumer_key || !$subscription->consumer_secret) {
+            abort(403, "لا توجد مفاتيح WooCommerce صالحة");
+        }
+
+        $self = new self();
+        $self->baseUrl       = rtrim(env('WOOCOMMERCE_STORE_URL', 'https://veronastores.com/ar'), '/');
+        $self->consumerKey   = $subscription->consumer_key;
+        $self->consumerSecret= $subscription->consumer_secret;
+
+        $self->client = new Client([
+            'base_uri' => $self->baseUrl . '/wp-json/wc/v3/',
+            'auth'     => [$self->consumerKey, $self->consumerSecret],
+            'timeout'  => 15.0,
+            'verify'   => false, // للتطوير فقط
+        ]);
+
+        // WordPress client (لو بتحتاجه)
+        $credentials = base64_encode(env('WORDPRESS_USERNAME') . ':' . env('WORDPRESS_APPLICATION_PASSWORD'));
+        $self->wpClient = new Client([
+            'base_uri' => $self->baseUrl . '/wp-json/wp/v2/',
+            'headers'  => ['Authorization' => 'Basic ' . $credentials],
+            'timeout'  => 30.0,
+            'verify'   => false,
+        ]);
+
+        return $self;
     }
 
     public function get(string $endpoint, array $query = []): array

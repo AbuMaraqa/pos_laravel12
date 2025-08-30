@@ -5,10 +5,11 @@ namespace App\Livewire\Pages\Inventory;
 use App\Enums\InventoryType;
 use App\Models\Inventory;
 use App\Models\Store;
-use App\Services\WooCommerceService;
+use App\Models\Product; // إضافة موديل المنتج
 use Livewire\Component;
 use Exception;
 use Masmerise\Toaster\Toaster;
+use Illuminate\Support\Facades\DB;
 
 class Index extends Component
 {
@@ -16,21 +17,9 @@ class Index extends Component
     public $scannedProducts = [];
     public $error = '';
     public $success = '';
-    protected $woocommerce;
     public $pendingProducts = [];
     public $stores;
     public $storeId = null;
-
-    public function boot()
-    {
-        try {
-            $this->woocommerce = app(WooCommerceService::class);
-        } catch (Exception $e) {
-            $this->error = 'خطأ في الاتصال بالمتجر';
-            Toaster::error('خطأ في الاتصال بالمتجر');
-            logger()->error('WooCommerce Service Error: ' . $e->getMessage());
-        }
-    }
 
     public function mount()
     {
@@ -50,37 +39,23 @@ class Index extends Component
             $successCount = 0;
             $failCount = 0;
 
-            foreach ($this->scannedProducts as $productId => $product) {
+            DB::beginTransaction();
+
+            foreach ($this->scannedProducts as $productId => $productData) {
                 try {
-                    // تحديد المسار الصحيح للمتغير
-                    if ($product['is_variation'] && isset($product['parent_id']) && $product['parent_id'] > 0) {
-                        $endpoint = "products/{$product['parent_id']}/variations/{$productId}";
-                    } else {
-                        $endpoint = "products/{$productId}";
+                    // العثور على المنتج في قاعدة البيانات
+                    $product = Product::find($productId);
+
+                    if (!$product) {
+                        throw new Exception('المنتج غير موجود');
                     }
 
-                    // الحصول على بيانات المنتج الحالية
-                    $currentProduct = $this->woocommerce->get($endpoint);
-
-                    logger()->info('Current product data:', [
-                        'product_id' => $productId,
-                        'is_variation' => $product['is_variation'],
-                        'parent_id' => $product['parent_id'] ?? null,
-                        'endpoint' => $endpoint,
-                        'response' => $currentProduct
-                    ]);
-
-                    if (!$currentProduct || isset($currentProduct['error'])) {
-                        $errorMessage = isset($currentProduct['error']) ? $currentProduct['error'] : 'المنتج غير موجود';
-                        Toaster::error($errorMessage);
-                        throw new Exception($errorMessage);
-                    }
-
-                    $currentStock = (int) ($currentProduct['stock_quantity'] ?? 0);
-                    $requestedQuantity = (int) $product['quantity'];
+                    $currentStock = (int) $product->stock_quantity;
+                    $requestedQuantity = (int) $productData['quantity'];
                     $newStock = $currentStock + $requestedQuantity;
 
                     logger()->info('Stock calculation:', [
+                        'product_id' => $productId,
                         'current_stock' => $currentStock,
                         'requested_quantity' => $requestedQuantity,
                         'new_stock' => $newStock
@@ -91,19 +66,13 @@ class Index extends Component
                         throw new Exception("الكمية المطلوبة ({$requestedQuantity}) أكبر من المخزون المتوفر ({$currentStock})");
                     }
 
-                    // تحديث المخزون
-                    $updateData = [
+                    // تحديث المخزون في قاعدة البيانات
+                    $product->update([
                         'stock_quantity' => $newStock,
                         'manage_stock' => true
-                    ];
-
-                    logger()->info('Sending update request:', [
-                        'endpoint' => $endpoint,
-                        'update_data' => $updateData
                     ]);
 
-                    $response = $this->woocommerce->put($endpoint, $updateData);
-
+                    // إنشاء سجل في جدول المخزون
                     Inventory::create([
                         'product_id' => $productId,
                         'quantity' => $requestedQuantity,
@@ -112,16 +81,10 @@ class Index extends Component
                         'type' => InventoryType::INPUT
                     ]);
 
-                    logger()->info('Update response:', [
+                    logger()->info('Product updated successfully:', [
                         'product_id' => $productId,
-                        'response' => $response
+                        'new_stock' => $newStock
                     ]);
-
-                    if (!$response || isset($response['error'])) {
-                        $errorMessage = isset($response['error']) ? $response['error'] : 'فشل تحديث المخزون';
-                        Toaster::error($errorMessage);
-                        throw new Exception($errorMessage);
-                    }
 
                     $successCount++;
                 } catch (Exception $e) {
@@ -130,28 +93,30 @@ class Index extends Component
                     Toaster::error('خطأ في تحديث المنتج: ' . $e->getMessage());
                     logger()->error("Failed to update product {$productId}", [
                         'error' => $e->getMessage(),
-                        'product' => $product,
+                        'product' => $productData,
                         'trace' => $e->getTraceAsString()
                     ]);
                 }
             }
 
             if ($failCount > 0) {
+                DB::rollBack();
                 if ($successCount > 0) {
                     $this->error = "تم تحديث {$successCount} منتج، وفشل تحديث {$failCount} منتج";
-                    Toaster::warning('تم تحديث {$successCount} منتج، وفشل تحديث {$failCount} منتج');
+                    Toaster::warning("تم تحديث {$successCount} منتج، وفشل تحديث {$failCount} منتج");
                 } else {
                     $this->error = "فشل تحديث جميع المنتجات. يرجى التحقق من سجلات النظام للمزيد من التفاصيل.";
-                    Toaster::warning('فشل تحديث جميع المنتجات. يرجى التحقق من سجلات النظام للمزيد من التفاصيل.');
+                    Toaster::error('فشل تحديث جميع المنتجات. يرجى التحقق من سجلات النظام للمزيد من التفاصيل.');
                 }
             } else {
+                DB::commit();
                 $this->success = "تم إضافة الكميات بنجاح";
                 Toaster::success('تم إضافة الكميات بنجاح');
                 $this->scannedProducts = []; // مسح القائمة بعد الحفظ الناجح
             }
 
-
         } catch (Exception $e) {
+            DB::rollBack();
             $this->error = 'حدث خطأ أثناء حفظ الكميات: ' . $e->getMessage();
             logger()->error('Save Quantities Error: ' . $e->getMessage(), [
                 'trace' => $e->getTraceAsString()
@@ -212,37 +177,37 @@ class Index extends Component
                 return;
             }
 
-            if (!$this->woocommerce) {
-                $this->error = 'خطأ في الاتصال بالخدمة';
-                Toaster::error('خطأ في الاتصال بالخدمة');
-                return;
+            // البحث عن المنتج بـ remote_wp_id
+            $product = Product::where('remote_wp_id', $id)->first();
+
+            // إذا لم يتم العثور على المنتج بالـ remote_wp_id، نبحث بالـ SKU
+            if (!$product) {
+                $product = Product::where('sku', $id)->first();
             }
 
-            // جلب بيانات المنتج
-            $product = $this->woocommerce->getProductsById($id);
-
-            if (!$product || isset($product['error'])) {
+            if (!$product) {
                 $this->error = 'لم يتم العثور على المنتج';
                 Toaster::error('لم يتم العثور على المنتج');
                 return;
             }
 
-            if ($product['status'] !== 'publish') {
+            // التحقق من حالة المنتج
+            if ($product->status !== 'active' && $product->status !== 'publish') {
                 $this->error = 'هذا المنتج غير متاح حالياً';
                 Toaster::error('هذا المنتج غير متاح حالياً');
                 return;
             }
 
             // إضافة أو تحديث المنتج في القائمة
-            $this->scannedProducts[$id] = [
-                'name' => $product['name'],
-                'price' => $product['price'],
-                'quantity' => isset($this->scannedProducts[$id]) ?
-                    $this->scannedProducts[$id]['quantity'] + 1 : 1,
-                'stock_quantity' => $product['stock_quantity'] ?? 0,
-                'sku' => $product['sku'] ?? '',
-                'is_variation' => isset($product['type']) && $product['type'] === 'variation',
-                'parent_id' => $product['parent_id'] ?? null
+            $this->scannedProducts[$product->id] = [
+                'name' => $product->name,
+                'price' => $product->price ?? 0,
+                'quantity' => isset($this->scannedProducts[$product->id]) ?
+                    $this->scannedProducts[$product->id]['quantity'] + 1 : 1,
+                'stock_quantity' => $product->stock_quantity ?? 0,
+                'sku' => $product->sku ?? '',
+                'is_variation' => $product->type === 'variation',
+                'parent_id' => $product->parent_id ?? null
             ];
 
             $this->success = "تم إضافة/تحديث المنتج بنجاح";

@@ -271,6 +271,10 @@
     <flux:button href="{{ route('product.add') }}" wire:navigate variant="primary" icon="plus">
         {{ __('Add product') }}</flux:button>
 
+    <flux:button wire:click="syncProduct()" variant="primary" icon="arrow-path">
+        {{ __('Sync product') }}
+    </flux:button>
+
     <flux:input class="mt-3" wire:model.live.debounce.500ms="search" placeholder="{{ __('Search') }}" />
 
     <flux:button wire:click="resetCategory" class="mt-2">
