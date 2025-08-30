@@ -19,7 +19,6 @@
         "guzzlehttp/guzzle": "^7.9",
         "jgrossi/corcel": "^9.0",
         "laravel/framework": "^12.0",
-        "laravel/telescope": "^5.11",
         "laravel/tinker": "^2.10.1",
         "livewire/flux": "^2.1.1",
         "livewire/volt": "^1.7.0",
