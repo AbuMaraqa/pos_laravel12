@@ -40,7 +40,7 @@
                     <flux:navbar.item icon="cog-6-tooth">{{ __('Inventories') }}</flux:navbar.item>
                     <flux:navmenu>
                         <flux:navmenu.item wire:navigate href="{{ route('inventory.index') }}">{{ __('Inventory') }}</flux:navmenu.item>
-                        <flux:navmenu.item wire:navigate href="{{ route('inventory.decremrnt') }}">{{ __('decremrnt Inventory') }}</flux:navmenu.item>
+                        <flux:navmenu.item wire:navigate href="{{ route('inventory.decremrnt') }}">{{ __('Decremrnt Inventory') }}</flux:navmenu.item>
                     </flux:navmenu>
                 </flux:dropdown>
                 <flux:navbar.item icon="users" wire:navigate :href="route('client.index')" :current="request()->routeIs('client.index')" wire:navigate>
