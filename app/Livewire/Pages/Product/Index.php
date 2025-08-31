@@ -58,6 +58,11 @@ class Index extends Component
         $this->categories = $response['data'] ?? []; // 🔥 المهم
     }
 
+    /**
+     * يتم استدعاؤها عند تغيير قيمة البحث
+     * تعيد تعيين الصفحة إلى الأولى لعرض نتائج البحث الجديدة
+     * يدعم البحث بالاسم والباركود (SKU) والـ ID
+     */
     public function updatedSearch(): void
     {
         $this->page = 1;
@@ -369,7 +374,6 @@ class Index extends Component
     public function render()
     {
         $query = [
-            'search' => $this->search,
             'per_page' => $this->perPage,
             'page' => $this->page,
             'lang' => app()->getLocale(), // اللغة النشطة
@@ -377,13 +381,65 @@ class Index extends Component
             'wpml_language' => app()->getLocale(), // مهمة جداً
         ];
 
-        if ($this->categoryId) {
-            $query['category'] = $this->categoryId;
-        }
+        $collection = collect();
+        $total = 0;
 
-        $response = $this->wooService->getProducts($query);
-        $collection = collect($response['data'] ?? $response);
-        $total = $response['total'] ?? 1000;
+        // إضافة البحث إذا كان موجود
+        if (!empty($this->search)) {
+            $searchTerm = trim($this->search);
+            
+            // أولاً: البحث في المنتجات الأساسية
+            if (is_numeric($searchTerm)) {
+                // البحث بالـ ID أولاً
+                $query['include'] = [$searchTerm];
+            } else {
+                // البحث بالاسم والـ SKU معاً
+                $query['search'] = $searchTerm;
+                $query['sku'] = $searchTerm;
+            }
+            
+            $response = $this->wooService->getProducts($query);
+            $collection = collect($response['data'] ?? $response);
+            $total = $response['total'] ?? count($collection);
+            
+            // إذا لم نجد نتائج، نبحث في المتغيرات (variations)
+            if ($collection->isEmpty()) {
+                $parentProduct = $this->searchInVariations($searchTerm);
+                if ($parentProduct) {
+                    $collection = collect([$parentProduct]);
+                    $total = 1;
+                }
+            }
+            
+            // إذا لم نجد نتائج بالبحث الرقمي، نحاول البحث بالاسم
+            if ($collection->isEmpty() && is_numeric($searchTerm)) {
+                $fallbackQuery = [
+                    'search' => $searchTerm,
+                    'per_page' => $this->perPage,
+                    'page' => $this->page,
+                    'lang' => app()->getLocale(),
+                    'status' => 'any',
+                    'wpml_language' => app()->getLocale(),
+                ];
+                
+                if ($this->categoryId) {
+                    $fallbackQuery['category'] = $this->categoryId;
+                }
+                
+                $response = $this->wooService->getProducts($fallbackQuery);
+                $collection = collect($response['data'] ?? $response);
+                $total = $response['total'] ?? count($collection);
+            }
+        } else {
+            // إذا لم يكن هناك بحث، اجلب جميع المنتجات
+            if ($this->categoryId) {
+                $query['category'] = $this->categoryId;
+            }
+            
+            $response = $this->wooService->getProducts($query);
+            $collection = collect($response['data'] ?? $response);
+            $total = $response['total'] ?? 1000;
+        }
 
         $products = new LengthAwarePaginator(
             $collection,
@@ -397,5 +453,49 @@ class Index extends Component
             'products' => $products,
             'categories' => $this->categories,
         ]);
+    }
+
+    /**
+     * البحث في متغيرات المنتجات وإرجاع المنتج الأب
+     */
+    private function searchInVariations(string $searchTerm): ?array
+    {
+        try {
+            // جلب المنتجات المتغيرة
+            $variableProducts = $this->wooService->getProducts([
+                'type' => 'variable',
+                'per_page' => 50,
+                'status' => 'any'
+            ]);
+            
+            $products = $variableProducts['data'] ?? $variableProducts;
+            
+            foreach ($products as $product) {
+                if (!empty($product['variations'])) {
+                    // البحث في متغيرات هذا المنتج
+                    $variations = $this->wooService->getProductVariations($product['id']);
+                    
+                    foreach ($variations as $variation) {
+                        // فحص SKU للمتغير
+                        if (!empty($variation['sku']) && strcasecmp($variation['sku'], $searchTerm) === 0) {
+                            return $product; // إرجاع المنتج الأب
+                        }
+                        
+                        // فحص ID للمتغير
+                        if (is_numeric($searchTerm) && $variation['id'] == (int)$searchTerm) {
+                            return $product; // إرجاع المنتج الأب
+                        }
+                    }
+                }
+            }
+            
+            return null;
+        } catch (\Exception $e) {
+            logger()->error('Error searching in variations', [
+                'searchTerm' => $searchTerm,
+                'error' => $e->getMessage()
+            ]);
+            return null;
+        }
     }
 }

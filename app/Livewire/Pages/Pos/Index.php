@@ -33,27 +33,9 @@ class Index extends Component
     {
         $this->categories = []; // إزالة الفئات مؤقتاً
 
-        // جلب جميع المنتجات النشطة بدلاً من تحديد عدد معين
-        $this->products = Product::where('status', 'active')->get()->toArray();
-    }
-
-    public function boot(WooCommerceService $wooService)
-    {
-        $this->wooService = $wooService;
-    }
-
-    public function selectCategory(?int $id = null)
-    {
-        $this->selectedCategory = $id;
-
-        // تعطيل تصفية الفئات مؤقتاً - عرض جميع المنتجات
-        $this->products = Product::where('status', 'active')->get()->toArray();
-    }
-
-    public function syncProductsToIndexedDB()
-    {
-        // جلب جميع المنتجات النشطة للتخزين المحلي
-        $products = Product::where('status', 'active')
+        // جلب أول 50 منتج نشط مع الصور
+        $this->products = Product::where('status', 'active')
+            ->limit(50)
             ->get()
             ->map(function ($product) {
                 return [
@@ -67,8 +49,65 @@ class Index extends Component
                     'type' => $product->type,
                     'status' => $product->status,
                     'remote_wp_id' => $product->remote_wp_id,
-                    'variations' => $product->variations ? $product->variations->pluck('id')->toArray() : [],
-                    'images' => [] // يمكن إضافة الصور إذا كانت متاحة
+                    'featured_image' => $product->featured_image,
+                    'variations' => $product->variations ? $product->variations : []
+                ];
+            })
+            ->toArray();
+    }
+
+    public function boot(WooCommerceService $wooService)
+    {
+        $this->wooService = $wooService;
+    }
+
+    public function selectCategory(?int $id = null)
+    {
+        $this->selectedCategory = $id;
+
+        // تعطيل تصفية الفئات مؤقتاً - عرض أول 50 منتج مع الصور
+        $this->products = Product::where('status', 'active')
+            ->limit(50)
+            ->get()
+            ->map(function ($product) {
+                return [
+                    'id' => $product->id,
+                    'name' => $product->name,
+                    'price' => $product->price,
+                    'stock_quantity' => $product->stock_quantity,
+                    'stock_status' => $product->stock_status,
+                    'manage_stock' => $product->manage_stock,
+                    'sku' => $product->sku,
+                    'type' => $product->type,
+                    'status' => $product->status,
+                    'remote_wp_id' => $product->remote_wp_id,
+                    'featured_image' => $product->featured_image,
+                    'variations' => $product->variations ? $product->variations : []
+                ];
+            })
+            ->toArray();
+    }
+
+    public function syncProductsToIndexedDB()
+    {
+        // جلب أول 50 منتج نشط مع الصور للتخزين المحلي
+        $products = Product::where('status', 'active')
+            ->limit(50)
+            ->get()
+            ->map(function ($product) {
+                return [
+                    'id' => $product->id,
+                    'name' => $product->name,
+                    'price' => $product->price,
+                    'stock_quantity' => $product->stock_quantity,
+                    'stock_status' => $product->stock_status,
+                    'manage_stock' => $product->manage_stock,
+                    'sku' => $product->sku,
+                    'type' => $product->type,
+                    'status' => $product->status,
+                    'remote_wp_id' => $product->remote_wp_id,
+                    'featured_image' => $product->featured_image,
+                    'variations' => $product->variations ? $product->variations : []
                 ];
             })
             ->toArray();
@@ -89,6 +128,22 @@ class Index extends Component
             ->orWhere('remote_wp_id', $this->search)
             ->where('status', 'active')
             ->get()
+            ->map(function ($product) {
+                return [
+                    'id' => $product->id,
+                    'name' => $product->name,
+                    'price' => $product->price,
+                    'stock_quantity' => $product->stock_quantity,
+                    'stock_status' => $product->stock_status,
+                    'manage_stock' => $product->manage_stock,
+                    'sku' => $product->sku,
+                    'type' => $product->type,
+                    'status' => $product->status,
+                    'remote_wp_id' => $product->remote_wp_id,
+                    'featured_image' => $product->featured_image,
+                    'variations' => $product->variations ? $product->variations : []
+                ];
+            })
             ->toArray();
     }
 
@@ -106,11 +161,43 @@ class Index extends Component
                         'stock_quantity' => $variation->stock_quantity,
                         'stock_status' => $variation->stock_status,
                         'sku' => $variation->sku,
+                        'featured_image' => $variation->featured_image,
                         'attributes' => json_decode($variation->attributes ?? '[]', true),
                     ];
                 })
                 ->toArray();
         }
+    }
+
+    /**
+     * جلب المزيد من المنتجات للتحميل التدريجي
+     */
+    #[On('load-more-products')]
+    public function loadMoreProducts($offset = 0)
+    {
+        $moreProducts = Product::where('status', 'active')
+            ->skip($offset)
+            ->limit(50)
+            ->get()
+            ->map(function ($product) {
+                return [
+                    'id' => $product->id,
+                    'name' => $product->name,
+                    'price' => $product->price,
+                    'stock_quantity' => $product->stock_quantity,
+                    'stock_status' => $product->stock_status,
+                    'manage_stock' => $product->manage_stock,
+                    'sku' => $product->sku,
+                    'type' => $product->type,
+                    'status' => $product->status,
+                    'remote_wp_id' => $product->remote_wp_id,
+                    'featured_image' => $product->featured_image,
+                    'variations' => $product->variations ? $product->variations : []
+                ];
+            })
+            ->toArray();
+
+        $this->dispatch('store-more-products', products: $moreProducts);
     }
 
     public function addProduct($productID, $productName, $productPrice)
@@ -149,6 +236,7 @@ class Index extends Component
                     'sku' => $searchResult->sku,
                     'type' => 'variation',
                     'parent_id' => $searchResult->parent_id,
+                    'featured_image' => $searchResult->featured_image,
                     'attributes' => json_decode($searchResult->attributes ?? '[]', true)
                 ];
 
@@ -195,6 +283,7 @@ class Index extends Component
                         'sku' => $variation->sku,
                         'type' => 'variation',
                         'parent_id' => $variation->parent_id,
+                        'featured_image' => $variation->featured_image,
                         'attributes' => json_decode($variation->attributes ?? '[]', true)
                     ];
 
@@ -241,7 +330,7 @@ class Index extends Component
             'type' => $product->type,
             'status' => $product->status,
             'remote_wp_id' => $product->remote_wp_id,
-            'images' => []
+            'featured_image' => $product->featured_image
         ];
 
         // جلب جميع المتغيرات بغض النظر عن نوع المنتج
@@ -261,6 +350,7 @@ class Index extends Component
                     'sku' => $variation->sku,
                     'type' => 'variation',
                     'product_id' => $variation->parent_id,
+                    'featured_image' => $variation->featured_image,
                     'attributes' => json_decode($variation->attributes ?? '[]', true)
                 ];
             })->toArray();
@@ -301,8 +391,8 @@ class Index extends Component
     #[On('fetch-products-from-api')]
     public function fetchProductsFromAPI()
     {
-        // جلب جميع المنتجات النشطة بدلاً من تحديد عدد معين
-        $products = Product::where('status', 'active')->get();
+        // جلب أول 50 منتج نشط مع الصور
+        $products = Product::where('status', 'active')->limit(50)->get();
 
         $allProducts = [];
 
@@ -318,7 +408,7 @@ class Index extends Component
                 'type' => $product->type,
                 'status' => $product->status,
                 'remote_wp_id' => $product->remote_wp_id,
-                'images' => []
+                'featured_image' => $product->featured_image
             ];
 
             $allProducts[] = $formattedProduct;
@@ -340,6 +430,7 @@ class Index extends Component
                         'type' => 'variation',
                         'product_id' => $product->id,
                         'parent_id' => $product->id,
+                        'featured_image' => $variation->featured_image,
                         'attributes' => json_decode($variation->attributes ?? '[]', true)
                     ];
 
@@ -467,6 +558,30 @@ class Index extends Component
             'name' => $product['name'] ?? '',
             'price' => $product['price'] ?? 0,
             'qty' => 1,
+            'featured_image' => $product['featured_image'] ?? null,
+        ];
+    }
+
+    /**
+     * إضافة منتج متغير للسلة مع الصورة
+     */
+    #[On('add-variation-to-cart')]
+    public function addVariationToCart($product, $variation)
+    {
+        $productId = $product['id'] ?? null;
+        $variationId = $variation['id'] ?? null;
+
+        if (!$productId || !$variationId) return;
+
+        $this->cart[] = [
+            'id' => $variationId,
+            'product_id' => $productId,
+            'name' => $variation['name'] ?? $product['name'] ?? '',
+            'price' => $variation['price'] ?? $product['price'] ?? 0,
+            'qty' => 1,
+            'featured_image' => $variation['featured_image'] ?? $product['featured_image'] ?? null,
+            'type' => 'variation',
+            'attributes' => $variation['attributes'] ?? []
         ];
     }
 

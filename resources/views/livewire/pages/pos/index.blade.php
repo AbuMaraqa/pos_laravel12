@@ -1,3 +1,82 @@
+<style>
+    /* تحسينات CSS لعرض الصور مع Lazy Loading */
+    .product-card {
+        transition: all 0.3s ease;
+    }
+    
+    .product-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+    }
+    
+    .image-placeholder {
+        background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
+        transition: all 0.3s ease;
+    }
+    
+    .product-card img {
+        transition: opacity 0.3s ease;
+    }
+    
+    .product-card img[loading="lazy"] {
+        opacity: 0;
+        animation: fadeIn 0.5s ease forwards;
+    }
+    
+    @keyframes fadeIn {
+        to {
+            opacity: 1;
+        }
+    }
+    
+    /* تحسينات السلة */
+    .cart-item {
+        transition: all 0.2s ease;
+    }
+    
+    .cart-item:hover {
+        background-color: #f9fafb;
+        transform: translateX(-2px);
+    }
+    
+    .cart-item img {
+        border: 2px solid #e5e7eb;
+        transition: border-color 0.2s ease;
+    }
+    
+    .cart-item:hover img {
+        border-color: #3b82f6;
+    }
+    
+    /* تأثيرات التحميل */
+    .loading-shimmer {
+        background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+        background-size: 200% 100%;
+        animation: shimmer 1.5s infinite;
+    }
+    
+    @keyframes shimmer {
+        0% {
+            background-position: -200% 0;
+        }
+        100% {
+            background-position: 200% 0;
+        }
+    }
+    
+    /* تحسين عرض الصور في المودال */
+    .variation-image {
+        border-radius: 8px;
+        border: 2px solid #e5e7eb;
+        transition: all 0.2s ease;
+    }
+    
+    .variation-image:hover {
+        border-color: #3b82f6;
+        transform: scale(1.05);
+    }
+</style>
+
 <div>
     <!-- Modals -->
     <flux:modal name="variations-modal" style="min-width: 70%">
@@ -573,15 +652,15 @@
 
             request.onsuccess = function () {
                 const product = request.result;
-                if (product && product.images && product.images.length > 0) {
-                    const imageUrl = product.images[0].src;
+                if (product && product.featured_image) {
+                    const imageUrl = product.featured_image;
 
                     const img = new Image();
                     img.onload = function () {
                         const placeholder = cardElement.querySelector('.image-placeholder');
                         if (placeholder) {
                             placeholder.innerHTML = `
-                                <img src="${imageUrl}" class="w-full h-full object-cover rounded-t-lg" alt="${product.name || ''}">
+                                <img src="${imageUrl}" class="w-full h-full object-cover rounded-t-lg" alt="${product.name || ''}" loading="lazy">
                                 <div class="absolute top-2 left-2 bg-black text-white text-xs px-2 py-1 rounded opacity-75">
                                     #${product.id}
                                 </div>
@@ -595,9 +674,39 @@
 
                     img.onerror = function () {
                         console.warn(`فشل تحميل صورة المنتج ${productId}`);
+                        // عرض صورة افتراضية عند فشل التحميل
+                        const placeholder = cardElement.querySelector('.image-placeholder');
+                        if (placeholder) {
+                            placeholder.innerHTML = `
+                                <div class="w-full h-full bg-gray-200 flex items-center justify-center text-gray-400 text-4xl rounded-t-lg">📦</div>
+                                <div class="absolute top-2 left-2 bg-black text-white text-xs px-2 py-1 rounded opacity-75">
+                                    #${product.id}
+                                </div>
+                                <div class="absolute bottom-2 left-2 bg-blue-600 text-white px-2 py-1 rounded font-bold text-sm">
+                                    ${product.price || 0} ₪
+                                </div>
+                                ${product.stock_status === 'outofstock' ? '<div class="absolute inset-0 bg-red-500 bg-opacity-50 flex items-center justify-center"><span class="text-white font-bold">نفدت الكمية</span></div>' : ''}
+                            `;
+                        }
                     };
 
                     img.src = imageUrl;
+                } else {
+                    console.log(`لا توجد صورة للمنتج ${productId}`);
+                    // عرض placeholder عندما لا توجد صورة
+                    const placeholder = cardElement.querySelector('.image-placeholder');
+                    if (placeholder) {
+                        placeholder.innerHTML = `
+                            <div class="w-full h-full bg-gray-200 flex items-center justify-center text-gray-400 text-4xl rounded-t-lg">📦</div>
+                            <div class="absolute top-2 left-2 bg-black text-white text-xs px-2 py-1 rounded opacity-75">
+                                #${product.id}
+                            </div>
+                            <div class="absolute bottom-2 left-2 bg-blue-600 text-white px-2 py-1 rounded font-bold text-sm">
+                                ${product.price || 0} ₪
+                            </div>
+                            ${product.stock_status === 'outofstock' ? '<div class="absolute inset-0 bg-red-500 bg-opacity-50 flex items-center justify-center"><span class="text-white font-bold">نفدت الكمية</span></div>' : ''}
+                        `;
+                    }
                 }
             };
         } catch (error) {
@@ -4048,9 +4157,14 @@
                     "bg-gray-200 px-2 py-1 rounded cursor-not-allowed opacity-50 text-sm" :
                     "bg-green-300 px-2 py-1 rounded hover:bg-green-400 cursor-pointer text-sm";
 
-                // إنشاء HTML للعنصر
+                // إنشاء HTML للعنصر مع الصورة
+                const imageHtml = item.featured_image ? 
+                    `<img src="${item.featured_image}" class="w-12 h-12 object-cover rounded-md" alt="${item.name || ''}" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDgiIGhlaWdodD0iNDgiIHZpZXdCb3g9IjAgMCA0OCA0OCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjQ4IiBoZWlnaHQ9IjQ4IiBmaWxsPSIjRjNGNEY2Ii8+CjxwYXRoIGQ9Ik0yNCAzNkMzMC42Mjc0IDM2IDM2IDMwLjYyNzQgMzYgMjRDMzYgMTcuMzcyNiAzMC42Mjc0IDEyIDI0IDEyQzE3LjM3MjYgMTIgMTIgMTcuMzcyNiAxMiAyNEMxMiAzMC42Mjc0IDE3LjM3MjYgMzYgMjQgMzYiIGZpbGw9IiM5Q0EzQUYiLz4KPC9zdmc+'">` :
+                    `<div class="w-12 h-12 bg-gray-200 rounded-md flex items-center justify-center text-gray-400 text-xl">📦</div>`;
+                
                 div.innerHTML = `
                 <div class="flex items-center gap-3 flex-1">
+                    ${imageHtml}
                     <div class="flex-1">
                         <p class="font-semibold text-sm">${item.name || 'منتج بدون اسم'}</p>
                         <div class="flex items-center gap-2 mt-1">
@@ -4883,5 +4997,77 @@
         };
     }
 
-    console.log("✅ تم تحميل جميع وظائف نظام POS المحسن");
+    // ============================================
+    // تحميل المنتجات تلقائياً عند تحميل الصفحة
+    // ============================================
+    async function loadInitialProducts() {
+        try {
+            console.log("🔄 بدء تحميل المنتجات الأولية...");
+            
+            // استدعاء دالة PHP لجلب المنتجات
+            const response = await @this.call('syncProductsToIndexedDB');
+            
+            if (response && response.length > 0) {
+                console.log(`📦 تم جلب ${response.length} منتج من قاعدة البيانات`);
+                
+                // تخزين المنتجات في IndexedDB
+                const tx = db.transaction("products", "readwrite");
+                const store = tx.objectStore("products");
+                
+                // مسح المنتجات القديمة أولاً
+                await store.clear();
+                
+                // إضافة المنتجات الجديدة
+                for (const product of response) {
+                    await store.add(product);
+                }
+                
+                console.log("✅ تم تخزين المنتجات في IndexedDB بنجاح");
+                
+                // عرض المنتجات
+                renderProductsFromIndexedDB();
+                
+                // إعداد lazy loading للصور
+                setTimeout(() => {
+                    setupLazyImageLoading();
+                }, 500);
+                
+            } else {
+                console.log("⚠️ لم يتم العثور على منتجات");
+            }
+        } catch (error) {
+            console.error("❌ خطأ في تحميل المنتجات الأولية:", error);
+        }
+    }
+    
+    // تحميل المنتجات عند تحميل الصفحة
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log("🚀 تم تحميل الصفحة - بدء تحميل المنتجات...");
+        
+        // انتظار تهيئة قاعدة البيانات ثم تحميل المنتجات
+        setTimeout(() => {
+            if (db) {
+                loadInitialProducts();
+            } else {
+                console.log("⏳ انتظار تهيئة قاعدة البيانات...");
+                setTimeout(() => {
+                    if (db) {
+                        loadInitialProducts();
+                    }
+                }, 1000);
+            }
+        }, 500);
+    });
+    
+    // تحميل المنتجات عند تهيئة Livewire
+    document.addEventListener('livewire:navigated', function() {
+        console.log("🔄 Livewire navigated - إعادة تحميل المنتجات...");
+        setTimeout(() => {
+            if (db) {
+                loadInitialProducts();
+            }
+        }, 500);
+    });
+
+    console.log("✅ تم تحميل جميع وظائف نظام POS المحسن مع التحميل التلقائي للمنتجات");
 </script>
