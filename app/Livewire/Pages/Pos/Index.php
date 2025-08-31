@@ -482,115 +482,157 @@ class Index extends Component
             ]);
 
             // التحقق من البيانات الأساسية
-            if (empty($orderData['customer_id']) && empty($orderData['guest_info'])) {
-                throw new \Exception('معرف العميل أو بيانات الضيف مطلوبة');
-            }
-
             if (empty($orderData['line_items']) || !is_array($orderData['line_items'])) {
                 throw new \Exception('يجب إضافة منتجات للطلب');
             }
 
-            DB::beginTransaction();
+            // التحقق من أسعار المنتجات وإصلاحها
+            foreach ($orderData['line_items'] as &$item) {
+                // إذا كان السعر صفر، جلبه من قاعدة البيانات
+                if (empty($item['price']) || $item['price'] == 0) {
+                    $product = Product::find($item['product_id']);
+                    if ($product) {
+                        $item['price'] = floatval($product->price);
+                        logger()->info('Fixed product price from database', [
+                            'product_id' => $item['product_id'],
+                            'price' => $item['price']
+                        ]);
+                    }
+                }
 
-            // إنشاء الطلب
-            $orderRecord = DB::table('orders')->insertGetId([
-                'customer_id' => $orderData['customer_id'] ?? null,
-                'status' => $orderData['status'] ?? 'processing',
-                'total' => $this->calculateOrderTotal($orderData['line_items'], $orderData['shipping_lines'] ?? []),
-                'payment_method' => $orderData['payment_method'] ?? 'cod',
-                'payment_method_title' => $orderData['payment_method_title'] ?? 'الدفع عند الاستلام',
-                'customer_note' => $orderData['customer_note'] ?? '',
-                'created_via' => 'pos',
-                'user_id' => auth()->id(),
-                'created_at' => now(),
-                'updated_at' => now()
+                // التأكد من أن السعر رقم صحيح
+                $item['price'] = floatval($item['price']);
+                $item['quantity'] = intval($item['quantity']);
+                
+                // إضافة سعر المنتج بشكل صريح في بيانات الطلب
+                $item['subtotal'] = strval($item['price'] * $item['quantity']);
+                $item['total'] = strval($item['price'] * $item['quantity']);
+
+                logger()->info('Line item data', [
+                    'product_id' => $item['product_id'],
+                    'price' => $item['price'],
+                    'quantity' => $item['quantity'],
+                    'subtotal' => $item['subtotal'],
+                    'total' => $item['total']
+                ]);
+            }
+
+            // إزالة معرف العميل تماماً وإنشاء طلب كضيف دائماً
+            unset($orderData['customer_id']);
+            
+            // إنشاء طلب كضيف بدون معرف عميل
+            $orderData['billing'] = [
+                'first_name' => $orderData['guest_info']['first_name'] ?? 'عميل',
+                'last_name' => $orderData['guest_info']['last_name'] ?? 'POS',
+                'email' => 'pos-guest-' . time() . '@example.com',
+                'phone' => $orderData['guest_info']['phone'] ?? '',
+                'address_1' => '',
+                'city' => '',
+                'country' => 'PS',
+            ];
+            
+            $orderData['shipping'] = $orderData['billing'];
+            
+            logger()->info('Creating guest order (no customer ID)', [
+                'email' => $orderData['billing']['email']
             ]);
 
-            // إضافة عناصر الطلب
-            foreach ($orderData['line_items'] as $item) {
-                DB::table('order_items')->insert([
-                    'order_id' => $orderRecord,
-                    'product_id' => $item['product_id'],
-                    'quantity' => $item['quantity'],
-                    'price' => $item['price'],
-                    'total' => $item['price'] * $item['quantity'],
-                    'created_at' => now(),
-                    'updated_at' => now()
+            // إرسال الطلب إلى WooCommerce فقط - بدون تخزين محلي
+            logger()->info('Sending order to WooCommerce API...', [
+                'line_items' => $orderData['line_items']
+            ]);
+            
+            // التأكد من أن بيانات المنتجات تحتوي على السعر والكمية بشكل صحيح
+            foreach ($orderData['line_items'] as $index => $item) {
+                // إضافة حقول السعر الضرورية
+                $orderData['line_items'][$index]['subtotal'] = strval($item['price'] * $item['quantity']);
+                $orderData['line_items'][$index]['total'] = strval($item['price'] * $item['quantity']);
+                $orderData['line_items'][$index]['price'] = strval($item['price']);
+            }
+            
+            $createdOrder = $this->wooService->createOrder($orderData);
+
+            if (!$createdOrder || !isset($createdOrder['id'])) {
+                logger()->error('WooCommerce returned invalid response', [
+                    'response' => $createdOrder
                 ]);
-
-                // تحديث المخزون
-                $product = Product::find($item['product_id']);
-                if ($product && $product->manage_stock) {
-                    $newStock = max(0, $product->stock_quantity - $item['quantity']);
-                    $product->update([
-                        'stock_quantity' => $newStock,
-                        'stock_status' => $newStock > 0 ? 'instock' : 'outofstock'
-                    ]);
-                }
-
-                // إنشاء سجل المخزون
-                Inventory::create([
-                    'store_id' => 1,
-                    'product_id' => $item['product_id'],
-                    'quantity' => -$item['quantity'], // سالب للإشارة للخروج
-                    'type' => InventoryType::OUTPUT,
-                    'user_id' => auth()->id(),
-                    'notes' => 'POS Order #' . $orderRecord,
-                ]);
+                throw new \Exception('فشل في إنشاء الطلب في WooCommerce');
             }
 
-            // إضافة معلومات الشحن
-            if (!empty($orderData['shipping_lines'])) {
-                foreach ($orderData['shipping_lines'] as $shipping) {
-                    DB::table('order_shipping')->insert([
-                        'order_id' => $orderRecord,
-                        'method_id' => $shipping['method_id'],
-                        'method_title' => $shipping['method_title'],
-                        'total' => $shipping['total'],
-                        'created_at' => now()
-                    ]);
-                }
-            }
-
-            // إضافة البيانات الإضافية
-            if (!empty($orderData['meta_data'])) {
-                foreach ($orderData['meta_data'] as $meta) {
-                    DB::table('order_meta')->insert([
-                        'order_id' => $orderRecord,
-                        'meta_key' => $meta['key'],
-                        'meta_value' => $meta['value'],
-                        'created_at' => now()
-                    ]);
-                }
-            }
-
-            DB::commit();
-
-            $createdOrder = [
-                'id' => $orderRecord,
-                'number' => $orderRecord,
-                'status' => $orderData['status'] ?? 'processing',
-                'total' => $this->calculateOrderTotal($orderData['line_items'], $orderData['shipping_lines'] ?? [])
-            ];
-
-            logger()->info('Order created successfully', [
-                'order_id' => $orderRecord,
+            logger()->info('Order created successfully in WooCommerce', [
+                'order_id' => $createdOrder['id'],
+                'order_number' => $createdOrder['number'] ?? $createdOrder['id'],
                 'status' => $createdOrder['status']
             ]);
+
+            // تحديث المخزون في قاعدة البيانات المحلية فقط
+            try {
+                // التأكد من وجود متجر أولاً
+                $store = Store::first();
+                if (!$store) {
+                    $store = Store::create([
+                        'name' => 'المتجر الرئيسي',
+                        'address' => '',
+                        'phone' => '',
+                        'email' => '',
+                        'status' => 'active'
+                    ]);
+                    logger()->info('Created default store', ['store_id' => $store->id]);
+                }
+
+                foreach ($orderData['line_items'] as $item) {
+                    // تحديث كمية المنتج في قاعدة البيانات المحلية
+                    $product = Product::find($item['product_id']);
+                    if ($product && $product->manage_stock) {
+                        $oldStock = $product->stock_quantity;
+                        $newStock = max(0, $oldStock - $item['quantity']);
+                        
+                        $product->update([
+                            'stock_quantity' => $newStock,
+                            'stock_status' => $newStock > 0 ? 'instock' : 'outofstock'
+                        ]);
+
+                        logger()->info('Stock updated locally', [
+                            'product_id' => $item['product_id'],
+                            'old_stock' => $oldStock,
+                            'new_stock' => $newStock,
+                            'quantity_sold' => $item['quantity']
+                        ]);
+                    }
+
+                    // إنشاء سجل المخزون للتتبع فقط
+                    Inventory::create([
+                        'store_id' => $store->id,
+                        'product_id' => $item['product_id'],
+                        'quantity' => -$item['quantity'], // سالب للإشارة للخروج
+                        'type' => InventoryType::OUTPUT,
+                        'user_id' => auth()->id(),
+                        'notes' => 'POS Order #' . $createdOrder['id'] . ' (WordPress)',
+                    ]);
+                }
+
+                logger()->info('Local stock updated successfully');
+
+            } catch (\Exception $stockError) {
+                logger()->error('Failed to update local stock', [
+                    'error' => $stockError->getMessage()
+                ]);
+                
+                // رغم فشل تحديث المخزون المحلي، الطلب تم إنشاؤه في WooCommerce
+                throw new \Exception('تم إنشاء الطلب في WooCommerce لكن فشل تحديث المخزون المحلي: ' . $stockError->getMessage());
+            }
 
             // إرسال استجابة النجاح
             $this->dispatch('order-success', [
                 'order' => $createdOrder,
-                'message' => 'تم إنشاء الطلب بنجاح',
-                'order_id' => $orderRecord,
-                'order_number' => $orderRecord
+                'message' => 'تم إنشاء الطلب بنجاح في WooCommerce',
+                'order_id' => $createdOrder['id'],
+                'order_number' => $createdOrder['number'] ?? $createdOrder['id']
             ]);
 
             return $createdOrder;
 
         } catch (\Exception $e) {
-            DB::rollBack();
-
             logger()->error('Order creation failed', [
                 'error_message' => $e->getMessage(),
                 'error_code' => $e->getCode(),
@@ -605,21 +647,6 @@ class Index extends Component
 
             return null;
         }
-    }
-
-    private function calculateOrderTotal($lineItems, $shippingLines = [])
-    {
-        $subtotal = 0;
-        foreach ($lineItems as $item) {
-            $subtotal += $item['price'] * $item['quantity'];
-        }
-
-        $shippingTotal = 0;
-        foreach ($shippingLines as $shipping) {
-            $shippingTotal += floatval($shipping['total']);
-        }
-
-        return $subtotal + $shippingTotal;
     }
 
     #[On('fetch-shipping-methods-from-api')]
