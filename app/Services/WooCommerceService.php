@@ -128,19 +128,27 @@ class WooCommerceService
         ];
     }
 
-    public function put(string $endpoint, array $data = []): array
-    {
-        try {
-            $response = $this->client->put($endpoint, [
-                'json' => $data
-            ]);
+    public function put(string $endpoint, array $data = [], array $query = []): array
+{
+    try {
+        // مهم: لا ترسل id داخل الـ body
+        unset($data['id']);
 
-            return json_decode($response->getBody()->getContents(), true);
-        } catch (\GuzzleHttp\Exception\RequestException $e) {
-            logger()->error('WooCommerce PUT Error: ' . $e->getMessage());
-            throw $e;
-        }
+        $response = $this->client->put($endpoint, [
+            'json'   => $this->sanitizeData($data),
+            'query'  => $query, // ← هنا كنا بنستخدمه وهو غير معرّف سابقًا
+            'headers'=> [
+                'Accept'       => 'application/json',
+                'Content-Type' => 'application/json',
+            ],
+        ]);
+
+        return json_decode($response->getBody()->getContents(), true);
+    } catch (\GuzzleHttp\Exception\RequestException $e) {
+        logger()->error('WooCommerce PUT Error: ' . $e->getMessage());
+        throw $e;
     }
+}
 
     public function delete(string $endpoint, array $data = []): array
     {

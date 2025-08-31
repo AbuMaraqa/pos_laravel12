@@ -20,6 +20,11 @@ class AppServiceProvider extends ServiceProvider
         // Livewire::component('product-info', ProductInfo::class);
         // Livewire::component('product-variation', ProductVariation::class);
         // Livewire::component('tabs-component', TabsComponent::class);
+
+        if ($this->app->environment('local') && class_exists(\Laravel\Telescope\TelescopeServiceProvider::class)) {
+            $this->app->register(\Laravel\Telescope\TelescopeServiceProvider::class);
+            $this->app->register(TelescopeServiceProvider::class);
+        }
     }
 
     /**

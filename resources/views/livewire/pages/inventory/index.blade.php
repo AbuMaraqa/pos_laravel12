@@ -81,7 +81,7 @@
                                 <flux:select.option value="{{ $store->id }}">{{ $store->name }}</flux:select.option>
                             @endforeach
                         </flux:select>
-                        <flux:button wire:click="saveQuantities" color="success" class="gap-2">
+                        <flux:button wire:click="saveQuantities" color="success" class="gap-2" onclick="console.log('Save button clicked')">
                             <svg class="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
                                 stroke="currentColor">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
