@@ -25,7 +25,7 @@ class Index extends Component
     public $categoryId = null;
     public $categories = [];
 
-    public int $perPage = 10;
+    public int $perPage = 50;
     public int $total = 0;
 
     public $product = [];
@@ -56,6 +56,39 @@ class Index extends Component
     {
         $response = $this->wooService->getCategories(['parent' => 0]);
         $this->categories = $response['data'] ?? []; // 🔥 المهم
+        
+        // جلب المنتجات للتخزين في IndexedDB
+        $this->loadProductsForIndexedDB();
+    }
+    
+    /**
+     * جلب المنتجات للتخزين في IndexedDB
+     */
+    public function loadProductsForIndexedDB(): void
+    {
+        try {
+            $query = [
+                'per_page' => 50, // جلب 50 منتج على الأقل
+                'page' => 1,
+                'lang' => app()->getLocale(),
+                'status' => 'publish', // فقط المنتجات المنشورة
+                'wpml_language' => app()->getLocale(),
+            ];
+            
+            $response = $this->wooService->getProducts($query);
+            $products = $response['data'] ?? $response;
+            
+            // تسجيل عدد المنتجات المجلبة للتصحيح
+            logger()->info('Products loaded for IndexedDB', [
+                'count' => count($products),
+                'total_available' => $response['total'] ?? 'unknown'
+            ]);
+            
+        } catch (\Exception $e) {
+            logger()->error('Error loading products for IndexedDB', [
+                'error' => $e->getMessage()
+            ]);
+        }
     }
 
     /**

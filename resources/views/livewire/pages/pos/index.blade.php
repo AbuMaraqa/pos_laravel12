@@ -2258,7 +2258,7 @@
                         name: displayName,
                         price: variation.price || 0,
                         quantity: 1,
-                        image: variation.images?.[0]?.src || '',
+                        featured_image: variation.featured_image || variation.images?.[0]?.src || '',
                         sku: variation.sku || '',
                         type: 'variation',
                         product_id: variation.product_id || null,
@@ -2847,7 +2847,7 @@
                         name: String(item.name),
                         price: parseFloat(item.price) || 0,
                         quantity: parseInt(item.quantity) || 1,
-                        image: item.image || '',
+                        featured_image: item.featured_image || item.image || '',
                         type: item.type || 'simple',
                         sku: item.sku || '',
                         added_at: item.added_at || new Date().toISOString()
@@ -3568,9 +3568,18 @@
             <div class="absolute top-2 right-2 ${stockBadgeClass} text-white text-xs px-2 py-1 rounded z-10">
                 ${stockText}
             </div>
-            <div class="relative h-48 bg-gray-100 flex items-center justify-center">
-                <div class="text-gray-400 text-4xl">📦</div>
-                <div class="absolute bottom-2 left-2 bg-blue-600 text-white px-3 py-1 rounded-full font-bold text-sm">
+            <div class="relative h-48 bg-gray-100 flex items-center justify-center overflow-hidden">
+                ${variation.featured_image ? 
+                    `<img src="${variation.featured_image}" 
+                         class="w-full h-full object-cover variation-image" 
+                         alt="${variation.name || ''}" 
+                         loading="lazy"
+                         onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">` : 
+                    ''}
+                <div class="${variation.featured_image ? 'hidden' : 'flex'} w-full h-full items-center justify-center text-gray-400 text-4xl bg-gradient-to-br from-gray-100 to-gray-200">
+                    📦
+                </div>
+                <div class="absolute bottom-2 left-2 bg-blue-600 text-white px-3 py-1 rounded-full font-bold text-sm z-10">
                     ${variation.price || 0} ₪
                 </div>
                 ${stockInfo.overlayHtml}
@@ -3929,7 +3938,7 @@
                         id: product.id,
                         name: product.name || 'منتج بدون اسم',
                         price: parseFloat(product.price) || 0,
-                        image: (product.images && product.images[0]) ? product.images[0].src : '',
+                        featured_image: product.featured_image || (product.images && product.images[0] ? product.images[0].src : ''),
                         quantity: 1,
                         type: product.type || 'simple',
                         sku: product.sku || '',
@@ -4595,7 +4604,7 @@
                         name: String(item.name),
                         price: parseFloat(item.price) || 0,
                         quantity: parseInt(item.quantity) || 1,
-                        image: item.image || '',
+                        featured_image: item.featured_image || item.image || '',
                         type: item.type || 'simple',
                         sku: item.sku || '',
                         added_at: item.added_at || new Date().toISOString(),
@@ -4769,7 +4778,7 @@
                             name: displayName,
                             price: variation.price || 0,
                             quantity: 1,
-                            image: variation.images?.[0]?.src || '',
+                            featured_image: variation.featured_image || variation.images?.[0]?.src || '',
                             sku: variation.sku || '',
                             type: 'variation',
                             product_id: variation.product_id || null,
