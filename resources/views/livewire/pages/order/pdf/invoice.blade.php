@@ -33,38 +33,32 @@
         .header {
             background-color: rgb(103,74,135);
             color: white;
-            padding: 10px;
+            padding: 15px;
             text-align: center;
             border: none;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 15px;
+            position: relative;
         }
 
         .header-logo {
-            height: 40px;
-            max-width: 120px;
+            height: 70px;
+            max-width: 200px;
             object-fit: contain;
-        }
-
-        .header-content {
-            flex: 1;
+            margin-bottom: 12px;
         }
 
         .header h1 {
-            font-size: 18px;
-            margin-bottom: 3px;
+            font-size: 20px;
+            margin-bottom: 5px;
             border: none;
         }
 
         .invoice-id {
-            font-size: 13px;
+            font-size: 14px;
             background-color: rgba(255, 255, 255, 0.2);
-            padding: 2px 8px;
-            border-radius: 10px;
+            padding: 3px 10px;
+            border-radius: 12px;
             display: inline-block;
-            margin-top: 3px;
+            margin-top: 5px;
             border: none;
         }
 
@@ -228,14 +222,9 @@
                 border: none;
             }
 
-            .header {
-                flex-direction: column;
-                gap: 8px;
-            }
-
             .header-logo {
-                height: 30px;
-                max-width: 100px;
+                height: 50px;
+                max-width: 150px;
             }
         }
     </style>
@@ -250,10 +239,8 @@
         @if($settings->getLogoUrl())
             <img src="{{ $settings->getLogoUrl() }}" alt="شعار الشركة" class="header-logo">
         @endif
-        <div class="header-content">
-            <h1>فاتورة الطلبية</h1>
-            <div class="invoice-id">رقم الطلبية: {{ $orderId }}</div>
-        </div>
+        <h1>فاتورة الطلبية</h1>
+        <div class="invoice-id">رقم الطلبية: {{ $orderId }}</div>
     </div>
 
     <div class="content">
