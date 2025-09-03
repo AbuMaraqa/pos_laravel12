@@ -1,3 +1,7 @@
+@php
+    $settings = app(\App\Settings\GeneralSettings::class);
+@endphp
+
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
@@ -231,14 +235,13 @@
 </head>
 <body>
 <div class="invoice-container">
+    @if($settings->getLogoUrl())
+        <div style="text-align: center;">
+            <img src="{{ $settings->getLogoUrl() }}" alt="شعار الشركة" class="header-logo">
+        </div>
+    @endif
     <!-- Header -->
     <div class="header">
-        @php
-            $settings = app(\App\Settings\GeneralSettings::class);
-        @endphp
-        @if($settings->getLogoUrl())
-            <img src="{{ $settings->getLogoUrl() }}" alt="شعار الشركة" class="header-logo">
-        @endif
         <h1>فاتورة الطلبية</h1>
         <div class="invoice-id">رقم الطلبية: {{ $orderId }}</div>
     </div>
