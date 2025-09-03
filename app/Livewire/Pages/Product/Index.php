@@ -108,7 +108,7 @@ class Index extends Component
             'variations' => $this->variations,
             'quantities' => $this->quantities,
         ], [], [
-            'format' => [49, 27]
+            'format' => [59, 39]
         ]);
 
         return response()->streamDownload(function () use ($pdf) {
@@ -387,7 +387,7 @@ class Index extends Component
         // إضافة البحث إذا كان موجود
         if (!empty($this->search)) {
             $searchTerm = trim($this->search);
-            
+
             // أولاً: البحث في المنتجات الأساسية
             if (is_numeric($searchTerm)) {
                 // البحث بالـ ID أولاً
@@ -397,11 +397,11 @@ class Index extends Component
                 $query['search'] = $searchTerm;
                 $query['sku'] = $searchTerm;
             }
-            
+
             $response = $this->wooService->getProducts($query);
             $collection = collect($response['data'] ?? $response);
             $total = $response['total'] ?? count($collection);
-            
+
             // إذا لم نجد نتائج، نبحث في المتغيرات (variations)
             if ($collection->isEmpty()) {
                 $parentProduct = $this->searchInVariations($searchTerm);
@@ -410,7 +410,7 @@ class Index extends Component
                     $total = 1;
                 }
             }
-            
+
             // إذا لم نجد نتائج بالبحث الرقمي، نحاول البحث بالاسم
             if ($collection->isEmpty() && is_numeric($searchTerm)) {
                 $fallbackQuery = [
@@ -421,11 +421,11 @@ class Index extends Component
                     'status' => 'any',
                     'wpml_language' => app()->getLocale(),
                 ];
-                
+
                 if ($this->categoryId) {
                     $fallbackQuery['category'] = $this->categoryId;
                 }
-                
+
                 $response = $this->wooService->getProducts($fallbackQuery);
                 $collection = collect($response['data'] ?? $response);
                 $total = $response['total'] ?? count($collection);
@@ -435,7 +435,7 @@ class Index extends Component
             if ($this->categoryId) {
                 $query['category'] = $this->categoryId;
             }
-            
+
             $response = $this->wooService->getProducts($query);
             $collection = collect($response['data'] ?? $response);
             $total = $response['total'] ?? 1000;
@@ -467,20 +467,20 @@ class Index extends Component
                 'per_page' => 50,
                 'status' => 'any'
             ]);
-            
+
             $products = $variableProducts['data'] ?? $variableProducts;
-            
+
             foreach ($products as $product) {
                 if (!empty($product['variations'])) {
                     // البحث في متغيرات هذا المنتج
                     $variations = $this->wooService->getProductVariations($product['id']);
-                    
+
                     foreach ($variations as $variation) {
                         // فحص SKU للمتغير
                         if (!empty($variation['sku']) && strcasecmp($variation['sku'], $searchTerm) === 0) {
                             return $product; // إرجاع المنتج الأب
                         }
-                        
+
                         // فحص ID للمتغير
                         if (is_numeric($searchTerm) && $variation['id'] == (int)$searchTerm) {
                             return $product; // إرجاع المنتج الأب
@@ -488,7 +488,7 @@ class Index extends Component
                     }
                 }
             }
-            
+
             return null;
         } catch (\Exception $e) {
             logger()->error('Error searching in variations', [
