@@ -6,6 +6,7 @@ use App\Services\WooCommerceService;
 use Livewire\Attributes\Computed;
 use Livewire\Component;
 use Masmerise\Toaster\Toaster;
+use PDF; // أضف هذا السطر
 
 class Details extends Component
 {
@@ -37,6 +38,27 @@ class Details extends Component
         foreach ($this->order['line_items'] as $item) {
             $this->quantities[$item['product_id']] = $item['quantity'];
         }
+    }
+
+    // الدالة الجديدة لطباعة الطلبية
+    public function printOrder()
+    {
+        // تأكد من تحميل بيانات الطلبية الحالية
+        $this->loadOrderDetails($this->orderId);
+
+        $pdf = Pdf::loadView('livewire.pages.order.pdf.invoice', [
+            'order' => $this->order,
+            'orderId' => $this->orderId,
+            'totalAmount' => $this->totalAmount,
+            'totalAmountAfterDiscount' => $this->totalAmountAfterDiscount,
+        ], [], [
+            'format' => 'A4', // يمكنك تغيير الحجم حسب الحاجة
+            'orientation' => 'P' // Portrait
+        ]);
+
+        return response()->streamDownload(function () use ($pdf) {
+            $pdf->stream();
+        }, 'order-' . $this->orderId . '.pdf');
     }
 
     public function addProductToOrder(int $productId): array

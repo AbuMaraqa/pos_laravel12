@@ -40,6 +40,7 @@
                 <flux:button variant="primary" icon="plus">{{ __('Add Product To Order') }}</flux:button>
             </flux:modal.trigger>
 
+            <flux:button wire:click="printOrder" variant="primary" icon="plus">{{ __('Print Invoice') }}</flux:button>
         </div>
         <div
             class="mt-5 flex flex-col xl:flex-row jusitfy-center items-stretch w-full xl:space-x-8 space-y-4 md:space-y-6 xl:space-y-0">
