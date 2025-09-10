@@ -90,10 +90,6 @@
         <div class="barcode-box">
             <p class="product-id" style="margin-bottom: 10px">{{ $product['id'] }}</p>
             <div class="barcode-image">
-                {{--
-                    تم تعديل أبعاد الباركود لتناسب حجم الملصق الصغير.
-                    عرض 1.2 وارتفاع 45 يعطي نتيجة أفضل من 1.5 و 60 للحجم المحدد.
-                --}}
                 <img src="data:image/png;base64,{{ DNS1D::getBarcodePNG($product['id'], 'C39', 1.6, 60) }}" alt="barcode" />
             </div>
             <p class="product-name" style="margin-top: 10px">{{ $product['name'] }}</p>

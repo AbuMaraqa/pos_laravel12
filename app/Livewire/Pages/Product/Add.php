@@ -3,6 +3,7 @@
 namespace App\Livewire\Pages\Product;
 
 use App\Services\WooCommerceService;
+use App\Models\Product;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\On;
 use Livewire\Attributes\Reactive;
@@ -12,6 +13,7 @@ use Livewire\Livewire;
 use Masmerise\Toaster\Toaster;
 use Spatie\LivewireFilepond\WithFilePond;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class Add extends Component
 {
@@ -381,19 +383,22 @@ class Add extends Component
             // إعداد بيانات المنتج الأساسية
             $productData = $this->prepareProductData();
 
-            // إنشاء المنتج
-            $product = $this->wooService->post('products', $productData);
-            $this->productId = $product['id'];
+            // إنشاء المنتج في ووردبريس
+            $wooProduct = $this->wooService->post('products', $productData);
+            $this->productId = $wooProduct['id'];
 
-            Log::info('تم إنشاء المنتج بنجاح', ['product_id' => $this->productId]);
+            Log::info('تم إنشاء المنتج في ووردبريس بنجاح', ['product_id' => $this->productId]);
+
+            // حفظ المنتج في قاعدة البيانات المحلية
+            $localProduct = $this->saveProductLocally($wooProduct);
 
             // إنشاء المتغيرات للمنتجات المتعددة
             if ($this->productType === 'variable' && !empty($this->variations)) {
-                $this->createVariations($this->productId);
+                $this->createVariations($this->productId, $localProduct->id);
             }
 
             $this->isSaving = false;
-            Toaster::success('✅ تم حفظ المنتج بنجاح');
+            Toaster::success('✅ تم حفظ المنتج بنجاح في ووردبريس وقاعدة البيانات المحلية');
             $this->redirectRoute('product.index');
 
         } catch (\Exception $e) {
@@ -550,7 +555,262 @@ class Add extends Component
         return $images;
     }
 
-    private function createVariations($productId)
+    /**
+     * حفظ المنتج في قاعدة البيانات المحلية
+     */
+    private function saveProductLocally($wooProduct)
+    {
+        try {
+            Log::info('بدء حفظ المنتج في قاعدة البيانات المحلية', [
+                'woo_product_id' => $wooProduct['id'],
+                'product_name' => $wooProduct['name']
+            ]);
+
+            // إعداد البيانات للحفظ المحلي
+            $localProductData = [
+                'name' => $wooProduct['name'],
+                'slug' => $wooProduct['slug'] ?? Str::slug($wooProduct['name']),
+                'sku' => $wooProduct['sku'],
+                'type' => $wooProduct['type'],
+                'status' => $wooProduct['status'] === 'publish' ? 'active' : $wooProduct['status'],
+                'regular_price' => $this->parsePrice($wooProduct['regular_price']),
+                'sale_price' => $this->parsePrice($wooProduct['sale_price']),
+                'price' => $this->parsePrice($wooProduct['price']) ?: $this->parsePrice($wooProduct['regular_price']),
+                'stock_status' => $wooProduct['stock_status'],
+                'stock_quantity' => $this->parseQuantity($wooProduct['stock_quantity']),
+                'manage_stock' => $wooProduct['manage_stock'],
+                'weight' => $wooProduct['weight'] ?: null,
+                'dimensions' => !empty($wooProduct['dimensions']) ? $wooProduct['dimensions'] : null,
+                'description' => $wooProduct['description'] ?? '',
+                'short_description' => $wooProduct['short_description'] ?? '',
+                'featured_image' => $this->extractFeaturedImage($wooProduct),
+                'gallery' => $this->extractGalleryImages($wooProduct),
+                'categories' => $this->extractCategories($wooProduct),
+                'tags' => $this->extractTags($wooProduct),
+                'attributes' => $this->extractAttributes($wooProduct),
+                'external_url' => $wooProduct['external_url'] ?? null,
+                'button_text' => $wooProduct['button_text'] ?? null,
+                'remote_wp_id' => $wooProduct['id'],
+                'synced_at' => now(),
+            ];
+
+            // إنشاء المنتج في قاعدة البيانات المحلية
+            $localProduct = Product::create($localProductData);
+
+            Log::info('تم حفظ المنتج في قاعدة البيانات المحلية بنجاح', [
+                'local_product_id' => $localProduct->id,
+                'remote_wp_id' => $wooProduct['id']
+            ]);
+
+            return $localProduct;
+
+        } catch (\Exception $e) {
+            Log::error('فشل في حفظ المنتج محلياً: ' . $e->getMessage(), [
+                'woo_product_id' => $wooProduct['id'] ?? 'unknown',
+                'trace' => $e->getTraceAsString()
+            ]);
+            throw $e;
+        }
+    }
+
+    /**
+     * استخراج الصورة الرئيسية من بيانات ووردبريس
+     */
+    private function extractFeaturedImage($wooProduct)
+    {
+        if (!empty($wooProduct['images']) && is_array($wooProduct['images'])) {
+            $featuredImage = collect($wooProduct['images'])->firstWhere('position', 0);
+            return $featuredImage['src'] ?? null;
+        }
+        return null;
+    }
+
+    /**
+     * استخراج صور المعرض من بيانات ووردبريس
+     */
+    private function extractGalleryImages($wooProduct)
+    {
+        if (!empty($wooProduct['images']) && is_array($wooProduct['images'])) {
+            return collect($wooProduct['images'])
+                ->where('position', '>', 0)
+                ->pluck('src')
+                ->toArray();
+        }
+        return [];
+    }
+
+    /**
+     * استخراج التصنيفات من بيانات ووردبريس
+     */
+    private function extractCategories($wooProduct)
+    {
+        if (!empty($wooProduct['categories']) && is_array($wooProduct['categories'])) {
+            return collect($wooProduct['categories'])->map(function($category) {
+                return [
+                    'id' => $category['id'],
+                    'name' => $category['name'],
+                    'slug' => $category['slug'] ?? ''
+                ];
+            })->toArray();
+        }
+        return [];
+    }
+
+    /**
+     * استخراج العلامات من بيانات ووردبريس
+     */
+    private function extractTags($wooProduct)
+    {
+        if (!empty($wooProduct['tags']) && is_array($wooProduct['tags'])) {
+            return collect($wooProduct['tags'])->map(function($tag) {
+                return [
+                    'id' => $tag['id'],
+                    'name' => $tag['name'],
+                    'slug' => $tag['slug'] ?? ''
+                ];
+            })->toArray();
+        }
+        return [];
+    }
+
+    /**
+     * استخراج الخصائص من بيانات ووردبريس
+     */
+    private function extractAttributes($wooProduct)
+    {
+        if (!empty($wooProduct['attributes']) && is_array($wooProduct['attributes'])) {
+            return collect($wooProduct['attributes'])->map(function($attribute) {
+                return [
+                    'id' => $attribute['id'],
+                    'name' => $attribute['name'],
+                    'options' => $attribute['options'] ?? [],
+                    'variation' => $attribute['variation'] ?? false,
+                    'visible' => $attribute['visible'] ?? true
+                ];
+            })->toArray();
+        }
+        return [];
+    }
+
+    /**
+     * تحليل وتنظيف قيم الأسعار
+     */
+    private function parsePrice($price)
+    {
+        if (empty($price) || $price === '' || $price === '0' || $price === 0) {
+            return null;
+        }
+        
+        // إزالة أي رموز عملة أو مسافات
+        $cleanPrice = preg_replace('/[^0-9.]/', '', $price);
+        
+        // التحقق من أن القيمة رقمية صحيحة
+        if (is_numeric($cleanPrice) && $cleanPrice > 0) {
+            return (float) $cleanPrice;
+        }
+        
+        return null;
+    }
+
+    /**
+     * تحليل وتنظيف قيم الكميات
+     */
+    private function parseQuantity($quantity)
+    {
+        if (empty($quantity) || $quantity === '' || !is_numeric($quantity)) {
+            return 0;
+        }
+        
+        return (int) $quantity;
+    }
+
+    /**
+     * حفظ المتغير في قاعدة البيانات المحلية
+     */
+    private function saveVariationLocally($wooVariation, $localProductId, $originalVariation, $index)
+    {
+        try {
+            Log::info('بدء حفظ المتغير في قاعدة البيانات المحلية', [
+                'woo_variation_id' => $wooVariation['id'],
+                'local_parent_id' => $localProductId
+            ]);
+
+            // إعداد بيانات المتغير للحفظ المحلي
+            $localVariationData = [
+                'parent_id' => $localProductId,
+                'name' => $this->generateVariationName($originalVariation, $index),
+                'slug' => Str::slug($this->generateVariationName($originalVariation, $index)),
+                'sku' => $wooVariation['sku'] ?? '',
+                'type' => 'variation',
+                'status' => $wooVariation['status'] === 'publish' ? 'active' : $wooVariation['status'],
+                'regular_price' => $this->parsePrice($wooVariation['regular_price']),
+                'sale_price' => $this->parsePrice($wooVariation['sale_price']),
+                'price' => $this->parsePrice($wooVariation['price']) ?: $this->parsePrice($wooVariation['regular_price']),
+                'stock_status' => $wooVariation['stock_status'] ?? 'instock',
+                'stock_quantity' => $this->parseQuantity($wooVariation['stock_quantity']),
+                'manage_stock' => $wooVariation['manage_stock'] ?? true,
+                'weight' => $wooVariation['weight'] ?: null,
+                'dimensions' => !empty($wooVariation['dimensions']) ? $wooVariation['dimensions'] : null,
+                'description' => $wooVariation['description'] ?? '',
+                'featured_image' => $this->extractFeaturedImage($wooVariation),
+                'attributes' => $this->extractVariationAttributes($wooVariation),
+                'remote_wp_id' => $wooVariation['id'],
+                'synced_at' => now(),
+            ];
+
+            // إنشاء المتغير في قاعدة البيانات المحلية
+            $localVariation = Product::create($localVariationData);
+
+            Log::info('تم حفظ المتغير في قاعدة البيانات المحلية بنجاح', [
+                'local_variation_id' => $localVariation->id,
+                'remote_wp_id' => $wooVariation['id']
+            ]);
+
+            return $localVariation;
+
+        } catch (\Exception $e) {
+            Log::error('فشل في حفظ المتغير محلياً: ' . $e->getMessage(), [
+                'woo_variation_id' => $wooVariation['id'] ?? 'unknown',
+                'trace' => $e->getTraceAsString()
+            ]);
+            throw $e;
+        }
+    }
+
+    /**
+     * توليد اسم المتغير بناءً على خصائصه
+     */
+    private function generateVariationName($variation, $index)
+    {
+        $baseName = $this->productName;
+        $options = $variation['options'] ?? [];
+        
+        if (!empty($options)) {
+            $optionsText = implode(' - ', array_filter($options));
+            return $baseName . ' (' . $optionsText . ')';
+        }
+        
+        return $baseName . ' - متغير ' . ($index + 1);
+    }
+
+    /**
+     * استخراج خصائص المتغير من بيانات ووردبريس
+     */
+    private function extractVariationAttributes($wooVariation)
+    {
+        if (!empty($wooVariation['attributes']) && is_array($wooVariation['attributes'])) {
+            return collect($wooVariation['attributes'])->map(function($attribute) {
+                return [
+                    'id' => $attribute['id'],
+                    'name' => $attribute['name'] ?? '',
+                    'option' => $attribute['option'] ?? ''
+                ];
+            })->toArray();
+        }
+        return [];
+    }
+
+    private function createVariations($wooProductId, $localProductId)
     {
         $successCount = 0;
         $errorCount = 0;
@@ -564,12 +824,16 @@ class Add extends Component
                     continue;
                 }
 
-                $response = $this->wooService->post("products/{$productId}/variations", $variationData);
+                // إنشاء المتغير في ووردبريس
+                $wooVariation = $this->wooService->post("products/{$wooProductId}/variations", $variationData);
 
-                Log::info('تم إنشاء المتغير', [
-                    'variation_id' => $response['id'],
+                Log::info('تم إنشاء المتغير في ووردبريس', [
+                    'variation_id' => $wooVariation['id'],
                     'index' => $index
                 ]);
+
+                // حفظ المتغير في قاعدة البيانات المحلية
+                $this->saveVariationLocally($wooVariation, $localProductId, $variation, $index);
 
                 $successCount++;
 

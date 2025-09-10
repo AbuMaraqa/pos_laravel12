@@ -12,9 +12,8 @@ class WooCommerceServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        $this->app->bind(WooCommerceService::class, function ($app) {
-            $userId = auth()->check() ? auth()->id() : null;
-            return new WooCommerceService($userId);
+        $this->app->singleton(WooCommerceService::class, function ($app) {
+            return new WooCommerceService();
         });
     }
 
