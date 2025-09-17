@@ -13,6 +13,7 @@ class Index extends Component
     public string $name;
     public string $last_name;
     public string $email;
+    public string $password;
 
     public array $customers = [];
 
@@ -35,8 +36,8 @@ class Index extends Component
         $this->name = '';
         $this->last_name = '';
         $this->email = '';
+        $this->password = '';
         $this->customers = $this->customers();
-//        dd($this->customers());
     }
 
     #[Computed()]
@@ -44,6 +45,7 @@ class Index extends Component
     {
         $query = [
             'per_page' => 100,
+            'role' => 'all', // جلب جميع المستخدمين بغض النظر عن الدور
         ];
 
         // إضافة فلتر الاسم
@@ -56,7 +58,7 @@ class Index extends Component
             $query['search'] = $this->filters['email'];
         }
 
-        // إضافة فلتر الدور
+        // إضافة فلتر الدور - إذا كان محدد، استبدل 'all'
         if (!empty($this->filters['role'])) {
             $query['role'] = $this->filters['role'];
         }
@@ -154,6 +156,7 @@ class Index extends Component
             'email' => $this->email,
             'first_name' => $this->name,
             'last_name' => $this->last_name,
+            'password' => $this->password,
             'roles' => ['customer'],
             'status' => 'active',
         ];

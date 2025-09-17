@@ -62,6 +62,20 @@
                     </div>
                 </div>
 
+                <div>
+                    <label for="email" class="block text-sm font-medium text-gray-700 mb-1">
+                        {{ __('Password') }}
+                    </label>
+                    <div class="relative">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <i class="ri-mail-line text-gray-400"></i>
+                        </div>
+                        <input type="text" wire:model="data.password" id="password"
+                               class="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                               placeholder="{{ __('Enter Password') }}">
+                    </div>
+                </div>
+
                 <!-- Username Field -->
                 <div>
                     <label for="username" class="block text-sm font-medium text-gray-700 mb-1">

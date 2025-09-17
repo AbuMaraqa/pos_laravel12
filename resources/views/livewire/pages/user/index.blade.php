@@ -9,6 +9,8 @@
 
             <flux:input label="Email" type="email" wire:model="email" />
 
+            <flux:input label="Password" type="text" wire:model="email" />
+
             <div class="flex">
                 <flux:spacer />
 
@@ -127,7 +129,7 @@
                                     class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
                                     @foreach ($this->getRoles() as $role)
                                         <option
-                                            {{ in_array($role['role'], $customer['roles'] ?? []) ? 'selected' : '' }}
+                                            @if($customer['role'] == $role['role']) selected @endif
                                             value="{{ $role['role'] }}">
                                             {{ $role['name'] }}
                                         </option>
