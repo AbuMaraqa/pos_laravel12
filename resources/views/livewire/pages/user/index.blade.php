@@ -9,7 +9,7 @@
 
             <flux:input label="Email" type="email" wire:model="email" />
 
-            <flux:input label="Password" type="text" wire:model="email" />
+            <flux:input label="Password" type="text" wire:model="password" />
 
             <div class="flex">
                 <flux:spacer />
