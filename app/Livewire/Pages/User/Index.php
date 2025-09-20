@@ -10,16 +10,16 @@ use Masmerise\Toaster\Toaster;
 class Index extends Component
 {
     public array $roles = [];
-    public string $name;
-    public string $last_name;
-    public string $email;
-    public string $password;
+    public string $name = '';
+    public string $last_name = '';
+    public string $username = '';
+    public string $password = '';
 
     public array $customers = [];
 
     public array $filters = [
         'name' => '',
-        'email' => '',
+        'username' => '',
         'role' => '',
         'status' => '',
     ];
@@ -35,7 +35,7 @@ class Index extends Component
     {
         $this->name = '';
         $this->last_name = '';
-        $this->email = '';
+        $this->username = '';
         $this->password = '';
         $this->customers = $this->customers();
     }
@@ -54,8 +54,8 @@ class Index extends Component
         }
 
         // إضافة فلتر البريد الإلكتروني
-        if (!empty($this->filters['email'])) {
-            $query['search'] = $this->filters['email'];
+        if (!empty($this->filters['username'])) {
+            $query['search'] = $this->filters['username'];
         }
 
         // إضافة فلتر الدور - إذا كان محدد، استبدل 'all'
@@ -69,9 +69,9 @@ class Index extends Component
             $customers = is_array($response) && isset($response['data']) ? $response['data'] : $response;
 
             // إذا كان هناك فلتر بريد إلكتروني، نقوم بتصفية النتائج يدوياً
-            if (!empty($this->filters['email'])) {
+            if (!empty($this->filters['username'])) {
                 $customers = array_filter($customers, function($customer) {
-                    return stripos($customer['email'] ?? '', $this->filters['email']) !== false;
+                    return stripos($customer['username'] ?? '', $this->filters['username']) !== false;
                 });
             }
 
@@ -152,22 +152,41 @@ class Index extends Component
 
     public function createCustomer()
     {
+        // التحقق من صحة البيانات قبل إرسالها (اختياري ولكنه موصى به)
+        $this->validate([
+            'name' => 'required|string|max:255',
+            'last_name' => 'required|string|max:255',
+            'username' => 'required|string|max:255|unique:users,username', // تأكد من أن اسم المستخدم فريد
+            'password' => 'required|string|min:8',
+        ]);
+
         $data = [
-            'email' => $this->email,
+            'email' => $this->username . '@veronastores.com', // بريد إلكتروني إلزامي
+            'username' => $this->username, // <-- هذا هو السطر الجديد والمهم
             'first_name' => $this->name,
             'last_name' => $this->last_name,
             'password' => $this->password,
-            'roles' => ['customer'],
-            'status' => 'active',
+            // 'roles' => ['customer'], // عادةً ما يكون الدور الافتراضي هو 'customer'
         ];
 
-        $response = $this->wooService->createUser($data);
+        try {
+            $response = $this->wooService->createUser($data);
 
-        $this->reset(['name', 'last_name', 'email']);
+            // إعادة تعيين الحقول بعد الإنشاء بنجاح
+            $this->reset(['name', 'last_name', 'username', 'password']);
 
-        $this->customers = $this->customers();
+            // تحديث قائمة العملاء
+            $this->customers = $this->customers();
 
-        Toaster::success(__('تم إنشاء العميل بنجاح'));
+            // إخفاء الـ modal (إذا كنت تستخدم modal)
+            // $this->dispatch('close-modal', 'edit-profile');
+
+            Toaster::success(__('تم إنشاء العميل بنجاح'));
+        } catch (\Exception $e) {
+            // يمكنك إظهار رسالة خطأ أكثر تحديدًا للمستخدم
+            Toaster::error('حدث خطأ: ' . $e->getMessage());
+            logger()->error('Error creating customer: ' . $e->getMessage());
+        }
     }
 
     public function updated($key): void
@@ -181,7 +200,7 @@ class Index extends Component
     {
         $this->filters = [
             'name' => '',
-            'email' => '',
+            'username' => '',
             'role' => '',
             'status' => '',
         ];

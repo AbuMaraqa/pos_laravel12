@@ -7,14 +7,16 @@
 
             <flux:input label="Last Name" placeholder="Last Name" wire:model="last_name" />
 
-            <flux:input label="Email" type="email" wire:model="email" />
+            <flux:input label="Username" type="text" wire:model="username" />
 
             <flux:input label="Password" type="text" wire:model="password" />
 
             <div class="flex">
                 <flux:spacer />
 
-                <flux:button type="submit" variant="primary" wire:click="createCustomer">{{ __('Save') }}
+                <flux:button type="submit" wire:target="createCustomer" variant="primary" wire:click="createCustomer">
+                    {{ __('Save') }}
+                    <span wire:loading>Loading...</span>
                 </flux:button>
             </div>
         </div>
@@ -29,8 +31,8 @@
                 </div>
 
                 <div>
-                    <flux:input wire:model.live.debounce.500ms="filters.email" placeholder="البريد الإلكتروني"
-                        icon="envelope" type="email" />
+                    <flux:input wire:model.live.debounce.500ms="filters.username" placeholder="البريد الإلكتروني"
+                        icon="envelope" type="text" />
                 </div>
 
                 <div>
@@ -66,9 +68,9 @@
                         </flux:badge>
                     @endif
 
-                    @if (!empty($filters['email']))
-                        <flux:badge color="green" wire:click="$set('filters.email', '')">
-                            البريد: {{ $filters['email'] }}
+                    @if (!empty($filters['username']))
+                        <flux:badge color="green" wire:click="$set('filters.username', '')">
+                            البريد: {{ $filters['username'] }}
                             <flux:icon.x-mark class="w-4 h-4 ml-1" />
                         </flux:badge>
                     @endif
@@ -118,7 +120,7 @@
                             <td class="px-6 py-4 font-medium text-gray-900">
                                 <a wire:navigate href="{{ route('client.profile', $customer['id']) }}">{{ $customer['first_name'] ?? '' }} {{ $customer['last_name'] ?? '' }}</a>
                             </td>
-                            <td class="px-6 py-4">{{ $customer['email'] ?? '—' }}</td>
+                            <td class="px-6 py-4">{{ $customer['username'] ?? '—' }}</td>
                             <td class="px-6 py-4">
                                 @if(!empty($customer['roles']))
                                     <div class="mb-1 text-xs text-gray-500">
