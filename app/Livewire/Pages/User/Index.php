@@ -207,6 +207,16 @@ class Index extends Component
         $this->customers = $this->customers();
     }
 
+    public function removeCustomer(int $id): void
+    {
+        try {
+            $this->wooService->deleteCustomer($id, true);
+            dd('d');
+        } catch (\Throwable $e) {
+            dd('error');
+        }
+    }
+
     public function render()
     {
         return view('livewire.pages.user.index');

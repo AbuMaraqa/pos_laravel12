@@ -161,7 +161,7 @@
                                             {{ __('View') }}
                                         </flux:menu.item>
                                         <flux:menu.item variant="danger"
-                                            wire:click="deleteCustomer({{ $customer['id'] }})" icon="trash">
+                                            wire:click="removeCustomer({{ $customer['id'] }})" icon="trash">
                                             {{ __('Delete') }}
                                         </flux:menu.item>
                                     </flux:menu>

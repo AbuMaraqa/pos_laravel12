@@ -2389,4 +2389,14 @@ class WooCommerceService
 
         return empty($parts) ? $parentName : $parentName . ' - ' . implode(', ', $parts);
     }
+
+    public function deleteCustomer(int $id, bool $force = true, ?int $reassign = null): array
+    {
+        // WooCommerce customers are WP users; تحتاج force=true للحذف النهائي
+        $query = ['force' => $force];
+        if ($reassign !== null) {
+            $query['reassign'] = $reassign;
+        }
+        return $this->delete("customers/{$id}", $query);
+    }
 }
