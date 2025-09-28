@@ -26,6 +26,8 @@ class Add extends Component
     public $productDescription;
     public $productType = 'simple';
 
+    public $brandId = null;
+
     public $regularPrice;
     public $salePrice;
     public $sku;
@@ -69,6 +71,11 @@ class Add extends Component
         $this->fetchProductAttributes();
     }
 
+    #[Computed()]
+    public function getBrands(): array
+    {
+        return $this->wooService->getBrands();
+    }
     public function updated($field, $value)
     {
         if ($field === 'productType') {
@@ -382,6 +389,7 @@ class Add extends Component
 
             // إعداد بيانات المنتج الأساسية
             $productData = $this->prepareProductData();
+
             // إنشاء المنتج في ووردبريس
             $wooProduct = $this->wooService->post('products', $productData);
 
@@ -424,6 +432,11 @@ class Add extends Component
             'categories' => array_map(fn($id) => ['id' => $id], $this->selectedCategories),
         ];
 
+        if ($this->brandId) {
+            $data['brands'] = [
+                ['id' => (int) $this->brandId]
+            ];
+        }
         // إضافة الأسعار للمنتجات البسيطة
         if (in_array($this->productType, ['simple', 'external'])) {
             $data['regular_price'] = $this->regularPrice;

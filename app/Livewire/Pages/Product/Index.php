@@ -55,7 +55,8 @@ class Index extends Component
     public function mount(): void
     {
         $response = $this->wooService->getCategories(['parent' => 0]);
-        $this->categories = $response['data'] ?? []; // 🔥 المهم
+//        dd($this->wooService->getProducts());
+        $this->categories = $response['data'] ?? $response;
     }
 
     /**

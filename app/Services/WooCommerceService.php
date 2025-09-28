@@ -2397,4 +2397,9 @@ class WooCommerceService
         // استخدام مصفوفة query لإرسال المعامل force
         return $this->delete($endpoint, ['force' => $force]);
     }
+
+    public function getBrands()
+    {
+        return $this->get('products/brands')['data'];
+    }
 }

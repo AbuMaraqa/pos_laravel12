@@ -202,6 +202,20 @@
                     </div>
                     <div class="col-span-1 max-w p-6 bg-white border border-gray-200 rounded-lg shadow-sm dark:bg-gray-800 dark:border-gray-700">
                         <div class="mb-3">
+                            <flux:heading size="xl">{{ __('Brands') }}</flux:heading>
+                        </div>
+                        <div class="mb-4">
+                            <flux:select wire:model="brandId" placeholder="Choose brand...">
+                                <flux:select.option value="">Select brand</flux:select.option>
+                                @foreach($this->getBrands() as $brand)
+                                    <flux:select.option value="{{ $brand['id'] }}">{{ $brand['name'] }}</flux:select.option>
+                                @endforeach
+                            </flux:select>
+                        </div>
+                    </div>
+
+                    <div class="col-span-1 max-w p-6 bg-white border border-gray-200 rounded-lg shadow-sm dark:bg-gray-800 dark:border-gray-700">
+                        <div class="mb-3">
                             <flux:heading size="xl">{{ __('Categories') }}</flux:heading>
                         </div>
                         <div class="mb-4">
