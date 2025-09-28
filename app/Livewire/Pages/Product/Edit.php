@@ -1156,7 +1156,7 @@ class Edit extends Component
         $response = $this->wooService->getCategories(['per_page' => 100]);
 
         // استخراج البيانات من مفتاح "data"
-        $categories = $response['data'] ?? [];
+        $categories = $response['data'] ?? $response;
 
         $grouped = [];
         foreach ($categories as $cat) {

@@ -111,7 +111,7 @@ class Add extends Component
     public function getCategories(): array
     {
         try {
-            $categories = $this->wooService->getCategories(['per_page' => 100])['data'] ?? [];
+            $categories = $this->wooService->getCategories(['per_page' => 100]);
             $grouped = [];
 
             foreach ($categories as $cat) {
