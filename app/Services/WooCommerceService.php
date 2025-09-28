@@ -1402,8 +1402,7 @@ class WooCommerceService
         // For variations, we need to update directly on the target product/variation
         try {
             // Get all products (limited to 50 for performance)
-            $products = $this->getProducts(['per_page' => 50]);
-
+            $products = $this->getProducts(['per_page' => 50])['data'];
             // Find the parent product containing this variation
             $parentProductId = null;
             foreach ($products as $product) {
@@ -1724,16 +1723,48 @@ class WooCommerceService
         ]);
     }
 
-    public function updateMrbpMetaboxUserRoleEnable($productId, $yes)
+    public function updateMrbpMetaboxUserRoleEnable($productId, $value)
     {
-        return $this->put("products/{$productId}", [
+        // الخطوة 1: تحديث المنتج الأب (كما كان)
+        $this->put("products/{$productId}", [
             'meta_data' => [
                 [
                     'key' => 'mrbp_metabox_user_role_enable',
-                    'value' => $yes
+                    'value' => $value
                 ]
             ]
         ]);
+
+        // الخطوة 2: جلب بيانات المنتج الأب للحصول على مصفوفة أرقام المتغيرات
+        $productData = $this->get("products/{$productId}");
+        $variation_ids = $productData['variations'] ?? []; // هذه ستكون مصفوفة أرقام مثل [73, 72]
+
+        // إذا لم يكن هناك متغيرات، نتوقف هنا
+        if (empty($variation_ids)) {
+            return;
+        }
+
+        // الخطوة 3: تجهيز وتحديث جميع الـ variations دفعة واحدة
+        $batchData = ['update' => []];
+
+        // نمر على مصفوفة الأرقام مباشرة
+        foreach ($variation_ids as $variationId) {
+            $batchData['update'][] = [
+                // ✨ نستخدم الـ ID مباشرة
+                'id' => $variationId,
+                'meta_data' => [
+                    [
+                        'key' => 'mrbp_metabox_user_role_enable',
+                        'value' => $value
+                    ]
+                ]
+            ];
+        }
+
+        // إرسال طلب التحديث دفعة واحدة للمتغيرات
+        if (!empty($batchData['update'])) {
+            $this->post("products/{$productId}/variations/batch", $batchData);
+        }
     }
 
     public function updateProductStatus($productId, $status)
