@@ -382,9 +382,9 @@ class Add extends Component
 
             // إعداد بيانات المنتج الأساسية
             $productData = $this->prepareProductData();
-
             // إنشاء المنتج في ووردبريس
             $wooProduct = $this->wooService->post('products', $productData);
+
             $this->productId = $wooProduct['id'];
 
             Log::info('تم إنشاء المنتج في ووردبريس بنجاح', ['product_id' => $this->productId]);
@@ -569,7 +569,7 @@ class Add extends Component
             // إعداد البيانات للحفظ المحلي
             $localProductData = [
                 'name' => $wooProduct['name'],
-                'slug' => $wooProduct['slug'],
+                'slug' => $wooProduct['slug'] ?? Str::slug($wooProduct['name']),
                 'sku' => $wooProduct['sku'],
                 'type' => $wooProduct['type'],
                 'status' => $wooProduct['status'] === 'publish' ? 'active' : $wooProduct['status'],
@@ -826,7 +826,6 @@ class Add extends Component
 
                 // إنشاء المتغير في ووردبريس
                 $wooVariation = $this->wooService->post("products/{$wooProductId}/variations", $variationData);
-
                 Log::info('تم إنشاء المتغير في ووردبريس', [
                     'variation_id' => $wooVariation['id'],
                     'index' => $index
