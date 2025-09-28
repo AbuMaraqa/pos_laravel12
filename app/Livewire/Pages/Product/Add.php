@@ -569,7 +569,7 @@ class Add extends Component
             // إعداد البيانات للحفظ المحلي
             $localProductData = [
                 'name' => $wooProduct['name'],
-                'slug' => $wooProduct['slug'] ?? Str::slug($wooProduct['name']),
+                'slug' => $wooProduct['slug'],
                 'sku' => $wooProduct['sku'],
                 'type' => $wooProduct['type'],
                 'status' => $wooProduct['status'] === 'publish' ? 'active' : $wooProduct['status'],
@@ -700,15 +700,15 @@ class Add extends Component
         if (empty($price) || $price === '' || $price === '0' || $price === 0) {
             return null;
         }
-        
+
         // إزالة أي رموز عملة أو مسافات
         $cleanPrice = preg_replace('/[^0-9.]/', '', $price);
-        
+
         // التحقق من أن القيمة رقمية صحيحة
         if (is_numeric($cleanPrice) && $cleanPrice > 0) {
             return (float) $cleanPrice;
         }
-        
+
         return null;
     }
 
@@ -720,7 +720,7 @@ class Add extends Component
         if (empty($quantity) || $quantity === '' || !is_numeric($quantity)) {
             return 0;
         }
-        
+
         return (int) $quantity;
     }
 
@@ -784,12 +784,12 @@ class Add extends Component
     {
         $baseName = $this->productName;
         $options = $variation['options'] ?? [];
-        
+
         if (!empty($options)) {
             $optionsText = implode(' - ', array_filter($options));
             return $baseName . ' (' . $optionsText . ')';
         }
-        
+
         return $baseName . ' - متغير ' . ($index + 1);
     }
 

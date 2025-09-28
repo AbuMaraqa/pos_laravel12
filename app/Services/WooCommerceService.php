@@ -1761,7 +1761,6 @@ class WooCommerceService
             ];
         }
 
-        // إرسال طلب التحديث دفعة واحدة للمتغيرات
         if (!empty($batchData['update'])) {
             $this->post("products/{$productId}/variations/batch", $batchData);
         }
