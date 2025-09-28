@@ -66,24 +66,24 @@ class WooCommerceService
         }
 
         $self = new self();
-        $self->baseUrl       = rtrim(env('WOOCOMMERCE_STORE_URL', 'https://veronastores.com/ar'), '/');
-        $self->consumerKey   = $subscription->consumer_key;
-        $self->consumerSecret= $subscription->consumer_secret;
+        $self->baseUrl = rtrim(env('WOOCOMMERCE_STORE_URL', 'https://veronastores.com/ar'), '/');
+        $self->consumerKey = $subscription->consumer_key;
+        $self->consumerSecret = $subscription->consumer_secret;
 
         $self->client = new Client([
             'base_uri' => $self->baseUrl . '/wp-json/wc/v3/',
-            'auth'     => [$self->consumerKey, $self->consumerSecret],
-            'timeout'  => 15.0,
-            'verify'   => false, // للتطوير فقط
+            'auth' => [$self->consumerKey, $self->consumerSecret],
+            'timeout' => 15.0,
+            'verify' => false, // للتطوير فقط
         ]);
 
         // WordPress client (لو بتحتاجه)
         $credentials = base64_encode(env('WORDPRESS_USERNAME') . ':' . env('WORDPRESS_APPLICATION_PASSWORD'));
         $self->wpClient = new Client([
             'base_uri' => $self->baseUrl . '/wp-json/wp/v2/',
-            'headers'  => ['Authorization' => 'Basic ' . $credentials],
-            'timeout'  => 30.0,
-            'verify'   => false,
+            'headers' => ['Authorization' => 'Basic ' . $credentials],
+            'timeout' => 30.0,
+            'verify' => false,
         ]);
 
         return $self;
@@ -129,26 +129,26 @@ class WooCommerceService
     }
 
     public function put(string $endpoint, array $data = [], array $query = []): array
-{
-    try {
-        // مهم: لا ترسل id داخل الـ body
-        unset($data['id']);
+    {
+        try {
+            // مهم: لا ترسل id داخل الـ body
+            unset($data['id']);
 
-        $response = $this->client->put($endpoint, [
-            'json'   => $this->sanitizeData($data),
-            'query'  => $query, // ← هنا كنا بنستخدمه وهو غير معرّف سابقًا
-            'headers'=> [
-                'Accept'       => 'application/json',
-                'Content-Type' => 'application/json',
-            ],
-        ]);
+            $response = $this->client->put($endpoint, [
+                'json' => $this->sanitizeData($data),
+                'query' => $query, // ← هنا كنا بنستخدمه وهو غير معرّف سابقًا
+                'headers' => [
+                    'Accept' => 'application/json',
+                    'Content-Type' => 'application/json',
+                ],
+            ]);
 
-        return json_decode($response->getBody()->getContents(), true);
-    } catch (\GuzzleHttp\Exception\RequestException $e) {
-        logger()->error('WooCommerce PUT Error: ' . $e->getMessage());
-        throw $e;
+            return json_decode($response->getBody()->getContents(), true);
+        } catch (\GuzzleHttp\Exception\RequestException $e) {
+            logger()->error('WooCommerce PUT Error: ' . $e->getMessage());
+            throw $e;
+        }
     }
-}
 
     public function delete(string $endpoint, array $data = []): array
     {
@@ -418,7 +418,7 @@ class WooCommerceService
 
     public function getCategories(array $query = []): array
     {
-        return $this->get('products/categories', $query);
+        return $this->get('products/categories', $query)['data'];
     }
 
     public function getVariationsByProductId($productId): array
@@ -564,7 +564,7 @@ class WooCommerceService
     public function getAttributeById($id): array
     {
         $response = $this->get("products/attributes/{$id}");
-        return $response['data'] ?? [];
+        return $response['data'] ?? $response;
     }
 
     public function getAttribute($attributeId): array
@@ -2064,7 +2064,7 @@ class WooCommerceService
             }
 
             // فلترة العملاء الصالحين فقط
-            $validCustomers = array_filter($customers, function($customer) {
+            $validCustomers = array_filter($customers, function ($customer) {
                 return isset($customer['id']) && !empty($customer['id']);
             });
 
@@ -2390,13 +2390,11 @@ class WooCommerceService
         return empty($parts) ? $parentName : $parentName . ' - ' . implode(', ', $parts);
     }
 
-    public function deleteCustomer(int $id, bool $force = true, ?int $reassign = null): array
+    public function removeCustomer($id, $force = true)
     {
-        // WooCommerce customers are WP users; تحتاج force=true للحذف النهائي
-        $query = ['force' => $force];
-        if ($reassign !== null) {
-            $query['reassign'] = $reassign;
-        }
-        return $this->delete("customers/{$id}", $query);
+        $endpoint = "customers/{$id}";
+
+        // استخدام مصفوفة query لإرسال المعامل force
+        return $this->delete($endpoint, ['force' => $force]);
     }
 }

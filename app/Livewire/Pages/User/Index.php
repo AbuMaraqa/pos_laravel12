@@ -210,10 +210,10 @@ class Index extends Component
     public function removeCustomer(int $id): void
     {
         try {
-            $this->wooService->deleteCustomer($id, true);
-            dd('d');
+            $this->wooService->removeCustomer($id, true);
+            dd('ereere');
         } catch (\Throwable $e) {
-            dd('error');
+            dd($e->getMessage());
         }
     }
 

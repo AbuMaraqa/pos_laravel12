@@ -71,11 +71,6 @@ class Index extends Component
     {
         $attribute = $this->wooService->getAttributeById($attributeId);
 
-        // تحقق من وجود البيانات قبل المتابعة
-        if (!$attribute) {
-            return; // أو يمكنك إرسال رسالة خطأ
-        }
-
         $this->modal('edit-term')->show();
 
         $this->data['id'] = $attribute['id'];

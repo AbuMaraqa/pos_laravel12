@@ -401,7 +401,6 @@ class Index extends Component
             $response = $this->wooService->getProducts($query);
             $collection = collect($response['data'] ?? $response);
             $total = $response['total'] ?? count($collection);
-
             // إذا لم نجد نتائج، نبحث في المتغيرات (variations)
             if ($collection->isEmpty()) {
                 $parentProduct = $this->searchInVariations($searchTerm);
@@ -483,7 +482,7 @@ class Index extends Component
 
                         // فحص ID للمتغير
                         if (is_numeric($searchTerm) && $variation['id'] == (int)$searchTerm) {
-                            return $product; // إرجاع المنتج الأب
+                            return $product;
                         }
                     }
                 }
