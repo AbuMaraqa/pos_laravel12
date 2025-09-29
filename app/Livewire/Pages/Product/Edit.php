@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Pages\Product;
 
+use Livewire\Attributes\Computed;
 use Livewire\Component;
 use Livewire\WithFileUploads;
 use Livewire\Attributes\On;
@@ -20,6 +21,9 @@ class Edit extends Component
     public $productDescription;
     public $productType = 'simple';
     public $regularPrice;
+
+    public $brandId;
+
     public $salePrice;
     public $sku;
     public $stockQuantity;
@@ -253,6 +257,12 @@ class Edit extends Component
         }
     }
 
+    #[Computed()]
+    public function getBrands()
+    {
+        return $this->wooService->getBrands();
+    }
+
     protected function loadProduct()
     {
         $product = $this->wooService->getProduct($this->productId);
@@ -269,6 +279,10 @@ class Edit extends Component
         $this->regularPrice = $product['regular_price'] ?? '';
         $this->salePrice = $product['sale_price'] ?? '';
         $this->sku = $product['sku'];
+
+        if(!empty($product['brands'])){
+            $this->brandId = $product['brands'][0]['id'];
+        }
 
         // إدارة المخزون
         $this->isStockManagementEnabled = $product['manage_stock'] ?? false;
@@ -895,6 +909,12 @@ class Edit extends Component
 
             if (!empty($this->sku)) {
                 $productData['sku'] = trim($this->sku);
+            }
+
+            if (!empty($this->brandId)) {
+                $productData['brands'] = [['id' => (int) $this->brandId]];
+            } else {
+                $productData['brands'] = [];
             }
 
             // ✅ معالجة محسنة للمنتج المتغير
