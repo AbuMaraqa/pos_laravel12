@@ -2398,8 +2398,11 @@ class WooCommerceService
         return $this->delete($endpoint, ['force' => $force]);
     }
 
-    public function getBrands(array $query = [])
+    public function getBrands(array $query = ['per_pa'])
     {
-        return $this->get('products/brands' , $query)['data'];
+        return $this->get('products/brands' , array_merge([
+            'per_page' => 100
+            ,$query
+        ]))['data'];
     }
 }
