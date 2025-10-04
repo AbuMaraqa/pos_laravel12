@@ -45,12 +45,8 @@
 
     <flux:modal x-data="{}" name="list-variations" class="" style="min-width: 90vw; max-width: 90vw;">
         <div class="space-y-6">
-            {{-- <div>
-                <flux:heading size="lg">{{ __('List of variations') }}</flux:heading>
-            </div> --}}
-
+            {{-- ... (الجزء العلوي يبقى كما هو) ... --}}
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-200 p-4">
-
                 <div>
                     <div class="grid grid-cols-4">
                         <div class="col-span-1">
@@ -66,207 +62,105 @@
                         </div>
                     </div>
                 </div>
-
                 <div>
-
-                    <div
-                        class="grid grid-cols-2 gap-4 max-w-full p-6 bg-white border border-gray-200 rounded-lg shadow-sm dark:bg-gray-800 dark:border-gray-700">
-
+                    <div class="grid grid-cols-2 gap-4 max-w-full p-6 bg-white border border-gray-200 rounded-lg shadow-sm">
+                        {{-- ✨ تم حذف wire:change --}}
                         <div>
-                            <flux:input type="number" wire:model.defer="main_price"
-                                wire:change="updateMainProductPrice" label="{{ __('Price') }}" />
+                            <flux:input type="number" wire:model.defer="main_price" label="{{ __('Price') }}" />
                         </div>
                         <div>
-                            <flux:input type="number" wire:model.defer="main_sale_price"
-                                wire:change='updateMainSalePrice' label="{{ __('Sale Price') }}" />
+                            <flux:input type="number" wire:model.defer="main_sale_price" label="{{ __('Sale Price') }}" />
                         </div>
                     </div>
-
                 </div>
             </div>
             <div class="inline-flex items-center gap-2">
                 <flux:field variant="inline">
                     <flux:label>{{ __('Enable Multiple Price') }}</flux:label>
-                    <flux:switch wire:model="showVariationTable" wire:change="updateMrbpMetaboxUserRoleEnable" checked/>
+                    <flux:switch wire:model="showVariationTable" wire:change="updateMrbpMetaboxUserRoleEnable" checked />
                 </flux:field>
             </div>
-            <table x-bind:class="{ 'hidden': !$wire.showVariationTable }"
-                class="w-full text-sm text-left rtl:text-right text-gray-500 dark:text-gray-400 relative">
-                <!-- Global loader overlay for the entire table -->
-                <div wire:loading.flex wire:target="updateMainProductPrice, updateMainSalePrice, updateProductMrbpRole, updateVariationMrbpRole, updatePrice"
-                    class="absolute inset-0 bg-white bg-opacity-70 items-center justify-center z-10">
-                    <div class="flex flex-col items-center justify-center">
-                        <flux:icon.loading class="text-blue-600 animate-spin h-10 w-10" />
-                        <span class="mt-2 text-sm font-medium text-blue-600">{{ __('Updating variations...') }}</span>
-                    </div>
-                </div>
-                <thead class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
+            <table x-bind:class="{ 'hidden': !$wire.showVariationTable }" class="w-full text-sm text-left rtl:text-right text-gray-500">
+                <thead class="text-xs text-gray-700 uppercase bg-gray-50">
+                <th scope="col" class="px-6 py-3">
+                    {{ __('Variation Name') }}
+                </th>
+                <th>{{ __('Price') }}</th>
+                @foreach ($this->getRoles as $role)
                     <th scope="col" class="px-6 py-3">
-                        {{ __('Variation Name') }}
-                    </th>
-                    <th>{{ __('Price') }}</th>
-                    @foreach ($this->getRoles as $role)
-                        <th scope="col" class="px-6 py-3">
-                            <div class="mb-1">{{ $role['name'] }}</div>
-                            <div class="flex items-center gap-1">
-                                <input type="number" id="column-price-{{ $role['role'] }}"
-                                    placeholder="Set all for {{ $role['name'] }}"
-                                    class="w-full text-xs p-1 border border-gray-300 rounded bg-amber-400"
-                                    min="0" step="0.01">
-                                <button type="button" onclick="applyColumnPrice('{{ $role['role'] }}')"
+                        <div class="mb-1">{{ $role['name'] }}</div>
+                        {{-- ✨ تم تعديل هذا الجزء بالكامل --}}
+                        <div class="flex items-center gap-1">
+                            <input type="number"
+                                   placeholder="Set all for {{ $role['name'] }}"
+                                   class="w-full text-xs p-1 border border-gray-300 rounded"
+                                   wire:model.defer="columnPrices.{{ $role['role'] }}"
+                                   min="0" step="0.01">
+                            <button type="button"
+                                    wire:click="setAllPricesForRole('{{ $role['role'] }}')"
                                     class="bg-blue-500 hover:bg-blue-600 text-white px-2 py-1 rounded text-xs">
-                                    {{ __('Apply') }}
-                                    <span wire:loading wire:target="updateProductMrbpRole, updateVariationMrbpRole">
-                                        <flux:icon.loading variant="micro" class="text-white" />
-                                    </span>
-                                </button>
-                            </div>
-                        </th>
-                    @endforeach
+                                {{ __('Apply') }}
+                            </button>
+                        </div>
+                    </th>
+                @endforeach
                 </thead>
-                <tbody class="bg-white dark:bg-gray-800">
-                    {{-- صف المنتج الأساسي --}}
-                    <tr class="bg-gray-100">
-                        <td class="px-6 py-3 font-bold">{{ $productData['name'] ?? 'المنتج الأساسي' }}</td>
+                <tbody class="bg-white">
+                {{-- صف المنتج الأساسي --}}
+                <tr class="bg-gray-100">
+                    <td class="px-6 py-3 font-bold">{{ $productData['name'] ?? 'المنتج الأساسي' }}</td>
+                    <td>
+                        {{-- ✨ تم حذف wire:change --}}
+                        <flux:input type="number" wire:model.defer="main_price" />
+                    </td>
+                    @foreach ($this->getRoles as $roleIndex => $role)
+                        <td class="px-6 py-3">
+                            {{-- ✨ تم حذف wire:change --}}
+                            <flux:input type="text"
+                                        wire:model.defer="parentRoleValues.{{ $role['role'] }}" class="bg-gray-50" />
+                        </td>
+                    @endforeach
+                </tr>
+
+                {{-- صفوف المتغيرات --}}
+                @foreach ($productVariations as $variationIndex => $variation)
+                    <tr>
+                        <td class="px-6 py-3">{{ $variation['name'] }}</td>
                         <td>
-                            <div class="relative">
-                                <flux:input type="number" wire:model.defer="main_price"
-                                    wire:change="updateMainProductPrice" />
-                                <div wire:loading wire:target="updateMainProductPrice"
-                                    class="absolute inset-y-0 right-2 flex items-center">
-                                    <flux:icon.loading variant="micro" class="text-blue-600" />
-                                </div>
-                            </div>
+                            {{-- ✨ تم حذف wire:change --}}
+                            <flux:input type="number" wire:model.defer="price.{{ $variationIndex }}" />
                         </td>
                         @foreach ($this->getRoles as $roleIndex => $role)
                             <td class="px-6 py-3">
-                                <div class="relative">
-                                    <flux:input type="text"
-                                        wire:change="updateProductMrbpRole('{{ $role['role'] }}', $event.target.value)"
-                                        wire:model.defer="parentRoleValues.{{ $role['role'] }}" class="bg-gray-50" />
-                                    <div wire:loading wire:target="updateProductMrbpRole('{{ $role['role'] }}')"
-                                        class="absolute inset-y-0 right-2 flex items-center">
-                                        <flux:icon.loading variant="micro" class="text-blue-600" />
-                                    </div>
-                                </div>
+                                {{-- ✨ تم حذف wire:change --}}
+                                <flux:input type="text"
+                                            wire:model.defer="variationValues.{{ $variationIndex }}.{{ $role['role'] }}" />
                             </td>
                         @endforeach
                     </tr>
-
-                    {{-- صفوف المتغيرات --}}
-                    @foreach ($productVariations as $variationIndex => $variation)
-                        <tr>
-                            <td class="px-6 py-3">{{ $variation['name'] }}</td>
-                            <td>
-                                <div class="relative">
-                                    <flux:input type="number" wire:model.defer="price.{{ $variationIndex }}"
-                                        wire:change="updatePrice({{ $variation['id'] }}, $event.target.value)" />
-                                    <div wire:loading wire:target="updatePrice({{ $variation['id'] }})"
-                                        class="absolute inset-y-0 right-2 flex items-center">
-                                        <flux:icon.loading variant="micro" class="text-blue-600" />
-                                    </div>
-                                </div>
-                            </td>
-                            @foreach ($this->getRoles as $roleIndex => $role)
-                                <td class="px-6 py-3">
-                                    <div class="relative">
-                                        <flux:input type="text"
-                                            wire:change="updateVariationMrbpRole({{ $variation['id'] }}, '{{ $role['role'] }}', $event.target.value)"
-                                            wire:model.defer="variationValues.{{ $variationIndex }}.{{ $role['role'] }}" />
-                                        <div wire:loading wire:target="updateVariationMrbpRole({{ $variation['id'] }}, '{{ $role['role'] }}')"
-                                            class="absolute inset-y-0 right-2 flex items-center">
-                                            <flux:icon.loading variant="micro" class="text-blue-600" />
-                                        </div>
-                                    </div>
-                                </td>
-                            @endforeach
-                        </tr>
-                    @endforeach
+                @endforeach
                 </tbody>
             </table>
 
-            <!-- Script para la funcionalidad de columna -->
-            <script>
-                // Función para aplicar precio a una columna específica
-                function applyColumnPrice(roleId) {
-                    // Obtener el valor del input de columna
-                    const columnInput = document.getElementById(`column-price-${roleId}`);
-                    const columnPrice = columnInput.value;
+            {{-- ✨ زر الحفظ وإغلاق النافذة --}}
+            <div class="flex justify-end items-center pt-4 border-t mt-4 gap-2">
+                <flux:button x-on:click="$dispatch('close-modal')">
+                    {{ __('Cancel') }}
+                </flux:button>
+                <flux:button variant="primary" wire:click="saveAllChanges" wire:loading.attr="disabled">
+                <span wire:loading.remove wire:target="saveAllChanges">
+                    {{ __('Save All Changes') }}
+                </span>
+                    <span wire:loading wire:target="saveAllChanges">
+                    {{ __('Saving...') }}
+                </span>
+                </flux:button>
+            </div>
 
-                    if (!columnPrice) {
-                        alert('{{ __('Please enter a price value for this column') }}');
-                        return;
-                    }
+            {{-- ✨ تم حذف شيفرة JavaScript بالكامل من هنا --}}
 
-                    // Buscar el índice de la columna en la tabla
-                    const headings = Array.from(document.querySelectorAll('table thead th'));
-                    const columnIndex = headings.findIndex(th => th.querySelector(`#column-price-${roleId}`));
-
-                    if (columnIndex === -1) {
-                        alert('{{ __('Column not found') }}');
-                        return;
-                    }
-
-                    // Obtener el componente Livewire
-                    const livewireComponent = window.Livewire.find(
-                        document.querySelector('[wire\\:id]').getAttribute('wire:id')
-                    );
-
-                    // Obtener todos los inputs de la columna (uno por fila)
-                    const rows = document.querySelectorAll('table tbody tr');
-
-                    rows.forEach(row => {
-                        // Obtener la celda en la posición columnIndex
-                        const cells = row.querySelectorAll('td');
-                        if (cells.length > columnIndex) {
-                            const input = cells[columnIndex].querySelector('input[type="text"]');
-                            if (input) {
-                                // Actualizar el valor del input
-                                input.value = columnPrice;
-
-                                // Disparar evento de cambio
-                                const event = new Event('change', {
-                                    'bubbles': true
-                                });
-                                input.dispatchEvent(event);
-
-                                // Actualizar el modelo Livewire
-                                const wireModel = input.getAttribute('wire:model.defer');
-                                if (wireModel) {
-                                    livewireComponent.set(wireModel, columnPrice);
-                                }
-
-                                // Si hay un wire:change, extraer y ejecutar el comando
-                                const wireChange = input.getAttribute('wire:change');
-                                if (wireChange) {
-                                    // Extraer los parámetros del wire:change
-                                    const match = wireChange.match(/([^\(]+)\(([^\)]+)\)/);
-                                    if (match && match.length >= 3) {
-                                        const method = match[1];
-                                        let params = match[2].split(',').map(p => p.trim());
-
-                                        // Reemplazar "$event.target.value" por el valor real
-                                        params = params.map(p => {
-                                            if (p === "$event.target.value") return columnPrice;
-                                            if (p.startsWith("'") && p.endsWith("'")) return p.slice(1, -1);
-                                            return p;
-                                        });
-
-                                        // Llamar al método de Livewire
-                                        livewireComponent.call(method, ...params);
-                                    }
-                                }
-                            }
-                        }
-                    });
-
-                    // Mostrar mensaje de confirmación
-                    alert(`{{ __('Price applied to all rows for') }} ${roleId}`);
-                }
-            </script>
         </div>
     </flux:modal>
-
 
     <flux:button href="{{ route('product.add') }}" wire:navigate variant="primary" icon="plus">
         {{ __('Add product') }}</flux:button>

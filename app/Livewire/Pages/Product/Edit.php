@@ -500,11 +500,11 @@ class Edit extends Component
         $this->lowStockThreshold = $data['lowStockThreshold'] ?? $this->lowStockThreshold;
     }
 
-    #[On('updateMrbpPrice')]
-    public function handleMrbpUpdate($data)
-    {
-        $this->mrbpData = $data['data'];
-    }
+//    #[On('updateMrbpPrice')]
+//    public function handleMrbpUpdate($data)
+//    {
+//        $this->mrbpData = $data['data'];
+//    }
 
     #[On('variationsUpdated')]
     public function handleVariationsUpdated($data)

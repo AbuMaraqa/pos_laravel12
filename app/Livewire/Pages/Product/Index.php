@@ -47,6 +47,9 @@ class Index extends Component
 
     protected WooCommerceService $wooService;
 
+    public $columnPrices = []; // <-- أضف هذه الخاصية الجديدة
+
+
     public function boot(WooCommerceService $wooService): void
     {
         $this->wooService = $wooService;
@@ -147,102 +150,59 @@ class Index extends Component
     public function openListVariationsModal($productId)
     {
         try {
-            // جلب بيانات المنتج الأساسي
             $product = $this->wooService->getProduct($productId);
-
-            $this->price = $product['regular_price'];
-            $this->sale_price = $product['sale_price'];
+            $this->productData = $product;
             $this->main_price = $product['regular_price'];
             $this->main_sale_price = $product['sale_price'];
+
             $metaData = $product['meta_data'] ?? [];
-            if (is_array($metaData)) {
-                foreach ($metaData as $meta) {
-                    if ($meta['key'] == 'mrbp_metabox_user_role_enable') {
-                        $this->showVariationTable = $meta['value'] == 'yes';
-                    }
+            $this->showVariationTable = false;
+            foreach ($metaData as $meta) {
+                if ($meta['key'] == 'mrbp_metabox_user_role_enable') {
+                    $this->showVariationTable = ($meta['value'] == 'yes');
                 }
             }
 
-            // تسجيل البيانات المستلمة من API للتصحيح
-            logger()->info('Product data from API', [
-                'productId' => $productId,
-                'hasId' => isset($product['id']),
-                'hasMetaData' => isset($product['meta_data'])
-            ]);
-
-            // التأكد من أن المنتج موجود وله معرف
-            if (!isset($product['id'])) {
-                logger()->error('Product data missing id', ['productId' => $productId]);
-                $this->productData = ['name' => 'المنتج الأساسي', 'id' => $productId];
-            } else {
-                // استخدام معرف المنتج المرسل كمعلمة وليس المعرف من البيانات
-                $product['id'] = $productId;
-                $this->productData = $product;
-            }
-
-            // تهيئة قيم أدوار المنتج الأساسي
+            // تهيئة قيم الأدوار للمنتج الأب
             $this->parentRoleValues = [];
-
-            // الحصول على قائمة الأدوار المتاحة
             $roles = $this->wooService->getRoles();
-
-            // تهيئة قيم فارغة لكل الأدوار
             foreach ($roles as $role) {
                 if (isset($role['role'])) {
-                    $this->parentRoleValues[$role['role']] = '';
+                    $this->parentRoleValues[$role['role']] = ''; // تهيئة بفارغ
                 }
             }
 
-            // استخراج قيم الأدوار من meta_data الخاصة بالمنتج الأساسي
-            if (isset($product['meta_data']) && is_array($product['meta_data'])) {
-                foreach ($product['meta_data'] as $meta) {
-                    if ($meta['key'] === 'mrbp_role' && is_array($meta['value'])) {
-                        foreach ($meta['value'] as $roleEntry) {
-                            $roleKey = array_key_first($roleEntry);
+            // استخراج أسعار الأدوار المحفوظة (مع فلتر للبيانات التالفة)
+            foreach ($metaData as $meta) {
+                if ($meta['key'] === 'mrbp_role' && is_array($meta['value'])) {
+                    foreach ($meta['value'] as $roleEntry) {
+                        if (!is_array($roleEntry)) continue;
+                        $roleKey = array_key_first($roleEntry);
 
-                            // التنسيق القديم - قيم داخل قوسين إضافيين
-                            if ($roleKey && isset($roleEntry[$roleKey]) && isset($roleEntry[$roleKey]['mrbp_regular_price'])) {
-                                $this->parentRoleValues[$roleKey] = $roleEntry[$roleKey]['mrbp_regular_price'];
-                            }
-                            // التنسيق الجديد - القيم مباشرة
-                            else if ($roleKey && isset($roleEntry['mrbp_regular_price'])) {
-                                $this->parentRoleValues[$roleKey] = $roleEntry['mrbp_regular_price'];
+                        // ✨ فلتر ذكي لتجاهل أي بيانات محفوظة بشكل خاطئ
+                        if ($roleKey && !in_array(strtolower($roleKey), ['id', 'name'])) {
+                            $priceValue = $roleEntry['mrbp_regular_price'] ?? null;
+                            if ($priceValue !== null) {
+                                $this->parentRoleValues[$roleKey] = $priceValue;
                             }
                         }
                     }
                 }
             }
 
-            // تسجيل قيم الأدوار المستخرجة للتصحيح
-            logger()->info('Extracted role values for parent product', [
-                'productId' => $productId,
-                'parentRoleValues' => $this->parentRoleValues
-            ]);
-
-            // استخدام الدالة المحسّنة لجلب جميع المتغيرات مع قيمها مرة واحدة
             $variations = $this->wooService->getProductVariationsWithRoles($productId);
             $this->productVariations = $variations;
-
-            // تهيئة مصفوفة لتخزين قيم كل متغير
             $this->variationValues = [];
-
             $this->price = [];
 
-            // استخراج قيم roles مباشرة من المتغيرات
             foreach ($variations as $variationIndex => $variation) {
-
                 $this->price[$variationIndex] = $variation['regular_price'];
                 $this->variationValues[$variationIndex] = $variation['role_values'] ?? [];
             }
 
-            // عرض النافذة المنبثقة
             $this->modal('list-variations')->show();
         } catch (\Exception $e) {
-            logger()->error('Error opening variations modal', [
-                'productId' => $productId,
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
+            logger()->error('Error opening variations modal', ['error' => $e->getMessage()]);
             Toaster::error('حدث خطأ أثناء جلب البيانات: ' . $e->getMessage());
         }
     }
@@ -332,10 +292,106 @@ class Index extends Component
         }
     }
 
+    public function setAllPricesForRole($roleKey)
+    {
+        // احصل على السعر من الخاصية الجديدة
+        $value = $this->columnPrices[$roleKey] ?? null;
+
+        if (!is_numeric($value)) {
+            Toaster::warning('الرجاء إدخال سعر رقمي صالح.');
+            return;
+        }
+
+        // تحديث أسعار المنتج الأب في الذاكرة
+        $this->parentRoleValues[$roleKey] = $value;
+
+        // تحديث قيم المتغيرات في الذاكرة فقط، بدون إرسالها
+        foreach ($this->productVariations as $index => $variation) {
+            $this->variationValues[$index][$roleKey] = $value;
+        }
+
+        Toaster::info('تم تطبيق السعر مؤقتاً. اضغط "حفظ كل التغييرات" لتأكيد.');
+    }
+
     public function updateMainProductPrice()
     {
         $this->wooService->updateMainProductPrice($this->productData['id'], $this->main_price);
         Toaster::success('تم تحديث سعر المنتج بنجاح');
+    }
+
+    // Index.php
+
+// ✨ الدالة الأساسية الجديدة لحفظ كل التغييرات دفعة واحدة
+    public function saveAllChanges()
+    {
+        try {
+            $updatePayload = [];
+
+            // 1. تجميع تحديثات المتغيرات (أسعار عادية وأسعار أدوار)
+            foreach ($this->productVariations as $index => $variation) {
+                $variationId = $variation['id'];
+                $metaData = $variation['meta_data'] ?? [];
+
+                $newRoleValuesForVariation = $this->variationValues[$index] ?? [];
+                $mrbpRoleFound = false;
+
+                foreach ($metaData as &$meta) {
+                    if ($meta['key'] === 'mrbp_role') {
+                        $mrbpRoleFound = true;
+                        $updatedRoles = [];
+                        foreach ($newRoleValuesForVariation as $roleKey => $price) {
+                            if (is_numeric($price) && $price !== '') {
+                                $updatedRoles[] = [
+                                    $roleKey => ucfirst($roleKey),
+                                    'mrbp_regular_price' => $price, 'mrbp_sale_price' => '', 'mrbp_make_empty_price' => ""
+                                ];
+                            }
+                        }
+                        $meta['value'] = $updatedRoles;
+                        break;
+                    }
+                }
+
+                if (!$mrbpRoleFound) {
+                    $updatedRoles = [];
+                    foreach ($newRoleValuesForVariation as $roleKey => $price) {
+                        if (is_numeric($price) && $price !== '') {
+                            $updatedRoles[] = [
+                                $roleKey => ucfirst($roleKey),
+                                'mrbp_regular_price' => $price, 'mrbp_sale_price' => '', 'mrbp_make_empty_price' => ""
+                            ];
+                        }
+                    }
+                    if (!empty($updatedRoles)) {
+                        $metaData[] = ['key' => 'mrbp_role', 'value' => $updatedRoles];
+                    }
+                }
+
+                $updatePayload[] = [
+                    'id' => $variationId,
+                    'regular_price' => $this->price[$index] ?? $variation['regular_price'],
+                    'meta_data' => $metaData
+                ];
+            }
+
+            if (!empty($updatePayload)) {
+                $this->wooService->batchUpdateVariations($this->productData['id'], ['update' => $updatePayload]);
+            }
+
+            // 2. تحديث بيانات المنتج الرئيسي
+            $this->wooService->updateMainProductPrice($this->productData['id'], $this->main_price);
+            $this->wooService->updateMainSalePrice($this->productData['id'], $this->main_sale_price);
+            foreach($this->parentRoleValues as $roleKey => $value) {
+                $this->wooService->updateProductRolePrice($this->productData['id'], $roleKey, $value);
+            }
+
+            Toaster::success('🎉 تم حفظ جميع التغييرات بنجاح!');
+            $this->modal('list-variations')->close();
+
+        } catch (\Exception $e) {
+            logger()->error('Error saving all variation changes', ['error' => $e->getMessage()]);
+            Toaster::error('حدث خطأ فادح أثناء الحفظ: ' . $e->getMessage());
+        }
     }
 
     public function updateMainSalePrice()
@@ -377,71 +433,27 @@ class Index extends Component
         $query = [
             'per_page' => $this->perPage,
             'page' => $this->page,
-            'lang' => app()->getLocale(), // اللغة النشطة
-            'status' => 'any', // خليه 'any' عادي، بس اللغة بتحدد
-            'wpml_language' => app()->getLocale(), // مهمة جداً
+            'status' => 'any', // يبحث في كل الحالات (منشور، مسودة، ..)
+            'lang' => app()->getLocale(), // لجلب المنتجات باللغة الحالية
         ];
 
-        $collection = collect();
-        $total = 0;
-
-        // إضافة البحث إذا كان موجود
-        if (!empty($this->search)) {
-            $searchTerm = trim($this->search);
-
-            // أولاً: البحث في المنتجات الأساسية
-            if (is_numeric($searchTerm)) {
-                // البحث بالـ ID أولاً
-                $query['include'] = [$searchTerm];
-            } else {
-                // البحث بالاسم والـ SKU معاً
-                $query['search'] = $searchTerm;
-                $query['sku'] = $searchTerm;
-            }
-
-            $response = $this->wooService->getProducts($query);
-            $collection = collect($response['data'] ?? $response);
-            $total = $response['total'] ?? count($collection);
-            // إذا لم نجد نتائج، نبحث في المتغيرات (variations)
-            if ($collection->isEmpty()) {
-                $parentProduct = $this->searchInVariations($searchTerm);
-                if ($parentProduct) {
-                    $collection = collect([$parentProduct]);
-                    $total = 1;
-                }
-            }
-
-            // إذا لم نجد نتائج بالبحث الرقمي، نحاول البحث بالاسم
-            if ($collection->isEmpty() && is_numeric($searchTerm)) {
-                $fallbackQuery = [
-                    'search' => $searchTerm,
-                    'per_page' => $this->perPage,
-                    'page' => $this->page,
-                    'lang' => app()->getLocale(),
-                    'status' => 'any',
-                    'wpml_language' => app()->getLocale(),
-                ];
-
-                if ($this->categoryId) {
-                    $fallbackQuery['category'] = $this->categoryId;
-                }
-
-                $response = $this->wooService->getProducts($fallbackQuery);
-                $collection = collect($response['data'] ?? $response);
-                $total = $response['total'] ?? count($collection);
-            }
-        } else {
-            // إذا لم يكن هناك بحث، اجلب جميع المنتجات
-            if ($this->categoryId) {
-                $query['category'] = $this->categoryId;
-            }
-
-            $response = $this->wooService->getProducts($query);
-            $collection = collect($response['data'] ?? $response);
-            $total = $response['total'] ?? 1000;
+        // إذا كان هناك نص في مربع البحث
+        if (!empty(trim($this->search))) {
+            // نستخدم معامل 'search' الذي يوفره ووكومرس للبحث السريع في اسم المنتج وغيره
+            $query['search'] = trim($this->search);
+        }
+        // إذا لم يكن هناك بحث، ولكن تم اختيار تصنيف معين
+        elseif ($this->categoryId) {
+            $query['category'] = $this->categoryId;
         }
 
-        $products = new LengthAwarePaginator(
+        // نقوم بإرسال طلب واحد فقط وسريع للـ API
+        $response = $this->wooService->getProducts($query);
+
+        $collection = collect($response['data'] ?? $response);
+        $total = $response['total'] ?? $collection->count();
+
+        $products = new \Illuminate\Pagination\LengthAwarePaginator(
             $collection,
             $total,
             $this->perPage,
@@ -451,10 +463,8 @@ class Index extends Component
 
         return view('livewire.pages.product.index', [
             'products' => $products,
-            'categories' => $this->categories,
         ]);
     }
-
     /**
      * البحث في متغيرات المنتجات وإرجاع المنتج الأب
      */
