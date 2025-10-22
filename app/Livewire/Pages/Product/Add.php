@@ -579,10 +579,13 @@ class Add extends Component
                 'product_name' => $wooProduct['name']
             ]);
 
+            $randomNumber = mt_rand(10000, 99999999);
+            $uniqueSlug = Str::slug($randomNumber . '-' . $wooProduct['name']);
+
             // إعداد البيانات للحفظ المحلي
             $localProductData = [
                 'name' => $wooProduct['name'],
-                'slug' => $wooProduct['slug'] ?? Str::slug($wooProduct['name']),
+                'slug' => $uniqueSlug,
                 'sku' => $wooProduct['sku'],
                 'type' => $wooProduct['type'],
                 'status' => $wooProduct['status'] === 'publish' ? 'active' : $wooProduct['status'],
@@ -748,11 +751,20 @@ class Add extends Component
                 'local_parent_id' => $localProductId
             ]);
 
+            $variationName = $this->generateVariationName($originalVariation, $index);
+
+            // 2. توليد رقم عشوائي (5-8 خانات) لضمان تفرد الـ slug
+            $randomNumber = mt_rand(10000, 99999999);
+
+            // 3. دمج الرقم العشوائي مع اسم المتغير وتحويله إلى slug
+            // نستخدم $variationName ليكون الـ slug خاص بالمتغير، وليس فقط اسم المنتج الأب.
+            $uniqueSlug = Str::slug($randomNumber . '-' . $variationName);
+
             // إعداد بيانات المتغير للحفظ المحلي
             $localVariationData = [
                 'parent_id' => $localProductId,
-                'name' => $this->generateVariationName($originalVariation, $index),
-                'slug' => Str::slug($this->generateVariationName($originalVariation, $index)),
+                'name' => $variationName,
+                'slug' => $uniqueSlug,
                 'sku' => $wooVariation['sku'] ?? '',
                 'type' => 'variation',
                 'status' => $wooVariation['status'] === 'publish' ? 'active' : $wooVariation['status'],
