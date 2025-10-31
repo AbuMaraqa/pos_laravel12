@@ -914,7 +914,7 @@ class Edit extends Component
                 [
                     'user_id' => auth()->user()->id, // ID المستخدم المسجل حالياً
                     'quantity' => $newQty, // الكمية الإجمالية الجديدة (مثال: 60)
-                    'price' => $costPrice,
+//                    'price' => $costPrice,
                     'type' => $inventoryType,
                 ]);
 
