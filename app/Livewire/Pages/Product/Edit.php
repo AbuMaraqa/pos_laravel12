@@ -11,12 +11,6 @@ use Illuminate\Support\Facades\Log;
 use Masmerise\Toaster\Toaster;
 use Spatie\LivewireFilepond\WithFilePond;
 
-// == (إضافة جديدة) ==
-use App\Models\Inventory;
-use App\Enums\InventoryType; // <-- تأكد أن هذا المسار صحيح
-use Illuminate\Support\Facades\Auth;
-// == (نهاية الإضافة) ==
-
 class Edit extends Component
 {
     use WithFileUploads;
@@ -53,8 +47,6 @@ class Edit extends Component
     // حالات التحديث والحفظ
     public $isRefreshing = false;
     public $isSaving = false;
-
-    // == (تمت إزالة متغيرات المخزون القديم بناءً على طلبك) ==
 
     protected WooCommerceService $wooService;
 
@@ -300,8 +292,6 @@ class Edit extends Component
         $this->allowBackorders = $product['backorders'] ?? 'no';
         $this->lowStockThreshold = $product['low_stock_amount'] ?? null;
 
-        // == (تمت إزالة تخزين المخزون القديم) ==
-
         // التصنيفات
         $this->selectedCategories = collect($product['categories'])->pluck('id')->toArray();
 
@@ -414,8 +404,6 @@ class Edit extends Component
             $existingVariations = $this->wooService->getVariationsByProductId($this->productId);
             $this->variations = [];
 
-            // == (تمت إزالة تخزين المخزون القديم) ==
-
             Log::info('Loading variations', [
                 'product_id' => $this->productId,
                 'variations_count' => count($existingVariations),
@@ -448,8 +436,6 @@ class Edit extends Component
                 if (isset($variation['stock_quantity']) && is_numeric($variation['stock_quantity'])) {
                     $stockQuantity = (int)$variation['stock_quantity'];
                 }
-
-                // == (تمت إزالة تخزين المخزون القديم) ==
 
                 $variationData = [
                     'id' => $variation['id'] ?? null,
@@ -770,6 +756,55 @@ class Edit extends Component
         }
     }
 
+    /**
+     * تحديث المخزون عند تغيير الكمية
+     */
+    private function updateInventory($oldQuantity, $newQuantity, $productId)
+    {
+        try {
+            // حساب الفرق
+            $difference = $newQuantity - $oldQuantity;
+
+            if ($difference == 0) {
+                return; // لا يوجد تغيير
+            }
+
+            // تحديد نوع العملية
+            $type = $difference > 0 ? InventoryType::INPUT : InventoryType::OUTPUT;
+            $quantity = abs($difference);
+
+            // إنشاء سجل جديد في المخزون
+            \App\Models\Inventory::create([
+                'product_id' => $productId,
+                'quantity' => $quantity,
+                'type' => $type,
+                'user_id' => auth()->id(),
+                'store_id' => $this->getDefaultStoreId(), // ستحتاج لتحديد المتجر
+            ]);
+
+            Log::info('تم تحديث المخزون:', [
+                'product_id' => $productId,
+                'difference' => $difference,
+                'type' => $type->label(),
+                'quantity' => $quantity
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('خطأ في تحديث المخزون: ' . $e->getMessage());
+            throw $e;
+        }
+    }
+
+    /**
+     * الحصول على المتجر الافتراضي
+     * يمكنك تعديل هذا حسب منطق التطبيق الخاص بك
+     */
+    private function getDefaultStoreId()
+    {
+        // يمكنك إضافة خاصية store_id في المكون أو الحصول عليها من المستخدم
+        return $this->store_id ?? \App\Models\Store::first()->id ?? 1;
+    }
+
     public function prepareAttributes()
     {
         $attributes = [];
@@ -876,73 +911,17 @@ class Edit extends Component
         return $attributes;
     }
 
-    /**
-     * (دالة جديدة معدلة)
-     * تحديث أو إنشاء سجل رصيد المخزون المحلي
-     *
-     * @param int $itemId (ID المنتج البسيط أو ID المتغير)
-     * @param int|null $newQuantity
-     */
-    protected function updateInventoryStock($itemId, $newQuantity)
-    {
-        try {
-            $newQty = (int) $newQuantity;
-
-            // --- !! انتبه: يجب تعديل هذه القيم ---
-
-            // 1. من أين يأتي store_id ؟
-            // سأفترض 1 مؤقتاً، يجب عليك تغيير هذا
-            $storeId = 1; // <--- !! قم بتغيير هذا !!
-
-            // 2. ما هو سعر التكلفة؟
-            // الموديل يتطلب 'price'، سأفترض أنه سعر التكلفة (0 مؤقتاً)
-            $costPrice = 0; // <--- !! قم بتغيير هذا !!
-
-            // 3. ما هو نوع الحركة؟
-            // $inventoryType = InventoryType::ADJUSTMENT; // <-- تم تغييره بناءً على طلبك
-            $inventoryType = InventoryType::INPUT; // <--- (تعديل سريع)
-            // ----------------------------------------
-
-            // الكود يفترض أن 'product_id' في جدول 'inventories'
-            // هو إما (ID المنتج البسيط) أو (ID المتغير)
-            Inventory::updateOrCreate(
-                [
-                    'product_id' => $itemId,
-                    'store_id' => $storeId,
-                    // نفترض وجود سجل واحد لكل منتج/متجر
-                ],
-                [
-                    'user_id' => auth()->user()->id, // ID المستخدم المسجل حالياً
-                    'quantity' => $newQty, // الكمية الإجمالية الجديدة (مثال: 60)
-//                    'price' => $costPrice,
-                    'type' => $inventoryType,
-                ]);
-
-            Log::info('تم تحديث/إنشاء سجل المخزون المحلي', [
-                'item_id' => $itemId,
-                'new_qty' => $newQty,
-            ]);
-
-        } catch (\Exception $e) {
-            Log::error('فشل في تحديث/إنشاء سجل المخزون المحلي', [
-                'item_id' => $itemId,
-                'error' => $e->getMessage(),
-            ]);
-            // لا نوقف الحفظ، فقط نعرض تحذير
-            Toaster::warning($e->getMessage());
-        }
-    }
-
     public function save()
     {
         try {
             Log::info('=== بدء عملية الحفظ المحدثة ===', [
                 'product_id' => $this->productId,
                 'product_type' => $this->productType,
-                'selectedAttributes_count' => count($this->selectedAttributes),
-                'variations_count' => count($this->variations),
-                'attributeMap_count' => count($this->attributeMap)
             ]);
+
+            // حفظ الكمية القديمة قبل التحديث
+            $oldProduct = $this->wooService->getProduct($this->productId);
+            $oldQuantity = $oldProduct['stock_quantity'] ?? 0;
 
             // تجهيز بيانات المنتج الأساسية
             $productData = [
@@ -988,14 +967,12 @@ class Edit extends Component
                 $productData['brands'] = [];
             }
 
-            // ✅ معالجة محسنة للمنتج المتغير
+            // معالجة المنتج المتغير
             if ($this->productType === 'variable') {
-                // التحقق من وجود البيانات المطلوبة
                 if (empty($this->selectedAttributes) || empty($this->attributeMap) || empty($this->variations)) {
                     throw new \Exception('بيانات المنتج المتغير غير مكتملة');
                 }
 
-                // تجهيز attributes بطريقة محسنة
                 $attributes = $this->prepareVariableProductAttributes();
                 if (empty($attributes)) {
                     throw new \Exception('فشل في تجهيز خصائص المنتج المتغير');
@@ -1003,7 +980,6 @@ class Edit extends Component
 
                 $productData['attributes'] = $attributes;
 
-                // تجهيز default attributes من أول متغير
                 if (!empty($this->variations)) {
                     $defaultAttributes = $this->prepareDefaultAttributes();
                     if (!empty($defaultAttributes)) {
@@ -1011,16 +987,9 @@ class Edit extends Component
                     }
                 }
 
-                // إعدادات خاصة للمنتج المتغير
                 $productData['manage_stock'] = false;
                 $productData['stock_status'] = 'instock';
                 unset($productData['regular_price'], $productData['sale_price']);
-
-                Log::info('تم تجهيز بيانات المنتج المتغير:', [
-                    'attributes_count' => count($attributes),
-                    'default_attributes_count' => count($defaultAttributes ?? []),
-                    'attributes' => $attributes
-                ]);
             }
 
             // تحديث المنتج الأساسي
@@ -1033,33 +1002,25 @@ class Edit extends Component
 
             Log::info('✅ تم تحديث المنتج الأساسي بنجاح');
 
-            // == (تعديل) ==
-            // تحديث المخزون المحلي للمنتج البسيط
-            if ($this->productType !== 'variable' && $productData['manage_stock']) {
-                $this->updateInventoryStock(
-                    $this->productId,
-                    $productData['stock_quantity'] // الكمية الجديدة
-                );
+            // ✅ تحديث المخزون للمنتجات البسيطة
+            if ($this->productType !== 'variable' && $this->isStockManagementEnabled) {
+                $newQuantity = (int) $this->stockQuantity;
+                if ($oldQuantity != $newQuantity) {
+                    $this->updateInventory($oldQuantity, $newQuantity, $this->productId);
+                    Log::info('✅ تم تحديث سجل المخزون');
+                }
             }
-            // == (نهاية التعديل) ==
 
             // تحديث المتغيرات للمنتج المتغير
             if ($this->productType === 'variable' && !empty($this->variations)) {
                 Log::info('بدء تحديث المتغيرات...');
 
-                // تنظيف وتجهيز المتغيرات للمزامنة
                 $cleanedVariations = $this->prepareVariationsForSync();
 
                 if (empty($cleanedVariations)) {
                     throw new \Exception('لا توجد متغيرات صالحة للحفظ');
                 }
 
-                Log::info('المتغيرات المجهزة للمزامنة:', [
-                    'variations_count' => count($cleanedVariations),
-                    'sample_variation' => $cleanedVariations[0] ?? null
-                ]);
-
-                // مزامنة المتغيرات
                 $syncResult = $this->wooService->syncVariations($this->productId, $cleanedVariations);
 
                 if (!$syncResult['success']) {
@@ -1067,22 +1028,6 @@ class Edit extends Component
                 }
 
                 Log::info('✅ تم تحديث المتغيرات بنجاح:', $syncResult);
-
-                // == (تعديل) ==
-                // تحديث المخزون المحلي للمتغيرات
-                // $cleanedVariations يحتوي على الكميات الجديدة
-                foreach ($cleanedVariations as $variation) {
-                    if ($variation['manage_stock'] && isset($variation['id'])) {
-                        $variationId = $variation['id'];
-                        $newQuantity = $variation['stock_quantity'];
-
-                        $this->updateInventoryStock(
-                            $variationId,
-                            $newQuantity
-                        );
-                    }
-                }
-                // == (نهاية التعديل) ==
             }
 
             // تحديث MRBP
@@ -1102,7 +1047,7 @@ class Edit extends Component
             if ($this->productType === 'variable') {
                 Toaster::success('✅ تم تحديث المنتج المتغير بنجاح مع جميع الخصائص والمتغيرات');
             } else {
-                Toaster::success('✅ تم تحديث المنتج بنجاح');
+                Toaster::success('✅ تم تحديث المنتج والمخزون بنجاح');
             }
 
             return redirect()->route('product.index');
@@ -1118,7 +1063,6 @@ class Edit extends Component
             Toaster::error('فشل في حفظ المنتج: ' . $e->getMessage());
         }
     }
-
     /**
      * تجهيز خصائص المنتج المتغير
      */
@@ -1373,4 +1317,3 @@ class Edit extends Component
         return view('livewire.pages.product.edit');
     }
 }
-
