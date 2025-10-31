@@ -3,7 +3,6 @@
 namespace App\Livewire\Pages\Product;
 
 use App\Enums\InventoryType;
-use App\Models\Inventory;
 use App\Models\Product;
 use Livewire\Attributes\Computed;
 use Livewire\Component;
@@ -777,8 +776,8 @@ class Edit extends Component
             $quantity = abs($difference);
 
             // إنشاء سجل جديد في المخزون
-            Inventory::create([
-                'product_id' => Product::where('remote_wp_id',$productId)->first()->id ?? null,
+            \App\Models\Inventory::create([
+                'product_id' => Product::where('remote_wp_id',$productId)->first()->id ?? $productId,
                 'quantity' => $quantity,
                 'type' => $type,
                 'user_id' => auth()->id(),
