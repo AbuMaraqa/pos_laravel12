@@ -11,6 +11,12 @@ use Illuminate\Support\Facades\Log;
 use Masmerise\Toaster\Toaster;
 use Spatie\LivewireFilepond\WithFilePond;
 
+// == (إضافة جديدة) ==
+use App\Models\Inventory;
+use App\Enums\InventoryType; // <-- تأكد أن هذا المسار صحيح
+use Illuminate\Support\Facades\Auth;
+// == (نهاية الإضافة) ==
+
 class Edit extends Component
 {
     use WithFileUploads;
@@ -47,6 +53,12 @@ class Edit extends Component
     // حالات التحديث والحفظ
     public $isRefreshing = false;
     public $isSaving = false;
+
+    // == (إضافة جديدة) ==
+    // لتخزين الكميات القديمة ومقارنتها
+    public $oldStockQuantity;
+    public $oldVariationsStock = [];
+    // == (نهاية الإضافة) ==
 
     protected WooCommerceService $wooService;
 
@@ -292,6 +304,11 @@ class Edit extends Component
         $this->allowBackorders = $product['backorders'] ?? 'no';
         $this->lowStockThreshold = $product['low_stock_amount'] ?? null;
 
+        // == (تعديل) ==
+        // تخزين الكمية القديمة للمنتج البسيط
+        $this->oldStockQuantity = $this->stockQuantity;
+        // == (نهاية التعديل) ==
+
         // التصنيفات
         $this->selectedCategories = collect($product['categories'])->pluck('id')->toArray();
 
@@ -404,6 +421,11 @@ class Edit extends Component
             $existingVariations = $this->wooService->getVariationsByProductId($this->productId);
             $this->variations = [];
 
+            // == (إضافة جديدة) ==
+            // مسح الكميات القديمة قبل البدء
+            $this->oldVariationsStock = [];
+            // == (نهاية الإضافة) ==
+
             Log::info('Loading variations', [
                 'product_id' => $this->productId,
                 'variations_count' => count($existingVariations),
@@ -437,6 +459,13 @@ class Edit extends Component
                     $stockQuantity = (int)$variation['stock_quantity'];
                 }
 
+                // == (تعديل) ==
+                // تخزين الكمية القديمة للمتغير
+                if (isset($variation['id'])) {
+                    $this->oldVariationsStock[$variation['id']] = $stockQuantity;
+                }
+                // == (نهاية التعديل) ==
+
                 $variationData = [
                     'id' => $variation['id'] ?? null,
                     'options' => $options,
@@ -454,7 +483,8 @@ class Edit extends Component
 
             Log::info('All variations loaded with manage_stock=true', [
                 'final_variations_count' => count($this->variations),
-                'sample_variation' => $this->variations[0] ?? null
+                'sample_variation' => $this->variations[0] ?? null,
+                'old_stock_count' => count($this->oldVariationsStock) // للتحقق
             ]);
 
         } catch (\Exception $e) {
@@ -862,6 +892,74 @@ class Edit extends Component
         return $attributes;
     }
 
+    /**
+     * (دالة جديدة)
+     * إنشاء سجل حركة في المخزون المحلي
+     *
+     * @param int $itemId (ID المنتج البسيط أو ID المتغير)
+     * @param int|null $newQuantity
+     * @param int|null $oldQuantity
+     */
+    protected function createInventoryMovement($itemId, $newQuantity, $oldQuantity)
+    {
+        try {
+            $newQty = (int) $newQuantity;
+            $oldQty = (int) $oldQuantity;
+
+            // الفارق في الكمية
+            $quantityChange = $newQty - $oldQty;
+
+            // إذا لم يتغير شيء، لا تقم بإنشاء سجل
+            if ($quantityChange === 0) {
+                Log::info('لا يوجد تغيير في المخزون، تم التخطي', ['item_id' => $itemId]);
+                return;
+            }
+
+            // --- !! انتبه: يجب تعديل هذه القيم ---
+
+            // 1. من أين يأتي store_id ؟
+            // سأفترض 1 مؤقتاً، يجب عليك تغيير هذا
+            $storeId = 1; // <--- !! قم بتغيير هذا !!
+
+            // 2. ما هو سعر التكلفة؟
+            // الموديل يتطلب 'price'، سأفترض أنه سعر التكلفة (0 مؤقتاً)
+            $costPrice = 0; // <--- !! قم بتغيير هذا !!
+
+            // 3. ما هو نوع الحركة؟
+            // سأفترض أن لديك نوع 'ADJUSTMENT' (تعديل) في InventoryType Enum
+            // إذا لم يكن موجوداً، أضفه أو استخدم نوعاً آخر
+            $inventoryType = InventoryType::ADJUSTMENT; // <--- !! تأكد من وجود هذا !!
+
+            // ----------------------------------------
+
+            // الكود يفترض أن 'product_id' في جدول 'inventories'
+            // هو إما (ID المنتج البسيط) أو (ID المتغير)
+            Inventory::create([
+                'product_id' => $itemId,
+                'store_id' => $storeId,
+                'user_id' => Auth::id(), // ID المستخدم المسجل حالياً
+                'quantity' => $quantityChange, // الفارق (مثال: -13 أو +3)
+                'price' => $costPrice,
+                'type' => $inventoryType,
+            ]);
+
+            Log::info('تم تسجيل حركة مخزون محلية', [
+                'item_id' => $itemId,
+                'old_qty' => $oldQty,
+                'new_qty' => $newQty,
+                'change' => $quantityChange,
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('فشل في تسجيل حركة المخزون المحلية', [
+                'item_id' => $itemId,
+                'error' => $e->getMessage(),
+            ]);
+            // لا نوقف الحفظ، فقط نعرض تحذير
+            Toaster::warning('تم حفظ المنتج، ولكن فشل تحديث المخزون المحلي');
+        }
+    }
+
     public function save()
     {
         try {
@@ -962,6 +1060,20 @@ class Edit extends Component
 
             Log::info('✅ تم تحديث المنتج الأساسي بنجاح');
 
+            // == (تعديل) ==
+            // تحديث المخزون المحلي للمنتج البسيط
+            if ($this->productType !== 'variable' && $productData['manage_stock']) {
+                $this->createInventoryMovement(
+                    $this->productId,
+                    $productData['stock_quantity'], // الكمية الجديدة
+                    $this->oldStockQuantity        // الكمية القديمة
+                );
+                // تحديث الكمية القديمة بعد الحفظ
+                $this->oldStockQuantity = $productData['stock_quantity'];
+            }
+            // == (نهاية التعديل) ==
+
+
             // تحديث المتغيرات للمنتج المتغير
             if ($this->productType === 'variable' && !empty($this->variations)) {
                 Log::info('بدء تحديث المتغيرات...');
@@ -986,6 +1098,28 @@ class Edit extends Component
                 }
 
                 Log::info('✅ تم تحديث المتغيرات بنجاح:', $syncResult);
+
+                // == (تعديل) ==
+                // تحديث المخزون المحلي للمتغيرات
+                // $cleanedVariations يحتوي على الكميات الجديدة
+                foreach ($cleanedVariations as $variation) {
+                    if ($variation['manage_stock'] && isset($variation['id'])) {
+                        $variationId = $variation['id'];
+                        $newQuantity = $variation['stock_quantity'];
+                        // جلب الكمية القديمة التي خزنّاها
+                        $oldQuantity = $this->oldVariationsStock[$variationId] ?? 0;
+
+                        $this->createInventoryMovement(
+                            $variationId,
+                            $newQuantity,
+                            $oldQuantity
+                        );
+                        // تحديث الكمية القديمة بعد الحفظ
+                        $this->oldVariationsStock[$variationId] = $newQuantity;
+
+                    }
+                }
+                // == (نهاية التعديل) ==
             }
 
             // تحديث MRBP
