@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Pages\Product;
 
+use App\Enums\InventoryType;
 use Livewire\Attributes\Computed;
 use Livewire\Component;
 use Livewire\WithFileUploads;
