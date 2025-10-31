@@ -1003,7 +1003,7 @@ class Edit extends Component
             Log::info('✅ تم تحديث المنتج الأساسي بنجاح');
 
             // ✅ تحديث المخزون للمنتجات البسيطة
-            if ($this->productType !== 'variable' && $this->isStockManagementEnabled) {
+            if ($this->productType !== 'variable') {
                 $newQuantity = (int) $this->stockQuantity;
                 if ($oldQuantity != $newQuantity) {
                     $this->updateInventory($oldQuantity, $newQuantity, $this->productId);
