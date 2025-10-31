@@ -3,6 +3,7 @@
 namespace App\Livewire\Pages\Product;
 
 use App\Enums\InventoryType;
+use App\Models\Product;
 use Livewire\Attributes\Computed;
 use Livewire\Component;
 use Livewire\WithFileUploads;
@@ -776,7 +777,7 @@ class Edit extends Component
 
             // إنشاء سجل جديد في المخزون
             \App\Models\Inventory::create([
-                'product_id' => $productId,
+                'product_id' => Product::where('remote_wp_id',$productId)->first()->id ?? null,
                 'quantity' => $quantity,
                 'type' => $type,
                 'user_id' => auth()->id(),
