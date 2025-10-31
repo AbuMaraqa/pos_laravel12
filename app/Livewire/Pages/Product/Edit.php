@@ -1006,10 +1006,9 @@ class Edit extends Component
             // ✅ تحديث المخزون للمنتجات البسيطة
             if ($this->productType !== 'variable') {
                 $newQuantity = (int) $this->stockQuantity;
-                if ($oldQuantity != $newQuantity) {
                     $this->updateInventory($oldQuantity, $newQuantity, $this->productId);
                     Log::info('✅ تم تحديث سجل المخزون');
-                }
+
             }
 
             // تحديث المتغيرات للمنتج المتغير
