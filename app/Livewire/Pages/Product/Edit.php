@@ -908,10 +908,11 @@ class Edit extends Component
             Inventory::updateOrCreate(
                 [
                     'product_id' => $itemId,
+                    'store_id' => $storeId,
                     // نفترض وجود سجل واحد لكل منتج/متجر
                 ],
                 [
-                    'user_id' => Auth::id(), // ID المستخدم المسجل حالياً
+                    'user_id' => auth()->user()->id, // ID المستخدم المسجل حالياً
                     'quantity' => $newQty, // الكمية الإجمالية الجديدة (مثال: 60)
                     'price' => $costPrice,
                     'type' => $inventoryType,
