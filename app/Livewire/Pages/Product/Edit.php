@@ -908,7 +908,6 @@ class Edit extends Component
             Inventory::updateOrCreate(
                 [
                     'product_id' => $itemId,
-                    'store_id' => $storeId,
                     // نفترض وجود سجل واحد لكل منتج/متجر
                 ],
                 [
