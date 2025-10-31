@@ -929,7 +929,7 @@ class Edit extends Component
                 'error' => $e->getMessage(),
             ]);
             // لا نوقف الحفظ، فقط نعرض تحذير
-            Toaster::warning('تم حفظ المنتج، ولكن فشل تحديث المخزون المحلي');
+            Toaster::warning($e->getMessage());
         }
     }
 
