@@ -3,9 +3,12 @@
 namespace App\Livewire\Pages\Product;
 
 use App\Jobs\SyncProduct;
+use App\Models\Product;
 use App\Services\WooCommerceService;
 use Illuminate\Pagination\LengthAwarePaginator;
-use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Auth; // تأكد من وجود هذا السطر
+use App\Models\Inventory; // <-- أضفنا هذا
+use App\Enums\InventoryType; // <-- تم التأكد منه
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Isolate;
 use Livewire\Component;
@@ -31,6 +34,13 @@ class Index extends Component
     public $product = [];
     public $variations = [];
     public $quantities = [];
+    public $originalQuantities = []; // <-- أضفنا هذه لحفظ الكميات الأصلية
+
+    /**
+     * @var int|null $qtyToAdd
+     * هذا الحقل لربط المدخل الخاص بـ "إضافة كمية للكل"
+     */
+    public $qtyToAdd = null;
 
     public $productVariations = [];
     public $roles = [];
@@ -49,7 +59,6 @@ class Index extends Component
 
     public $columnPrices = []; // <-- أضف هذه الخاصية الجديدة
 
-    public $qtyToAdd = null;
 
     public function boot(WooCommerceService $wooService): void
     {
@@ -110,13 +119,20 @@ class Index extends Component
     {
         $product = $this->wooService->getProductsById($productId);
         $this->product = $product;
+
+        // تصفير المصفوفات قبل البدء
         $this->quantities = ['main' => 1];
+        $this->originalQuantities = ['main' => 1]; // <-- تصفير المصفوفة الجديدة
         $this->variations = [];
 
         foreach ($product['variations'] ?? [] as $variationId) {
             $variation = $this->wooService->getProductsById($variationId);
             $this->variations[] = $variation;
-            $this->quantities[$variationId] = $variation['stock_quantity'];
+
+            // نقوم بتعبئة المصفوفتين بالكمية الحالية
+            $currentStock = $variation['stock_quantity'] ?? 0;
+            $this->quantities[$variationId] = $currentStock;
+            $this->originalQuantities[$variationId] = $currentStock; // <-- حفظ الكمية الأصلية
         }
 
         $this->modal('stock-qty-product-modal')->show();
@@ -155,6 +171,9 @@ class Index extends Component
         $this->qtyToAdd = null;
     }
 
+    /**
+     * دالة جديدة لحفظ الكميات المحدثة
+     */
     public function saveStockQuantities()
     {
         try {
@@ -183,7 +202,63 @@ class Index extends Component
                 $this->wooService->batchUpdateVariations($this->product['id'], ['update' => $updatePayload]);
             }
 
-            Toaster::success('🎉 تم حفظ الكميات بنجاح!');
+            // 4. ✨ *** الخطوة الجديدة: تحديث جدول المخزون المحلي ***
+            $storeId = 1 ?? null; // <-- !!! افترض أن store_id موجود في بيانات المستخدم
+            $userId = Auth::id();
+
+            if (!$storeId) {
+                logger()->error('Inventory Sync Error: store_id is missing for user.', ['user_id' => $userId]);
+                Toaster::error('حدث خطأ في مزامنة المخزون: لم يتم العثور على معرّف المتجر.');
+            } else {
+
+                //
+                // بما أن جدولك هو "log" لتسجيل الحركات
+                // سنقوم بحساب الفرق وإضافة سجل جديد
+                //
+                foreach ($this->quantities as $variationId => $newQty) {
+                    // نتأكد أنه ID رقمي (لمنتج فرعي)
+                    if (is_numeric($variationId)) {
+
+                        // جلب الكمية القديمة التي خزنّاها
+                        $oldQty = (int) ($this->originalQuantities[$variationId] ?? 0);
+                        $newQty = (int) $newQty;
+
+                        // حساب الفرق
+                        $difference = $newQty - $oldQty;
+
+                        // إذا كان هناك فرق، قم بتسجيله
+                        if ($difference != 0) {
+
+                            // *** بداية المنطق الجديد ***
+                            $inventoryType = null;
+                            $logQuantity = 0;
+
+                            if ($difference > 0) {
+                                // الكمية "داخلة" - أضفنا مخزون
+                                $inventoryType = InventoryType::INPUT;
+                                $logQuantity = $difference; // الكمية المضافة
+                            } else {
+                                // الكمية "طالعة" - سحبنا مخزون
+                                $inventoryType = InventoryType::OUTPUT;
+                                $logQuantity = abs($difference); // نسجل القيمة الموجبة للكمية الخارجة
+                            }
+                            // *** نهاية المنطق الجديد ***
+
+                            Inventory::create([
+                                'product_id' => (int) Product::where('remote_wp_id',$variationId)->first()->id ?? 1,
+                                'store_id'   => (int) $storeId,
+                                'user_id'    => (int) $userId,
+                                'quantity'   => $logQuantity, // الكمية (دائماً موجبة)
+                                'type'       => $inventoryType, // النوع (INPUT أو OUTPUT)
+                            ]);
+                        }
+                    }
+                }
+            }
+            // *** نهاية الخطوة الجديدة ***
+
+
+            Toaster::success('🎉 تم حفظ الكميات في ووكومرس والمخزون المحلي بنجاح!');
             $this->modal('stock-qty-product-modal')->close();
 
         } catch (\Exception $e) {
@@ -596,3 +671,4 @@ class Index extends Component
         }
     }
 }
+
