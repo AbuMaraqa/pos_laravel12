@@ -436,12 +436,10 @@
                             </div>
                         </td>
                         <td class="px-6 py-4 text-center font-medium">
-                            <flux:button>
+                            <flux:button wire:click="openStockQtyModal({{ $product['id'] }})">
                                 {{ $product['total_quantity'] }}
                             </flux:button>
 
-                            <flux:menu.item wire:click="openStockQtyModal({{ $product['id'] }})"
-                                            icon="eye">{{ __('Stock Quantity') }}</flux:menu.item>
 {{--                            <span--}}
 {{--                                class="px-3 py-1 rounded-full {{ $product['stock_quantity'] > 0 ? 'bg-blue-50 text-blue-700' : 'bg-red-50 text-red-700' }}">--}}
 {{--                                {{ $product['stock_quantity'] }}--}}
