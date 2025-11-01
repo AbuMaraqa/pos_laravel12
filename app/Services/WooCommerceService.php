@@ -394,9 +394,7 @@ class WooCommerceService
     {
         try {
             $response = $this->get('products/' . $id);
-
             if (isset($response['id'])) {
-                // إذا كان المنتج متغير، نجلب المتغيرات مباشرة
                 if ($response['type'] === 'variable' && !empty($response['variations'])) {
                     $variations = $this->getProductVariations($response['id']);
                     $response['variations_details'] = $variations;
@@ -404,6 +402,7 @@ class WooCommerceService
 
                 return $response;
             }
+            dd($response);
 
             return null;
         } catch (\Exception $e) {

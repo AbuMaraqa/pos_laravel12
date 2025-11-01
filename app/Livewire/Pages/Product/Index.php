@@ -49,6 +49,7 @@ class Index extends Component
 
     public $columnPrices = []; // <-- أضف هذه الخاصية الجديدة
 
+    public $qtyToAdd = null;
 
     public function boot(WooCommerceService $wooService): void
     {
@@ -103,6 +104,92 @@ class Index extends Component
         }
 
         $this->modal('barcode-product-modal')->show();
+    }
+
+    public function openStockQtyModal($productId)
+    {
+        $product = $this->wooService->getProductsById($productId);
+        $this->product = $product;
+        $this->quantities = ['main' => 1];
+        $this->variations = [];
+
+        foreach ($product['variations'] ?? [] as $variationId) {
+            $variation = $this->wooService->getProductsById($variationId);
+            $this->variations[] = $variation;
+            $this->quantities[$variationId] = $variation['stock_quantity'];
+        }
+
+        $this->modal('stock-qty-product-modal')->show();
+    }
+
+    public function changeQty($qty)
+    {
+        // 1. التحقق من الكمية المدخلة وتحويلها إلى رقم صحيح
+        $qtyToAdd = (int) $qty;
+
+        // إذا كانت الكمية المدخلة 0 أو أقل، لا تقم بشيء
+        if ($qtyToAdd <= 0) {
+            $this->qtyToAdd = null; // تصفير الحقل
+            return;
+        }
+
+        // 2. إضافة الكمية للمنتج الرئيسي (إذا كان مستخدماً)
+        // if (isset($this->quantities['main'])) {
+        //     $this->quantities['main'] = (int) ($this->quantities['main'] ?? 0) + $qtyToAdd;
+        // }
+
+        // 3. إضافة الكمية لجميع المتغيرات (Variations)
+        if (!empty($this->variations)) {
+            foreach ($this->variations as $variation) {
+                $variationId = $variation['id'];
+
+                // جلب الكمية الحالية المسجلة في $quantities
+                $currentQty = (int) ($this->quantities[$variationId] ?? 0);
+
+                // إضافة الكمية الجديدة ($qtyToAdd) إلى الكمية الحالية
+                $this->quantities[$variationId] = $currentQty + $qtyToAdd;
+            }
+        }
+
+        // 4. تصفير حقل "إضافة كمية للكل" بعد الانتهاء
+        $this->qtyToAdd = null;
+    }
+
+    public function saveStockQuantities()
+    {
+        try {
+            $updatePayload = [];
+
+            // 1. تجميع تحديثات الكميات للمتغيرات
+            foreach ($this->quantities as $variationId => $quantity) {
+                // 'main' هو مفتاح خاص بالمنتج الرئيسي (إذا استخدمته)
+                // نحن نهتم فقط بالمتغيرات التي لها ID رقمي
+                if (is_numeric($variationId)) {
+                    $updatePayload[] = [
+                        'id' => (int) $variationId,
+                        'stock_quantity' => (int) $quantity
+                    ];
+                }
+            }
+
+            // 2. تحديث كمية المنتج الرئيسي (إذا كان مستخدماً)
+            // if (isset($this->quantities['main']) && $this->product) {
+            //     $this->wooService->updateProductStock($this->product['id'], $this->quantities['main']);
+            // }
+
+            // 3. إرسال التحديثات دفعة واحدة للمتغيرات
+            if (!empty($updatePayload) && $this->product) {
+                // نستخدم ID المنتج الرئيسي لتحديث متغيراته
+                $this->wooService->batchUpdateVariations($this->product['id'], ['update' => $updatePayload]);
+            }
+
+            Toaster::success('🎉 تم حفظ الكميات بنجاح!');
+            $this->modal('stock-qty-product-modal')->close();
+
+        } catch (\Exception $e) {
+            logger()->error('Error saving stock quantities', ['error' => $e->getMessage()]);
+            Toaster::error('حدث خطأ فادح أثناء الحفظ: ' . $e->getMessage());
+        }
     }
 
     public function printBarcodes()

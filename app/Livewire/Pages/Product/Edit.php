@@ -3,6 +3,7 @@
 namespace App\Livewire\Pages\Product;
 
 use App\Enums\InventoryType;
+use App\Models\Inventory;
 use Livewire\Attributes\Computed;
 use Livewire\Component;
 use Livewire\WithFileUploads;
@@ -775,7 +776,7 @@ class Edit extends Component
             $quantity = abs($difference);
 
             // إنشاء سجل جديد في المخزون
-            \App\Models\Inventory::create([
+            Inventory::create([
                 'product_id' => $productId,
                 'quantity' => $quantity,
                 'type' => $type,
@@ -1003,13 +1004,9 @@ class Edit extends Component
 
             Log::info('✅ تم تحديث المنتج الأساسي بنجاح');
 
-            // ✅ تحديث المخزون للمنتجات البسيطة
-            if ($this->productType !== 'variable') {
-                $newQuantity = (int) $this->stockQuantity;
+            $newQuantity = (int) $this->stockQuantity;
                     $this->updateInventory($oldQuantity, $newQuantity, $this->productId);
                     Log::info('✅ تم تحديث سجل المخزون');
-
-            }
 
             // تحديث المتغيرات للمنتج المتغير
             if ($this->productType === 'variable' && !empty($this->variations)) {

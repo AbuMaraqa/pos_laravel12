@@ -43,6 +43,92 @@
         </div>
     </flux:modal>
 
+    <flux:modal name="stock-qty-product-modal" class="md:w-[600px]">
+        <div class="space-y-6">
+            <div>
+                <flux:heading size="lg">كمية المنتج</flux:heading>
+            </div>
+            {{-- المنتج الرئيسي --}}
+{{--            <div class="flex items-center justify-between border-b pb-2">--}}
+{{--                <div class="text-sm font-bold text-gray-800">--}}
+{{--                    المنتج: {{ $product['name'] ?? '' }}--}}
+{{--                </div>--}}
+{{--                <div>{!! DNS1D::getBarcodeHTML('AS', 'C39') !!}</div>--}}
+{{--                <div class="w-24">--}}
+{{--                    <input type="number" min="1" wire:model.defer="quantities.main"--}}
+{{--                        class="w-full border border-gray-300 rounded px-2 py-1 text-sm" />--}}
+{{--                </div>--}}
+{{--            </div>--}}
+
+            {{-- المتغيرات إن وجدت --}}
+            @if (!empty($variations))
+                <div class="mt-4 space-y-4">
+                    <div class="flex items-center justify-between border-b pb-2">
+                        <div class="text-sm text-gray-700 font-medium">إضافة كمية للكل</div>
+                        <div class="w-24">
+                            <flux:field>
+                                {{--
+                                  1. ربطنا الحقل بـ wire:model.defer="qtyToAdd"
+                                  2. عند التغيير، نستدعي changeQty مع القيمة الجديدة
+                                --}}
+                                <flux:input
+                                    type="number"
+                                    wire:model.defer="qtyToAdd"
+                                    wire:change="changeQty($event.target.value)"
+                                    placeholder="إضافة كمية"
+                                    min="1"
+                                />
+                            </flux:field>
+                        </div>
+                    </div>
+
+                    {{-- أضفنا هذا الرأس للتوضيح --}}
+                    <div class="flex items-center justify-between border-b pb-2 pt-4">
+                        <div class="text-sm text-gray-800 font-bold">الاسم</div>
+                        <div class="w-24 text-sm text-gray-800 font-bold">الكمية الإجمالية</div>
+                    </div>
+
+                    @foreach ($variations as $variation)
+                        <div class="flex items-center justify-between border-b pb-2">
+                            <div class="text-sm text-gray-700">{{ $variation['name'] ?? '' }}</div>
+                            <div class="w-24">
+                                <flux:field>
+                                    {{--
+                                      تم حذف value="..."
+                                      wire:model.defer سيتكفل بعرض القيمة المبدئية وتحديثها
+                                    --}}
+                                    <flux:input
+                                        type="number"
+                                        placeholder="الكمية"
+                                        min="1"
+                                        wire:model.defer="quantities.{{ $variation['id'] }}"
+                                    />
+                                </flux:field>
+                            </div>
+                        </div>
+                    @endforeach
+                </div>
+            @endif
+
+            <div class="flex pt-4">
+                <flux:spacer />
+                {{-- ربطنا الزر بالدالة الجديدة للحفظ وأضفنا حالة التحميل --}}
+                <flux:button
+                    variant="primary"
+                    wire:click="saveStockQuantities"
+                    wire:loading.attr="disabled"
+                >
+                    <span wire:loading.remove wire:target="saveStockQuantities">
+                        {{ __('Save') }}
+                    </span>
+                    <span wire:loading wire:target="saveStockQuantities">
+                        {{ __('Saving...') }}
+                    </span>
+                </flux:button>
+            </div>
+        </div>
+    </flux:modal>
+
     <flux:modal x-data="{}" name="list-variations" class="" style="min-width: 90vw; max-width: 90vw;">
         <div class="space-y-6">
             {{-- ... (الجزء العلوي يبقى كما هو) ... --}}
@@ -350,10 +436,16 @@
                             </div>
                         </td>
                         <td class="px-6 py-4 text-center font-medium">
-                            <span
-                                class="px-3 py-1 rounded-full {{ $product['stock_quantity'] > 0 ? 'bg-blue-50 text-blue-700' : 'bg-red-50 text-red-700' }}">
-                                {{ $product['stock_quantity'] }}
-                            </span>
+                            <flux:button>
+                                {{ $product['total_quantity'] }}
+                            </flux:button>
+
+                            <flux:menu.item wire:click="openStockQtyModal({{ $product['id'] }})"
+                                            icon="eye">{{ __('Stock Quantity') }}</flux:menu.item>
+{{--                            <span--}}
+{{--                                class="px-3 py-1 rounded-full {{ $product['stock_quantity'] > 0 ? 'bg-blue-50 text-blue-700' : 'bg-red-50 text-red-700' }}">--}}
+{{--                                {{ $product['stock_quantity'] }}--}}
+{{--                            </span>--}}
                         </td>
                         <td class="px-6 py-4 text-center">
                             <flux:dropdown>
