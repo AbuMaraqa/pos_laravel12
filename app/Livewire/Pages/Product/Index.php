@@ -242,15 +242,41 @@ class Index extends Component
                                 $inventoryType = InventoryType::OUTPUT;
                                 $logQuantity = abs($difference); // نسجل القيمة الموجبة للكمية الخارجة
                             }
-                            // *** نهاية المنطق الجديد ***
 
-                            Inventory::create([
-                                'product_id' => (int) Product::where('remote_wp_id',$variationId)->first()->id ?? 1,
-                                'store_id'   => (int) $storeId,
-                                'user_id'    => (int) $userId,
-                                'quantity'   => $logQuantity, // الكمية (دائماً موجبة)
-                                'type'       => $inventoryType, // النوع (INPUT أو OUTPUT)
-                            ]);
+                            try {
+                                // $variationId هو المعرف من ووكومرس (remote_wp_id)
+                                // ابحث عن المنتج المحلي باستخدام معرّف ووكومرس
+                                $localProduct = Product::where('remote_wp_id', (int) $variationId)->first();
+
+                                if ($localProduct) {
+                                    // 1. قم بتحديث الكمية في جدول products المحلي (هذه الخطوة مهمة جداً)
+                                    $localProduct->stock_quantity = (int) $newQty;
+                                    $localProduct->save();
+
+                                    // 2. استخدم الـ ID المحلي للتسجيل في المخزون
+                                    Inventory::create([
+                                        'product_id' => $localProduct->id, // <-- تم التصحيح: استخدام ID المحلي
+                                        'store_id'   => (int) $storeId,
+                                        'user_id'    => (int) $userId,
+                                        'quantity'   => $logQuantity, // الكمية (دائماً موجبة)
+                                        'type'       => $inventoryType, // النوع (INPUT أو OUTPUT)
+                                    ]);
+
+                                } else {
+                                    // (اختياري) تسجيل ملاحظة إذا لم يتم العثور على المنتج المحلي
+                                    logger()->warning('Local product not found for sync. Inventory log skipped.', [
+                                        'remote_wp_id' => $variationId,
+                                        'new_stock' => $newQty
+                                    ]);
+                                }
+                            } catch (\Exception $e) {
+                                // (اختياري) تسجيل أي خطأ يحدث أثناء مزامنة الجدول المحلي
+                                logger()->error('Error syncing local products table or creating inventory log.', [
+                                    'remote_wp_id' => $variationId,
+                                    'error' => $e->getMessage()
+                                ]);
+                                // لا نوقف العملية كلها، فقط نسجل الخطأ
+                            }
                         }
                     }
                 }
