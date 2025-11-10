@@ -303,6 +303,8 @@ class Index extends Component
             'format' => [60, 40]
         ]);
 
+        dd($this->product);
+
         return response()->streamDownload(function () use ($pdf) {
             $pdf->stream();
         }, 'barcode.pdf');
@@ -482,7 +484,6 @@ class Index extends Component
 
     public function setAllPricesForRole($roleKey)
     {
-        // احصل على السعر من الخاصية الجديدة
         $value = $this->columnPrices[$roleKey] ?? null;
 
         if (!is_numeric($value)) {
@@ -493,13 +494,20 @@ class Index extends Component
         // تحديث أسعار المنتج الأب في الذاكرة
         $this->parentRoleValues[$roleKey] = $value;
 
-        // تحديث قيم المتغيرات في الذاكرة فقط، بدون إرسالها
+        // ✅ إذا كان الدور هو Customer → حدث السعر الرئيسي
+        if ($roleKey === 'customer') {
+            $this->main_price = $value;
+            $this->main_sale_price = $value;
+        }
+
+        // تحديث قيم المتغيرات في الذاكرة فقط
         foreach ($this->productVariations as $index => $variation) {
             $this->variationValues[$index][$roleKey] = $value;
         }
 
         Toaster::info('تم تطبيق السعر مؤقتاً. اضغط "حفظ كل التغييرات" لتأكيد.');
     }
+
 
     public function updateMainProductPrice()
     {
@@ -513,20 +521,49 @@ class Index extends Component
     public function saveAllChanges()
     {
         try {
+            // --- ✨ 1. تحديد سعر العميل أولاً ---
+
+            // !!! هام جداً: تأكد أن المفتاح هنا صحيح 100%
+            // يجب أن يتطابق مع الـ 'role' من دالة getRoles()
+            $customerRoleKey = 'customer';
+            $customerPrice = null;
+
+            // التحقق إذا كان سعر الـ Customer (للمنتج الأب) موجوداً وهو رقم صالح
+            if (isset($this->parentRoleValues[$customerRoleKey]) && is_numeric($this->parentRoleValues[$customerRoleKey])) {
+                $customerPrice = $this->parentRoleValues[$customerRoleKey];
+            }
+
+            // --- ✨ 2. تجميع تحديثات المتغيرات ---
             $updatePayload = [];
 
-            // 1. تجميع تحديثات المتغيرات (أسعار عادية وأسعار أدوار)
             foreach ($this->productVariations as $index => $variation) {
                 $variationId = $variation['id'];
                 $metaData = $variation['meta_data'] ?? [];
 
+                // جلب مصفوفة أسعار الأدوار الحالية للمتغير
                 $newRoleValuesForVariation = $this->variationValues[$index] ?? [];
-                $mrbpRoleFound = false;
 
+                // جلب السعر الأساسي الحالي للمتغير
+                $currentRegularPrice = $this->price[$index] ?? $variation['regular_price'];
+
+
+                // --- ✨ 3. تطبيق سعر العميل على المتغيرات (إذا تم تحديده) ---
+                if ($customerPrice !== null) {
+                    // 3.أ: "دهس" السعر الأساسي للمتغير بسعر العميل
+                    $currentRegularPrice = $customerPrice;
+
+                    // 3.ب: "دهس" سعر "Customer" للمتغير بسعر العميل
+                    $newRoleValuesForVariation[$customerRoleKey] = $customerPrice;
+                }
+
+
+                // --- 4. إعادة بناء مصفوفة الميتا (meta_data) للمتغير ---
+                $mrbpRoleFound = false;
                 foreach ($metaData as &$meta) {
                     if ($meta['key'] === 'mrbp_role') {
                         $mrbpRoleFound = true;
                         $updatedRoles = [];
+                        // نستخدم $newRoleValuesForVariation التي قد تحتوي الآن على سعر العميل المحدث
                         foreach ($newRoleValuesForVariation as $roleKey => $price) {
                             if (is_numeric($price) && $price !== '') {
                                 $updatedRoles[] = [
@@ -539,7 +576,7 @@ class Index extends Component
                         break;
                     }
                 }
-
+                // (نفس المنطق لإضافة 'mrbp_role' إذا لم يكن موجوداً)
                 if (!$mrbpRoleFound) {
                     $updatedRoles = [];
                     foreach ($newRoleValuesForVariation as $roleKey => $price) {
@@ -554,21 +591,33 @@ class Index extends Component
                         $metaData[] = ['key' => 'mrbp_role', 'value' => $updatedRoles];
                     }
                 }
+                // --- نهاية بناء الميتا ---
 
+                // إضافة التحديث للمصفوفة النهائية
                 $updatePayload[] = [
                     'id' => $variationId,
-                    'regular_price' => $this->price[$index] ?? $variation['regular_price'],
+                    'regular_price' => $currentRegularPrice, // <-- استخدام السعر المحدث
                     'meta_data' => $metaData
                 ];
             }
 
+            // إرسال تحديثات المتغيرات دفعة واحدة
             if (!empty($updatePayload)) {
                 $this->wooService->batchUpdateVariations($this->productData['id'], ['update' => $updatePayload]);
             }
 
-            // 2. تحديث بيانات المنتج الرئيسي
+            // --- ✨ 5. تحديث بيانات المنتج الرئيسي ---
+            if ($customerPrice !== null) {
+                // "ندهس" القيم الحالية في الفورم بقيمة العميل
+                $this->main_price = $customerPrice;
+                $this->main_sale_price = $customerPrice;
+            }
+
+            // الآن، سيتم استدعاء هذه الدوال بالقيم المحدثة
             $this->wooService->updateMainProductPrice($this->productData['id'], $this->main_price);
             $this->wooService->updateMainSalePrice($this->productData['id'], $this->main_sale_price);
+
+            // حفظ جميع أسعار الأدوار للمنتج الرئيسي (بما فيها سعر العميل)
             foreach($this->parentRoleValues as $roleKey => $value) {
                 $this->wooService->updateProductRolePrice($this->productData['id'], $roleKey, $value);
             }

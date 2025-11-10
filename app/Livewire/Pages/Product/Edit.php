@@ -63,7 +63,6 @@ class Edit extends Component
         $this->fetchProductAttributes();
         $this->loadProduct();
     }
-
     /**
      * جلب جميع الخصائص من WooCommerce مع التحديث
      */
