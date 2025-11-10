@@ -303,8 +303,6 @@ class Index extends Component
             'format' => [60, 40]
         ]);
 
-        dd($this->product);
-
         return response()->streamDownload(function () use ($pdf) {
             $pdf->stream();
         }, 'barcode.pdf');
