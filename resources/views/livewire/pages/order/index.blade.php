@@ -28,7 +28,7 @@
         </thead>
         <tbody class="bg-white divide-y divide-gray-200">
             @forelse ($orders as $order)
-                <tr>
+                <tr class="@if($order['status'] == 'failed') bg-red-200 @elseif($order['status'] == 'completed') bg-green-200 @elseif($order['status'] == 'processing') bg-orange-200 @endif">
                     <td class="px-4 py-2">#{{ $order['id'] }}</td>
                     <td class="px-4 py-2">{{ $order['billing']['first_name'] ?? '' }} {{ $order['billing']['last_name'] ?? '' }}</td>
                     <td class="px-4 py-2">{{ $order['status'] }}</td>
