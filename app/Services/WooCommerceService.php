@@ -2082,12 +2082,38 @@ class WooCommerceService
 
                 foreach ($products as $product) {
                     $productId = $product['id'];
+                    $parentName = $product['name'] ?? 'Product';
+
+                    // ✅ (جديد) احصل على الصورة الرئيسية للمنتج الأب كصورة احتياطية
+                    $parentImage = $product['images'][0] ?? ['src' => 'https://via.placeholder.com/150?text=No+Image', 'alt' => 'No Image'];
 
                     // Get the variations for this specific product
                     $variations = $this->getVariationsByProductId($productId);
 
                     foreach ($variations as &$variation) {
                         $variation['product_id'] = $productId; // Add parent ID for reference
+
+                        // --- 1. (من المرة السابقة) بناء اسم المتغير ---
+                        $variationNameParts = [];
+                        if (!empty($variation['attributes'])) {
+                            foreach ($variation['attributes'] as $attribute) {
+                                $variationNameParts[] = $attribute['option'] ?? '';
+                            }
+                        }
+
+                        if (!empty($variationNameParts)) {
+                            // قم بإزالة أي قيم فارغة قبل الدمج
+                            $variation['name'] = $parentName . ' - ' . implode(', ', array_filter($variationNameParts));
+                        } else {
+                            $variation['name'] = $parentName;
+                        }
+
+                        // --- 2. (جديد) التأكد من وجود صورة ---
+                        // إذا لم يكن للمتغير صورة خاصة به، استخدم الصورة الاحتياطية (صورة الأب)
+                        if (empty($variation['image']) || empty($variation['image']['src'])) {
+                            $variation['image'] = $parentImage;
+                        }
+                        // --- نهاية التعديلات ---
                     }
 
                     $allVariations = array_merge($allVariations, $variations);

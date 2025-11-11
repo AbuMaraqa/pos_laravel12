@@ -2,7 +2,7 @@
     $settings = app(\App\Settings\GeneralSettings::class);
 @endphp
 
-<!DOCTYPE html>
+    <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
@@ -122,6 +122,7 @@
             text-align: center;
             border-bottom: 1px solid #eee;
             border: none;
+            vertical-align: middle; /* للتأكد من المحاذاة العمودية */
         }
 
         .total-section {
@@ -240,16 +241,13 @@
             <img src="{{ $settings->getLogoUrl() }}" alt="شعار الشركة" class="header-logo">
         </div>
     @endif
-    <!-- Header -->
     <div class="header">
         <h1>فاتورة الطلبية</h1>
         <div class="invoice-id">رقم الطلبية: {{ $orderId }}</div>
     </div>
 
     <div class="content">
-        <!-- معلومات الطلبية والعميل بجانب بعض -->
         <div class="info-section">
-            <!-- معلومات الطلبية -->
             <div class="info-box">
                 <h3>معلومات الطلبية</h3>
                 <div class="info-row">
@@ -274,7 +272,6 @@
                 </div>
             </div>
 
-            <!-- معلومات العميل -->
             @if(isset($order['billing']) && !empty($order['billing']))
                 <div class="info-box">
                     <h3>معلومات العميل</h3>
@@ -299,9 +296,7 @@
         </div>
 
         <div class="columns">
-            <!-- العمود الأيسر: المنتجات -->
             <div class="column">
-                <!-- عناصر الطلبية -->
                 @if(isset($order['line_items']) && !empty($order['line_items']))
                     <div class="products-section">
                         <h3>عناصر الطلبية</h3>
@@ -317,7 +312,23 @@
                             <tbody>
                             @foreach($order['line_items'] as $item)
                                 <tr>
-                                    <td>{{ $item['name'] ?? 'منتج' }}</td>
+                                    {{-- ✅  بداية التعديل --}}
+                                    <td>
+                                        {{ $item['name'] ?? 'منتج' }}
+
+                                        {{-- إضافة خصائص المتغير (مثل اللون والمقاس) --}}
+                                        <div style="font-size: 10px; color: #555; margin-top: 4px;">
+                                            @foreach ($item['meta_data'] as $meta)
+                                                @if (!empty($meta['display_key']) && !empty($meta['display_value']))
+                                                    <span style="display: block; margin-bottom: 2px;">
+                                                        {{ $meta['display_key'] }}: {!! $meta['display_value'] !!}
+                                                    </span>
+                                                @endif
+                                            @endforeach
+                                        </div>
+                                    </td>
+                                    {{-- نهاية التعديل --}}
+
                                     <td>{{ $item['quantity'] ?? 0 }}</td>
                                     <td>{{ number_format((float)($item['price'] ?? 0), 2) }}</td>
                                     <td>{{ number_format((float)($item['total'] ?? 0), 2) }}</td>
@@ -329,9 +340,7 @@
                 @endif
             </div>
 
-            <!-- العمود الأيمن: الشحن والملخص -->
             <div class="column">
-                <!-- معلومات الشحن -->
                 @if(isset($order['shipping_lines']) && !empty($order['shipping_lines']))
                     <div class="info-box">
                         <h3>معلومات الشحن</h3>
@@ -348,7 +357,6 @@
                     </div>
                 @endif
 
-                <!-- ملخص الحساب -->
                 <div class="total-section">
                     <h3 style="color: rgb(103,74,135); font-size: 13px; margin-bottom: 6px; font-weight: 700;">ملخص الحساب</h3>
                     <div class="total-row">
@@ -382,7 +390,6 @@
         </div>
     </div>
 
-    <!-- Footer -->
     <div class="footer">
         <p>تم إنشاء الفاتورة في {{ \Carbon\Carbon::now()->format('Y-m-d H:i') }}</p>
     </div>

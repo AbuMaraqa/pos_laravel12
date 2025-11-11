@@ -63,21 +63,24 @@
                                     <h3
                                         class="text-xl dark:text-white xl:text-2xl font-semibold leading-6 text-gray-800">
                                         {{ $item['name'] }}</h3>
+
+                                    {{-- ✅ هذا هو الكود الصحيح الديناميكي --}}
                                     <div class="flex justify-start items-start flex-col space-y-2">
-                                        <p class="text-sm dark:text-white leading-none text-gray-800"><span
-                                                class="dark:text-gray-400 text-gray-300">Style: </span> Italic Minimal
-                                            Design</p>
-                                        <p class="text-sm dark:text-white leading-none text-gray-800"><span
-                                                class="dark:text-gray-400 text-gray-300">Size: </span> Small</p>
-                                        <p class="text-sm dark:text-white leading-none text-gray-800"><span
-                                                class="dark:text-gray-400 text-gray-300">Color: </span> Light Blue</p>
+                                        @foreach ($item['meta_data'] as $meta)
+                                            @if (!empty($meta['display_key']) && !empty($meta['display_value']))
+                                                <p class="text-sm dark:text-white leading-none text-gray-800">
+                                                    <span class="dark:text-gray-400 text-gray-300">{{ $meta['display_key'] }}: </span>
+                                                    {!! $meta['display_value'] !!}
+                                                </p>
+                                            @endif
+                                        @endforeach
                                     </div>
+                                    {{-- نهاية الكود الصحيح --}}
+
                                 </div>
                                 <div class="flex justify-between space-x-8 items-start w-full">
                                     <p class="text-base dark:text-white xl:text-lg leading-6">
                                         {{ $order['currency_symbol'] }}{{ number_format($item['price'], 2) }}
-                                        {{--                                        <span class="text-gray-300 dark:text-gray-400"> $45.00</span> --}}
-                                        {{--                                        <span class="text-red-300 line-through"> $45.00</span> --}}
                                     </p>
                                     <p class="text-base dark:text-white xl:text-lg leading-6 text-gray-800">
                                         <flux:input wire:model="quantities.{{ $item['product_id'] }}"
@@ -134,9 +137,6 @@
                                     <img class="w-full h-full" alt="logo"
                                          src="https://i.ibb.co/L8KSdNQ/image-3.png"/>
                                 </div>
-                                {{-- <div class="flex flex-col justify-start items-center">
-                                    <p class="text-lg leading-6 dark:text-white font-semibold text-gray-800">DPD Delivery<br /><span class="font-normal">Delivery with 24 Hours</span></p>
-                                </div> --}}
                                 <div>
                                     <flux:icon icon="loading" wire:target="updateOrder" wire:loading/>
                                     @foreach ($this->shippingZones as $zone)
@@ -165,13 +165,7 @@
                                 </div>
 
                             </div>
-                            {{-- <p class="text-lg font-semibold leading-6 dark:text-white text-gray-800">$8.00</p> --}}
                         </div>
-                        {{-- <div class="w-full flex justify-center items-center">
-                            <button
-                                class="hover:bg-black dark:bg-white dark:text-gray-800 dark:hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-800 py-5 w-96 md:w-full bg-gray-800 text-base font-medium leading-4 text-white">View
-                                Carrier Details</button>
-                        </div> --}}
                     </div>
                 </div>
             </div>
@@ -203,7 +197,6 @@
                             <div class="flex justify-start items-start flex-col space-y-2">
                                 <p class="text-base dark:text-white font-semibold leading-4 text-left text-gray-800">
                                     {{ $order['billing']['first_name'] . ' ' . $order['billing']['last_name'] }}</p>
-                                {{--                                <p class="text-sm dark:text-gray-300 leading-5 text-gray-600">10 Previous Orders</p> --}}
                             </div>
                         </div>
 
@@ -299,10 +292,6 @@
                             </div>
                         @endif
 
-                        {{-- <div class="flex w-full justify-center items-center md:justify-start md:items-start">
-                            <button
-                                class="mt-6 md:mt-0 dark:border-white dark:hover:bg-gray-900 dark:bg-transparent dark:text-white py-5 hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-800 border border-gray-800 font-medium w-96 2xl:w-full text-base font-medium leading-4 text-gray-800">{{ __('Edit Details') }}</button>
-                        </div> --}}
                     </div>
                 </div>
             </div>
