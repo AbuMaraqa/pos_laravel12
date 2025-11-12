@@ -315,7 +315,7 @@
                                 <tr>
                                     {{-- ✅  بداية التعديل --}}
                                     <td>
-                                        <img style="width: 50px; height: 50px;" src="{{ $item['image']['src'] ?? '' }}" alt="">
+                                        <img style="width: 60px; height: 60px;" src="{{ $item['image']['src'] ?? '' }}" alt="">
                                     </td>
                                     <td>
                                         {{ $item['name'] ?? 'منتج' }}
