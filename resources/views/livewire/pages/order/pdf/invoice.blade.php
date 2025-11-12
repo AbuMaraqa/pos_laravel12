@@ -303,6 +303,7 @@
                         <table>
                             <thead>
                             <tr>
+                                <th></th>
                                 <th>المنتج</th>
                                 <th>الكمية</th>
                                 <th>السعر</th>
@@ -313,6 +314,9 @@
                             @foreach($order['line_items'] as $item)
                                 <tr>
                                     {{-- ✅  بداية التعديل --}}
+                                    <td>
+                                        <img style="width: 50px; height: 50px;" src="{{ $item['image']['src'] ?? '' }}" alt="">
+                                    </td>
                                     <td>
                                         {{ $item['name'] ?? 'منتج' }}
 
