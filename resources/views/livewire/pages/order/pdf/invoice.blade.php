@@ -22,378 +22,322 @@
             text-align: right;
             color: #333;
             background-color: #fff;
-            font-size: 13px;
+            font-size: 12px;
+            line-height: 1.4;
         }
 
         .invoice-container {
             width: 100%;
-            background-color: white;
-            border: none;
-            box-shadow: none;
-            border-radius: 0;
-            overflow: hidden;
-        }
-
-        .header {
-            background-color: rgb(103,74,135);
-            color: white;
+            max-width: 800px;
+            margin: 0 auto;
             padding: 15px;
-            text-align: center;
-            border: none;
-            position: relative;
         }
 
-        .header-logo {
-            height: 70px;
-            max-width: 200px;
-            object-fit: contain;
-            margin-bottom: 12px;
+        /* Header بسيط */
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #ddd;
         }
 
         .header h1 {
-            font-size: 20px;
+            font-size: 18px;
+            color: #333;
             margin-bottom: 5px;
-            border: none;
         }
 
         .invoice-id {
             font-size: 14px;
-            background-color: rgba(255, 255, 255, 0.2);
-            padding: 3px 10px;
-            border-radius: 12px;
-            display: inline-block;
-            margin-top: 5px;
-            border: none;
+            color: #666;
         }
 
-        .content {
-            padding: 8px;
-            border: none;
-        }
-
-        .info-row {
+        /* الصف العلوي - معلومات الطلب والعميل جنب بعض */
+        .top-row {
             display: flex;
-            justify-content: space-between;
-            margin-bottom: 5px;
-            font-size: 12px;
-            border: none;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .info-section {
+            flex: 1;
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+        }
+
+        .section-title {
+            font-size: 14px;
+            color: #674a87;
+            margin-bottom: 10px;
+            padding-bottom: 5px;
+            border-bottom: 1px solid #ddd;
+            font-weight: 700;
+        }
+
+        .info-item {
+            margin-bottom: 8px;
+            display: flex;
+            align-items: flex-start;
         }
 
         .info-label {
             font-weight: 600;
             color: #555;
-            border: none;
+            min-width: 80px;
+            margin-left: 10px;
+        }
+
+        .info-value {
+            flex: 1;
         }
 
         .status-badge {
-            padding: 2px 6px;
-            border-radius: 8px;
+            background: #ba3586;
             color: white;
-            font-size: 10px;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 11px;
             display: inline-block;
-            border: none;
         }
 
-        .status-pending { background-color: rgb(103,74,135); }
-        .status-processing { background-color: rgb(186,53,134); }
-        .status-completed { background-color: #28a745; }
-        .status-cancelled { background-color: #dc3545; }
-        .status-refunded { background-color: #6c757d; }
+        /* جدول المنتجات */
+        .products-section {
+            margin-bottom: 20px;
+        }
 
-        table {
+        .products-section .section-title {
+            background: #f8f9fa;
+            padding: 10px 15px;
+            border-radius: 8px 8px 0 0;
+            margin-bottom: 0;
+            border-bottom: none;
+        }
+
+        .products-table {
             width: 100%;
             border-collapse: collapse;
-            margin: 8px 0;
-            font-size: 11px;
-            border: none;
+            border: 1px solid #ddd;
         }
 
-        table th {
-            background-color: rgb(103,74,135);
+        .products-table th {
+            background: #674a87;
             color: white;
-            padding: 6px 4px;
+            padding: 10px 8px;
             text-align: center;
             font-weight: 600;
-            border: none;
+            font-size: 12px;
         }
 
-        table td {
-            padding: 6px 4px;
+        .products-table td {
+            padding: 10px 8px;
             text-align: center;
             border-bottom: 1px solid #eee;
-            border: none;
-            vertical-align: middle; /* للتأكد من المحاذاة العمودية */
+            vertical-align: top;
         }
 
-        .total-section {
-            background-color: #f8f9fa;
-            padding: 8px;
-            border-radius: 0;
-            margin-top: 8px;
-            border: none;
+        .product-image {
+            width: 60px;
+            height: 60px;
+            object-fit: cover;
+            border-radius: 4px;
+        }
+
+        .product-meta {
+            font-size: 11px;
+            color: #666;
+            margin-top: 5px;
+            text-align: right;
+        }
+
+        .meta-item {
+            margin-bottom: 2px;
+        }
+
+        /* الصف السفلي - الشحن والملخص */
+        .bottom-row {
+            display: flex;
+            gap: 20px;
+        }
+
+        .summary-section {
+            flex: 1;
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
         }
 
         .total-row {
             display: flex;
             justify-content: space-between;
-            margin-bottom: 4px;
-            font-size: 12px;
-            border: none;
+            margin-bottom: 8px;
+            padding-bottom: 5px;
+            border-bottom: 1px solid #eee;
         }
 
         .final-total {
-            color: rgb(186,53,134);
-            font-size: 14px;
             font-weight: 700;
-            border-top: 1px solid rgb(186,53,134);
-            padding-top: 6px;
-            margin-top: 6px;
-            border: none;
+            color: #ba3586;
+            font-size: 14px;
+            border-bottom: none;
+            margin-top: 5px;
+            padding-top: 5px;
+            border-top: 2px solid #ba3586;
         }
 
+        /* الفوتر */
         .footer {
             text-align: center;
-            margin-top: 10px;
-            padding-top: 8px;
-            border-top: 1px solid #eee;
-            color: #777;
-            font-size: 10px;
-            border: none;
+            margin-top: 20px;
+            padding-top: 15px;
+            border-top: 1px solid #ddd;
+            color: #666;
+            font-size: 11px;
         }
 
-        /* تصميم احترافي للمعلومات بجانب بعض */
-        .info-section {
-            display: flex;
-            gap: 15px;
-            margin-bottom: 10px;
-            border: none;
-        }
-
-        .info-box {
-            flex: 1;
-            background-color: #f8f9fa;
-            padding: 8px;
-            border-radius: 0;
-            border-right: 2px solid rgb(103,74,135);
-            border: none;
-        }
-
-        .info-box h3 {
-            color: rgb(103,74,135);
-            font-size: 13px;
-            margin-bottom: 6px;
-            font-weight: 700;
-            border: none;
-        }
-
-        .products-section {
-            margin-bottom: 10px;
-            border: none;
-        }
-
-        .products-section h3 {
-            color: rgb(103,74,135);
-            font-size: 13px;
-            margin-bottom: 6px;
-            font-weight: 700;
-            background-color: #f8f9fa;
-            padding: 6px;
-            border-radius: 0;
-            border-right: 2px solid rgb(103,74,135);
-            border: none;
-        }
-
-        .columns {
-            display: flex;
-            gap: 15px;
-            border: none;
-        }
-
-        .column {
-            flex: 1;
-            border: none;
-        }
-
-        @media (max-width: 600px) {
-            .info-section {
+        @media (max-width: 768px) {
+            .top-row,
+            .bottom-row {
                 flex-direction: column;
-                gap: 8px;
-                border: none;
-            }
-
-            .columns {
-                flex-direction: column;
-                gap: 8px;
-                border: none;
-            }
-
-            .header-logo {
-                height: 50px;
-                max-width: 150px;
+                gap: 15px;
             }
         }
     </style>
 </head>
 <body>
 <div class="invoice-container">
-    @if($settings->getLogoUrl())
-        <div style="text-align: center;">
-            <img src="{{ $settings->getLogoUrl() }}" alt="شعار الشركة" class="header-logo">
-        </div>
-    @endif
+    <!-- الهيدر -->
     <div class="header">
         <h1>فاتورة الطلبية</h1>
         <div class="invoice-id">رقم الطلبية: {{ $orderId }}</div>
     </div>
 
-    <div class="content">
-        <div class="info-section">
-            <div class="info-box">
-                <h3>معلومات الطلبية</h3>
-                <div class="info-row">
-                    <span class="info-label">رقم:</span>
-                    <span>{{ $order['id'] ?? $orderId }}</span>
+    <!-- الصف العلوي: معلومات الطلب والعميل -->
+    <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+        <tr>
+            <!-- معلومات الطلب -->
+            <td style="width: 50%; vertical-align: top; padding: 10px; background: #f8f9fa; border-radius: 8px;">
+                <div class="section-title" style="font-size: 14px; color: #674a87; margin-bottom: 10px; font-weight: 700;">معلومات الطلب</div>
+                <div style="margin-bottom: 8px;"><strong>الرقم:</strong> {{ $order['id'] ?? $orderId }}</div>
+                <div style="margin-bottom: 8px;"><strong>التاريخ:</strong> {{ isset($order['date_created']) ? \Carbon\Carbon::parse($order['date_created'])->format('Y-m-d H:i') : '' }}</div>
+                <div style="margin-bottom: 8px;"><strong>الحالة:</strong>
+                    <span style="background:#ba3586; color:white; padding:3px 8px; border-radius:4px; font-size:11px;">
+                    {{ ucfirst($order['status'] ?? 'pending') }}
+                </span>
                 </div>
-                <div class="info-row">
-                    <span class="info-label">التاريخ:</span>
-                    <span>{{ isset($order['date_created']) ? \Carbon\Carbon::parse($order['date_created'])->format('Y-m-d H:i') : '' }}</span>
-                </div>
-                <div class="info-row">
-                    <span class="info-label">الحالة:</span>
-                    <span>
-                            <span class="status-badge status-{{ $order['status'] ?? 'pending' }}">
-                                {{ ucfirst($order['status'] ?? 'pending') }}
-                            </span>
-                        </span>
-                </div>
-                <div class="info-row">
-                    <span class="info-label">الدفع:</span>
-                    <span>{{ $order['payment_method_title'] ?? 'غير محدد' }}</span>
-                </div>
-            </div>
+                <div><strong>الدفع:</strong> {{ $order['payment_method_title'] ?? 'غير محدد' }}</div>
+            </td>
 
-            @if(isset($order['billing']) && !empty($order['billing']))
-                <div class="info-box">
-                    <h3>معلومات العميل</h3>
-                    <div class="info-row">
-                        <span class="info-label">الاسم:</span>
-                        <span>{{ $order['billing']['first_name'] ?? '' }} {{ $order['billing']['last_name'] ?? '' }}</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">البريد:</span>
-                        <span>{{ $order['billing']['email'] ?? '' }}</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">الهاتف:</span>
-                        <span>{{ $order['billing']['phone'] ?? '' }}</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">المدينة:</span>
-                        <span>{{ $order['billing']['city'] ?? '' }}</span>
-                    </div>
+            <!-- معلومات العميل -->
+            <td style="width: 50%; vertical-align: top; padding: 10px; background: #f8f9fa; border-radius: 8px;">
+                <div class="section-title" style="font-size: 14px; color: #674a87; margin-bottom: 10px; font-weight: 700;">معلومات العميل</div>
+                <div style="margin-bottom: 8px;"><strong>الاسم:</strong> {{ $order['billing']['first_name'] ?? '' }} {{ $order['billing']['last_name'] ?? '' }}</div>
+                <div style="margin-bottom: 8px;"><strong>الهاتف:</strong> {{ $order['billing']['phone'] ?? '' }}</div>
+                <div style="margin-bottom: 8px;"><strong>البريد:</strong> {{ $order['billing']['email'] ?? '' }}</div>
+                <div><strong>المدينة:</strong> {{ $order['billing']['city'] ?? '' }}</div>
+            </td>
+        </tr>
+    </table>
+
+
+    <!-- جدول المنتجات -->
+    @if(isset($order['line_items']) && !empty($order['line_items']))
+        <div class="products-section">
+            <div class="section-title">عناصر الطلبية</div>
+            <table class="products-table">
+                <thead>
+                <tr>
+                    <th width="80">الصورة</th>
+                    <th>المنتج</th>
+                    <th width="70">الكمية</th>
+                    <th width="90">السعر</th>
+                    <th width="90">الإجمالي</th>
+                </tr>
+                </thead>
+                <tbody>
+                @foreach($order['line_items'] as $item)
+                    <tr>
+                        <td>
+                            @if(!empty($item['image']['src']))
+                                <img src="{{ $item['image']['src'] }}" style="width: 100px" alt="{{ $item['name'] ?? 'منتج' }}" class="product-image">
+                            @endif
+                        </td>
+                        <td>
+                            <div style="font-weight: 600;">{{ $item['name'] ?? 'منتج' }}</div>
+                            @if(!empty($item['meta_data']))
+                                <div class="product-meta">
+                                    @foreach ($item['meta_data'] as $meta)
+                                        @if (!empty($meta['display_key']) && !empty($meta['display_value']))
+                                            <div class="meta-item">
+                                                <strong>{{ $meta['display_key'] }}:</strong> {!! $meta['display_value'] !!}
+                                            </div>
+                                        @endif
+                                    @endforeach
+                                </div>
+                            @endif
+                        </td>
+                        <td>{{ $item['quantity'] ?? 0 }}</td>
+                        <td>{{ number_format((float)($item['price'] ?? 0), 2) }} {{ $order['currency'] ?? 'USD' }}</td>
+                        <td>{{ number_format((float)($item['total'] ?? 0), 2) }} {{ $order['currency'] ?? 'USD' }}</td>
+                    </tr>
+                @endforeach
+                </tbody>
+            </table>
+        </div>
+    @endif
+
+    <!-- الصف السفلي: الشحن والملخص -->
+    <div class="bottom-row">
+        <!-- معلومات الشحن -->
+{{--        @if(isset($order['shipping_lines']) && !empty($order['shipping_lines']))--}}
+{{--            <div class="summary-section">--}}
+{{--                <div class="section-title">معلومات الشحن</div>--}}
+{{--                @foreach($order['shipping_lines'] as $shipping)--}}
+{{--                    <div class="info-item">--}}
+{{--                        <span class="info-label">الطريقة:</span>--}}
+{{--                        <span class="info-value">{{ $shipping['method_title'] ?? 'غير محدد' }}</span>--}}
+{{--                    </div>--}}
+{{--                    <div class="info-item">--}}
+{{--                        <span class="info-label">التكلفة:</span>--}}
+{{--                        <span class="info-value">{{ number_format((float)($shipping['total'] ?? 0), 2) }} {{ $order['currency'] ?? 'USD' }}</span>--}}
+{{--                    </div>--}}
+{{--                @endforeach--}}
+{{--            </div>--}}
+{{--        @endif--}}
+
+        <!-- ملخص الحساب -->
+        <div class="summary-section">
+            <div class="section-title">ملخص الحساب</div>
+            <div class="total-row">
+                <span>المجموع:</span>
+                <span>{{ number_format((float)$totalAmount, 2) }} {{ $order['currency'] ?? 'USD' }}</span>
+            </div>
+            @if(isset($order['discount_total']) && (float)$order['discount_total'] > 0)
+                <div class="total-row">
+                    <span>الخصم:</span>
+                    <span>- {{ number_format((float)$order['discount_total'], 2) }} {{ $order['currency'] ?? 'USD' }}</span>
                 </div>
             @endif
-        </div>
-
-        <div class="columns">
-            <div class="column">
-                @if(isset($order['line_items']) && !empty($order['line_items']))
-                    <div class="products-section">
-                        <h3>عناصر الطلبية</h3>
-                        <table>
-                            <thead>
-                            <tr>
-                                <th></th>
-                                <th>المنتج</th>
-                                <th>الكمية</th>
-                                <th>السعر</th>
-                                <th>الإجمالي</th>
-                            </tr>
-                            </thead>
-                            <tbody>
-                            @foreach($order['line_items'] as $item)
-                                <tr>
-                                    {{-- ✅  بداية التعديل --}}
-                                    <td>
-                                        <img style="width: 100px" src="{{ $item['image']['src'] ?? '' }}" alt="">
-                                    </td>
-                                    <td>
-                                        {{ $item['name'] ?? 'منتج' }}
-
-                                        {{-- إضافة خصائص المتغير (مثل اللون والمقاس) --}}
-                                        <div style="font-size: 10px; color: #555; margin-top: 4px;">
-                                            @foreach ($item['meta_data'] as $meta)
-                                                @if (!empty($meta['display_key']) && !empty($meta['display_value']))
-                                                    <span style="display: block; margin-bottom: 2px;">
-                                                        {{ $meta['display_key'] }}: {!! $meta['display_value'] !!}
-                                                    </span>
-                                                @endif
-                                            @endforeach
-                                        </div>
-                                    </td>
-                                    {{-- نهاية التعديل --}}
-
-                                    <td>{{ $item['quantity'] ?? 0 }}</td>
-                                    <td>{{ number_format((float)($item['price'] ?? 0), 2) }}</td>
-                                    <td>{{ number_format((float)($item['total'] ?? 0), 2) }}</td>
-                                </tr>
-                            @endforeach
-                            </tbody>
-                        </table>
-                    </div>
-                @endif
-            </div>
-
-            <div class="column">
-                @if(isset($order['shipping_lines']) && !empty($order['shipping_lines']))
-                    <div class="info-box">
-                        <h3>معلومات الشحن</h3>
-                        @foreach($order['shipping_lines'] as $shipping)
-                            <div class="info-row">
-                                <span class="info-label">الطريقة:</span>
-                                <span>{{ $shipping['method_title'] ?? 'غير محدد' }}</span>
-                            </div>
-                            <div class="info-row">
-                                <span class="info-label">التكلفة:</span>
-                                <span>{{ number_format((float)($shipping['total'] ?? 0), 2) }} {{ $order['currency'] ?? 'USD' }}</span>
-                            </div>
-                        @endforeach
-                    </div>
-                @endif
-
-                <div class="total-section">
-                    <h3 style="color: rgb(103,74,135); font-size: 13px; margin-bottom: 6px; font-weight: 700;">ملخص الحساب</h3>
-                    <div class="total-row">
-                        <span class="info-label">المجموع:</span>
-                        <span>{{ number_format((float)$totalAmount, 2) }} {{ $order['currency'] ?? 'USD' }}</span>
-                    </div>
-                    @if(isset($order['discount_total']) && (float)$order['discount_total'] > 0)
-                        <div class="total-row">
-                            <span class="info-label">الخصم:</span>
-                            <span>- {{ number_format((float)$order['discount_total'], 2) }} {{ $order['currency'] ?? 'USD' }}</span>
-                        </div>
-                    @endif
-                    @if(isset($order['shipping_total']) && (float)$order['shipping_total'] > 0)
-                        <div class="total-row">
-                            <span class="info-label">الشحن:</span>
-                            <span>{{ number_format((float)$order['shipping_total'], 2) }} {{ $order['currency'] ?? 'USD' }}</span>
-                        </div>
-                    @endif
-                    @if(isset($order['total_tax']) && (float)$order['total_tax'] > 0)
-                        <div class="total-row">
-                            <span class="info-label">الضريبة:</span>
-                            <span>{{ number_format((float)$order['total_tax'], 2) }} {{ $order['currency'] ?? 'USD' }}</span>
-                        </div>
-                    @endif
-                    <div class="total-row final-total">
-                        <span class="info-label">الإجمالي:</span>
-                        <span>{{ number_format((float)$totalAmountAfterDiscount, 2) }} {{ $order['currency'] ?? 'USD' }}</span>
-                    </div>
+            @if(isset($order['shipping_total']) && (float)$order['shipping_total'] > 0)
+                <div class="total-row">
+                    <span>الشحن:</span>
+                    <span>{{ number_format((float)$order['shipping_total'], 2) }} {{ $order['currency'] ?? 'USD' }}</span>
                 </div>
+            @endif
+            @if(isset($order['total_tax']) && (float)$order['total_tax'] > 0)
+                <div class="total-row">
+                    <span>الضريبة:</span>
+                    <span>{{ number_format((float)$order['total_tax'], 2) }} {{ $order['currency'] ?? 'USD' }}</span>
+                </div>
+            @endif
+            <div class="total-row final-total">
+                <span>الإجمالي النهائي:</span>
+                <span>{{ number_format((float)$totalAmountAfterDiscount, 2) }} {{ $order['currency'] ?? 'USD' }}</span>
             </div>
         </div>
     </div>
 
+    <!-- الفوتر -->
     <div class="footer">
         <p>تم إنشاء الفاتورة في {{ \Carbon\Carbon::now()->format('Y-m-d H:i') }}</p>
     </div>
