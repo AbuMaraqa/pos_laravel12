@@ -80,7 +80,12 @@
                                 </div>
                                 <div class="flex justify-between space-x-8 items-start w-full">
                                     <p class="text-base dark:text-white xl:text-lg leading-6">
-                                        {{ $order['currency_symbol'] }}{{ number_format($item['price'], 2) }}
+{{--                                        {{ $order['currency_symbol'] }}{{ number_format($item['price'], 2) }}--}}
+                                        <flux:input wire:model="prices.{{ $item['product_id'] }}"
+                                                    style="width:120px; text-align:center" wire:target="changePrice"
+                                                    wire:change="changePrice({{ $item['product_id'] }})"
+                                                    class="text-center"
+                                                    value="{{ $item['price'] }}" placeholder="{{ __('Price') }}"/>
                                     </p>
                                     <p class="text-base dark:text-white xl:text-lg leading-6 text-gray-800">
                                         <flux:input wire:model="quantities.{{ $item['product_id'] }}"

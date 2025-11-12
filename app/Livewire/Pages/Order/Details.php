@@ -14,6 +14,8 @@ class Details extends Component
     public $search = '';
     public $products = [];
     public $quantities = [];
+
+    public $prices = [];
     public $orderId;
 
     public $shippingZoneMethod;
@@ -37,6 +39,7 @@ class Details extends Component
 
         foreach ($this->order['line_items'] as $item) {
             $this->quantities[$item['product_id']] = $item['quantity'];
+            $this->prices[$item['product_id']] = $item['price']; // ⬅️ أضف هذا السطر
         }
     }
 
@@ -92,7 +95,7 @@ class Details extends Component
             $query['search'] = $this->search;
         }
 
-        $query['per_page'] = 1;
+        $query['per_page'] = 100;
 
         $asd = $this->products = $this->wooService->getAllVariations($query);
 
@@ -108,6 +111,18 @@ class Details extends Component
         }
 
         $this->updateProductQuantity($productId, $newQty);
+    }
+
+    public function changePrice($productId)
+    {
+        $newPrice = $this->prices[$productId] ?? null; // ⬅️ تصحيح اسم المتغير
+
+        if (is_null($newPrice)) {
+            return;
+        }
+
+        // استدعاء الدالة التي ستقوم بالتحديث الفعلي
+        $this->updateProductPrice($productId, $newPrice); // ⬅️ أضف هذا السطر
     }
 
     public function updateProductQuantity($productId, $newQty)
@@ -137,6 +152,63 @@ class Details extends Component
         $this->loadOrderDetails($this->orderId);
 
         return $response;
+    }
+
+    public function updateProductPrice($productId, $newPrice)
+    {
+        // 1. التحقق من السعر
+        if (is_null($newPrice) || !is_numeric($newPrice) || $newPrice < 0) {
+            Toaster::error('السعر المدخل غير صالح');
+            $this->loadOrderDetails($this->orderId); // لإعادة السعر الأصلي في الحقل
+            return;
+        }
+
+        // 2. إيجاد المنتج في الطلب (نستخدم بيانات الطلب المحملة)
+        $lineItemToUpdate = collect($this->order['line_items'])->firstWhere('product_id', $productId);
+
+        if (!$lineItemToUpdate) {
+            Toaster::error('المنتج غير موجود في الطلب.');
+            return;
+        }
+
+        // 3. جلب الكمية الحالية لحساب الإجمالي
+        $quantity = (int) $lineItemToUpdate['quantity'];
+        $finalPrice = (float) $newPrice;
+
+        // 4. حساب الإجمالي الجديد بناءً على السعر الجديد والكمية الحالية
+        $newSubtotal = $finalPrice * $quantity;
+        $newTotal = $finalPrice * $quantity;
+
+        // 5. تجهيز البيانات للتحديث (Payload)
+        // ملاحظة: ووكوميرس تتوقع تحديث الـ total والـ subtotal لتغيير السعر
+        $payload = [
+            'line_items' => [
+                [
+                    'id' => $lineItemToUpdate['id'],
+                    'quantity' => $quantity, // الحفاظ على الكمية كما هي
+                    'subtotal' => strval($newSubtotal), // السعر الإجمالي الفرعي الجديد
+                    'total' => strval($newTotal), // السعر الإجمالي الجديد
+                ]
+            ]
+        ];
+
+        // 6. إرسال الطلب
+        try {
+            $response = $this->wooService->put('orders/' . $this->orderId, $payload);
+
+            // 7. إعادة تحميل بيانات الطلب (لإظهار الإجمالي المحدث)
+            $this->loadOrderDetails($this->orderId);
+            Toaster::success('تم تحديث السعر بنجاح');
+
+            // 8. التأكد من أن السعر في المتغير يطابق ما تم إرساله
+            $this->prices[$productId] = $finalPrice;
+
+            return $response;
+
+        } catch (\Exception $e) {
+            Toaster::error('خطأ أثناء تحديث السعر: ' . $e->getMessage());
+            $this->loadOrderDetails($this->orderId); // إعادة تحميل لإلغاء التغيير
+        }
     }
 
     public function loadOrderDetails($orderId): void
