@@ -41,7 +41,7 @@ class WooCommerceService
         $this->client = new Client([
             'base_uri' => $this->baseUrl . '/wp-json/wc/v3/',
             'auth' => [$this->consumerKey, $this->consumerSecret],
-            'timeout' => 10.0,
+            'timeout' => 60.0,
             'verify' => false // تجاهل شهادة SSL في بيئة التطوير
         ]);
 

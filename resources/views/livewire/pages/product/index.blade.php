@@ -305,6 +305,9 @@
                     <th scope="col" class="px-6 py-4 font-semibold text-center">
                         {{ __('Stock Quantity') }}
                     </th>
+                    <th scope="col" class="px-6 py-4 font-semibold text-center">
+                        {{ __('Sort') }}
+                    </th>
                     <th scope="col" class="px-6 py-4 font-semibold text-center rounded-tr-lg">
                         {{ __('Actions') }}
                     </th>
@@ -444,6 +447,18 @@
 {{--                                class="px-3 py-1 rounded-full {{ $product['stock_quantity'] > 0 ? 'bg-blue-50 text-blue-700' : 'bg-red-50 text-red-700' }}">--}}
 {{--                                {{ $product['stock_quantity'] }}--}}
 {{--                            </span>--}}
+                        </td>
+                        <td class="px-6 py-4 text-center font-medium">
+                            {{-- نستخدم x-data لإنشاء متغير محلي خاص بهذا الحقل فقط --}}
+                            <div x-data="{ localOrder: {{ $product['menu_order'] ?? 0 }} }">
+                                <flux:input
+                                    type="number"
+                                    x-model="localOrder"
+                                    x-on:blur="$wire.updateMenuOrder({{ $product['id'] }}, localOrder)"
+                                    class="text-center"
+                                    style="width:70px"
+                                />
+                            </div>
                         </td>
                         <td class="px-6 py-4 text-center">
                             <flux:dropdown>

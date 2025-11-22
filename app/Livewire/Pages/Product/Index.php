@@ -34,6 +34,8 @@ class Index extends Component
     public $product = [];
     public $variations = [];
     public $quantities = [];
+
+    public $menu_order = [];
     public $originalQuantities = []; // <-- أضفنا هذه لحفظ الكميات الأصلية
 
     /**
@@ -169,6 +171,27 @@ class Index extends Component
 
         // 4. تصفير حقل "إضافة كمية للكل" بعد الانتهاء
         $this->qtyToAdd = null;
+    }
+
+    public function updateMenuOrder($productId, $order)
+    {
+        // التأكد من أن القيمة رقمية
+        if (!is_numeric($order)) {
+            Toaster::warning('الرجاء إدخال رقم صحيح للترتيب.');
+            return;
+        }
+
+        try {
+            // استدعاء السيرفس لتحديث المنتج
+            $this->wooService->updateProduct($productId, [
+                'menu_order' => (int) $order
+            ]);
+
+            Toaster::success('تم تحديث الترتيب بنجاح');
+        } catch (\Exception $e) {
+            logger()->error('Error updating menu_order', ['error' => $e->getMessage()]);
+            Toaster::error('حدث خطأ أثناء التحديث: ' . $e->getMessage());
+        }
     }
 
     /**
