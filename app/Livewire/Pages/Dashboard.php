@@ -16,6 +16,8 @@ class Dashboard extends Component
 
     protected WooCommerceService $wooService;
 
+    public $dashboardButtons = [];
+
     public function boot(WooCommerceService $wooService): void
     {
         $this->wooService = $wooService;
@@ -23,12 +25,87 @@ class Dashboard extends Component
 
     public function mount()
     {
-        $this->getOrdersThisMonth();
-        $this->getCustomersCount();
-        $this->getProductsCount();
-        $this->getLowStockProducts();
-        $this->getLatestOrders();
-        $this->getOrderStatuses();
+//        $this->getOrdersThisMonth();
+//        $this->getCustomersCount();
+//        $this->getProductsCount();
+//        $this->getLowStockProducts();
+//        $this->getLatestOrders();
+//        $this->getOrderStatuses();
+
+        $dashboardButtons = [
+            [
+                'name' => __('Home'),
+                'icon' => 'home',
+                'url' => route('dashboard'),
+                'current' => request()->routeIs('dashboard'),
+            ],
+            [
+                'name' => __('List Products'),
+                'icon' => 'list-bullet',
+                'url' => route('product.index'),
+                'current' => request()->routeIs('product.index'),
+            ],
+            [
+                'name' => __('Add Product'),
+                'icon' => 'plus',
+                'url' => route('product.add'),
+                'current' => request()->routeIs('product.add'),
+            ],
+            [
+                'name' => __('Categories'),
+                'icon' => 'rectangle-group',
+                'url' => route('category.index'),
+                'current' => request()->routeIs('category.index'),
+            ],
+            [
+                'name' => __('Attributes'),
+                'icon' => 'tag',
+                'url' => route('product.attributes.add'),
+                'current' => request()->routeIs('product.attributes.add'),
+            ],
+            [
+                'name' => __('Point of Sale'),
+                'icon' => 'shopping-bag',
+                'url' => route('pos.index'),
+                'current' => request()->routeIs('pos.index'),
+            ],
+            [
+                'name' => __('Orders'),
+                'icon' => 'shopping-cart',
+                'url' => route('order.index'),
+                'current' => request()->routeIs('order.index'),
+            ],
+            [
+                'name' => __('Inventory'),
+                'icon' => 'clipboard-document-list',
+                'url' => route('inventory.index'),
+                'current' => request()->routeIs('inventory.index'),
+            ],
+            [
+                'name' => __('Clients'),
+                'icon' => 'users',
+                'url' => route('client.index'),
+                'current' => request()->routeIs('client.index'),
+            ],
+            [
+                'name' => __('Reports'),
+                'icon' => 'document',
+                'url' => route('report.index'),
+                'current' => request()->routeIs('report.index'),
+            ],
+            [
+                'name' => __('Stores'),
+                'icon' => 'building-storefront',
+                'url' => route('store.index'),
+                'current' => request()->routeIs('store.index'),
+            ],
+            [
+                'name' => __('General Setting'),
+                'icon' => 'cog-6-tooth',
+                'url' => route('settings.index'),
+                'current' => request()->routeIs('settings.index'),
+            ],
+        ];
     }
 
     public function getOrdersThisMonth()
@@ -65,7 +142,7 @@ class Dashboard extends Component
 
     public function getOrderStatuses()
     {
-        $response = $this->wooService->get('orders', ['per_page' => 100]);
+        $response = $this->wooService->get('orders', ['per_page' => 10]);
 
         $orders = $response['data'] ?? $response;
 

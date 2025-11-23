@@ -451,13 +451,30 @@
                         <td class="px-6 py-4 text-center font-medium">
                             {{-- نستخدم x-data لإنشاء متغير محلي خاص بهذا الحقل فقط --}}
                             <div x-data="{ localOrder: {{ $product['menu_order'] ?? 0 }} }">
-                                <flux:input
-                                    type="number"
-                                    x-model="localOrder"
-                                    x-on:blur="$wire.updateMenuOrder({{ $product['id'] }}, localOrder)"
-                                    class="text-center"
-                                    style="width:70px"
-                                />
+{{--                                <flux:input--}}
+{{--                                    type="number"--}}
+{{--                                    x-model="localOrder"--}}
+{{--                                    x-on:blur="$wire.updateMenuOrder({{ $product['id'] }}, localOrder)"--}}
+{{--                                    class="text-center"--}}
+{{--                                    style="width:70px;background-color:green;color:white"--}}
+{{--                                />--}}
+                                <select
+                                    style="background-color: green;color: white"
+                                    {{-- عند تغيير القيمة، يتم إرسال الطلب مباشرة للسيرفر --}}
+                                    wire:change="updateMenuOrder({{ $product['id'] }}, $event.target.value)"
+                                    class="w-20 text-center border border-gray-300 rounded-lg px-2 py-1 focus:ring-indigo-500 focus:border-indigo-500 cursor-pointer"
+                                >
+                                    {{-- حلقة التكرار من 0 إلى 50 --}}
+                                    @for ($i = 0; $i <= 50; $i++)
+                                        <option
+                                            value="{{ $i }}"
+                                            {{-- تحديد القيمة الحالية تلقائياً --}}
+                                            @selected(($product['menu_order'] ?? 0) == $i)
+                                        >
+                                            {{ $i }}
+                                        </option>
+                                    @endfor
+                                </select>
                             </div>
                         </td>
                         <td class="px-6 py-4 text-center">
